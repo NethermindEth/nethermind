@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -1166,11 +1167,12 @@ public class ProofWrapperBroadcasterTests
     // EIP-8437: a wrapper with a dependency scheme other than leanSPHINCS, served on eth/75, is discarded unverified and without
     // penalty; an aggregating connection carries every scheme the mempool fork enables.
     [Test]
-    public async Task Other_schemes_served_on_eth75_are_discarded_without_penalty([Values] bool eth75)
+    public async Task Other_schemes_served_on_eth75_are_discarded_without_penalty([Values] bool eth75, [Values] bool mixed)
     {
         using WrapperTestNode node = new();
         Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
-        byte[] wrapper = DirectWrapper(transaction);
+        Transaction[] transactions = mixed ? [transaction, FrameTransaction(2)] : [transaction];
+        byte[] wrapper = DirectWrapper(transactions);
         FakeWrapperLink link = new() { ProtocolVersion = eth75 ? EthVersions.Eth75 : FakeWrapperLink.AggregatingVersion };
         WrapperPeer peer = node.Connect(link);
         node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
@@ -1180,7 +1182,7 @@ public class ProofWrapperBroadcasterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Is.Empty);
-            Assert.That(node.Pending.Select(static t => t.Hash), eth75 ? Is.Empty : Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(node.Pending.Select(static t => t.Hash), eth75 ? Is.Empty : Is.EquivalentTo(transactions.Select(static t => t.Hash)));
             Assert.That(node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.EqualTo(!eth75));
             Assert.That(peer.IsDeprioritized, Is.False);
         }
@@ -1221,11 +1223,13 @@ public class ProofWrapperBroadcasterTests
     }
 
     // EIP-8437: claims found false against a held wrapper of the announced hash, or metadata found false against a transaction
-    // held in a validated wrapper, are discarded with their sender before any fetch; true metadata for a held transaction is not.
+    // held in a validated wrapper, are discarded with their sender before any fetch; true metadata for a held transaction is not,
+    // nor a pooled size a consensus hash does not bind, which is checked against the wrapper once fetched.
     [TestCase("held wrapper, false metadata", true)]
     [TestCase("held wrapper, false length", true)]
     [TestCase("held transaction, false gas", true)]
     [TestCase("held transaction, true metadata", false)]
+    [TestCase("held transaction, other size", false)]
     public void Announced_claims_are_checked_against_held_wrappers_and_transactions(string scenario, bool penalized)
     {
         using WrapperTestNode node = new();
@@ -1242,6 +1246,7 @@ public class ProofWrapperBroadcasterTests
             "held wrapper, false length" => Announcement(0, truth.Length + 1, truth.Hash, null, truth.Metadata),
             "held transaction, false gas" => Announcement(0, otherTruth.Length, otherTruth.Hash, null,
                 WrapperMetadata.Of(other, static (ref Eth75RlpReader _) => 1)),
+            "held transaction, other size" => Announcement(0, otherTruth.Length, otherTruth.Hash, null, WithSizesIncremented(otherTruth.Metadata!, otherTruth.Length)),
             _ => Announcement(0, otherTruth.Length, otherTruth.Hash, null, otherTruth.Metadata)
         };
 
@@ -1252,6 +1257,18 @@ public class ProofWrapperBroadcasterTests
             Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
             Assert.That(link.Sent<GetProofWrappersMessage>(), penalized ? Is.Empty : Has.Length.EqualTo(1));
         }
+    }
+
+    private static WrapperMetadata WithSizesIncremented(WrapperMetadata metadata, int announcedLength)
+    {
+        Eth75RlpReader outer = new(metadata.Encoded);
+        Eth75RlpReader fields = outer.ReadList();
+        Eth75RlpReader sizes = fields.ReadList();
+        List<byte[]> items = [];
+        while (sizes.HasMore) items.Add(Eth75Rlp.EncodeUInt(sizes.ReadUInt64() + 1));
+        List<byte[]> rest = [];
+        while (fields.HasMore) rest.Add(fields.ReadItem().ToArray());
+        return WrapperMetadata.Decode(Eth75Rlp.EncodeList([Eth75Rlp.EncodeList([.. items]), .. rest]), announcedLength, Eth75Protocol.MaxInlineTransactions);
     }
 
     // EIP-8437 lets metadata choose fetches: a mode-0 wrapper listing only pending transactions adds no coverage and is not
