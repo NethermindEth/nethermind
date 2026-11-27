@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core.Resettables;
@@ -70,10 +74,12 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
     }
 
 
-    private void ExecuteTransactions(byte[][] codes, PatternAnalyzerFileTracer tracer)
+    private void ExecuteTransactions(byte[][] codes, PatternAnalyzerFileTracer tracer, ulong blockOffset = 0, bool skip = false)
     {
-        ForkActivation forkActivation = MainnetSpecProvider.PragueActivation;
+        ForkActivation prague = MainnetSpecProvider.PragueActivation;
+        ForkActivation forkActivation = new(prague.BlockNumber + blockOffset, prague.Timestamp);
         (Core.Block? block, Core.Transaction _) = PrepareTx(forkActivation, 100000, codes[0]);
+        if (skip) block.BlockAccessList = new();
         tracer.StartNewBlockTrace(block);
         foreach (byte[] code in codes)
         {
@@ -85,6 +91,56 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
 
         tracer.EndBlockTrace();
         tracer.CompleteAllTasks();
+    }
+
+    [Test]
+    public void Write_frequency_includes_all_recorded_blocks_in_the_report([Values] bool skipMiddleBlock)
+    {
+        const string file = "two-block-report.json";
+        PatternAnalyzerFileTracer tracer = new([], 1, 100, _patternStatsAnalyzer, [], _fileSystem, _logger, 2,
+            ProcessingMode.Sequential, SortOrder.Descending, file, CancellationToken.None, new BlocksConfig { ParallelExecution = true });
+
+        ExecuteTransactions([Prepare.EvmCode.PushData(10).PushData(12).Done], tracer);
+        if (skipMiddleBlock)
+        {
+            ExecuteTransactions([Prepare.EvmCode.PUSHx([1, 2, 3]).PushData(4).Done], tracer, blockOffset: 1, skip: true);
+            // A skipped block records nothing; the buffer rotated in after it must still be able to grow on reset.
+            Assert.That(ReadBufferCapacity(tracer), Is.Positive);
+        }
+
+        bool writtenEarly = _fileSystem.File.Exists(file);
+        ExecuteTransactions([Prepare.EvmCode.PUSHx([1, 2, 3, 4, 5]).PUSHx([3, 4]).Done], tracer, blockOffset: skipMiddleBlock ? 2UL : 1UL);
+
+        using JsonDocument report = JsonDocument.Parse(_fileSystem.File.ReadAllText(file));
+        Dictionary<string, int> stats = report.RootElement.GetProperty("stats").EnumerateArray()
+            .ToDictionary(entry => entry.GetProperty("pattern").GetString()!, entry => entry.GetProperty("count").GetInt32());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writtenEarly, Is.False);
+            Assert.That(stats, Is.EqualTo(new Dictionary<string, int> { ["PUSH1 PUSH1"] = 1, ["PUSH5 PUSH2"] = 1 }));
+        }
+    }
+
+    [Test]
+    public void Disabled_queue_ignores_write_frequency()
+    {
+        const string file = "disabled-queue-report.json";
+        PatternAnalyzerFileTracer tracer = new([], 0, 100, _patternStatsAnalyzer, [], _fileSystem, _logger, 0,
+            ProcessingMode.Sequential, SortOrder.Descending, file, CancellationToken.None, new BlocksConfig { ParallelExecution = false });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => ExecuteTransactions([Prepare.EvmCode.PushData(10).PushData(12).Done], tracer), Throws.Nothing);
+            Assert.That(_fileSystem.File.Exists(file), Is.False);
+        }
+    }
+
+    // Reflective read avoids widening public/internal surface for tests.
+    private static int ReadBufferCapacity(PatternAnalyzerFileTracer tracer)
+    {
+        FieldInfo bufferField = typeof(PatternAnalyzerFileTracer).GetField("_buffer", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("_buffer field not found on PatternAnalyzerFileTracer");
+        return ((ResettableList<Instruction>)bufferField.GetValue(tracer)!).Capacity;
     }
 
     [TestCaseSource(nameof(GetTraceCases))]

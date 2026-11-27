@@ -17,6 +17,7 @@ public static class ThreadSha256
     [ThreadStatic] private static SHA256? s_sha256;
 
     /// <summary>Tries to hash messages of up to 55 bytes or exactly 64 bytes using Arm SHA-256 instructions.</summary>
+    /// <returns><see langword="true"/> if the digest was written. Otherwise the destination is untouched and the caller can use its own SHA-256 provider.</returns>
     public static bool TryHashDataArm(ReadOnlySpan<byte> source, Span<byte> destination) =>
         Sha256.IsSupported && ArmSha256.TryHashData(source, destination);
 

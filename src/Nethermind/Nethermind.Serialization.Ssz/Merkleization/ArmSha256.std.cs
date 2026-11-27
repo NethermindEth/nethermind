@@ -77,6 +77,7 @@ internal static class ArmSha256
         return state;
     }
 
+    [SkipLocalsInit]
     private static void HashShort(ReadOnlySpan<byte> input, ref byte output)
     {
         Span<byte> block = stackalloc byte[64];
