@@ -12,7 +12,7 @@ namespace Ethereum.Transaction.Test;
 internal static class FrameTxPayload
 {
     /// <summary>Encodes a frame transaction, type byte first, varying only the fields the caller supplies.</summary>
-    /// <remarks>The defaults give no frames and no signatures; <paramref name="fees"/> replaces the whole fee list.</remarks>
+    /// <remarks>The defaults give no claims and no frames; <paramref name="fees"/> replaces the whole fee list.</remarks>
     public static byte[] Encode(
         byte[] frames = null,
         byte[] maxFee = null,
@@ -26,8 +26,8 @@ internal static class FrameTxPayload
             .. nonceKeys is null ? [] : new[] { RlpTestHelper.EncodeSequence(nonceKeys) },
             nonce ?? Rlp.Encode(0L),                        // nonce, or nonce_seq after nonce_keys
             Rlp.Encode(TestItem.AddressA.Bytes),            // sender
+            RlpTestHelper.EncodeSequence(),                 // claims
             frames ?? RlpTestHelper.EncodeSequence(),
-            RlpTestHelper.EncodeSequence(),                 // signatures
             fees ?? RlpTestHelper.EncodeSequence(                     // fees
                 maxFee ?? Rlp.Encode(0L),
                 maxPriorityFeePerGas ?? Rlp.Encode(0L)),

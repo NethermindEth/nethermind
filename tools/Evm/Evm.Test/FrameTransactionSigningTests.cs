@@ -28,66 +28,68 @@ public class FrameTransactionSigningTests
     }
 
     [TestCaseSource(nameof(SenderResolutionCases))]
-    public void Resolves_sender_and_fills_canonical_signature(Address? sender)
+    public void Resolves_sender_and_fills_canonical_witness(Address? sender)
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, sender, [Entry()]));
+        Transaction transaction = Fill(BuildInput(key, sender, [Claim()]));
 
         Assert.That(transaction.SenderAddress, Is.EqualTo(key.Address));
-        AssertSignatureRecoversSigner(transaction, 0, key.Address);
+        AssertWitnessRecoversSigner(transaction, 0, key.Address);
     }
 
     [Test]
-    public void Derives_sender_when_signature_list_is_absent()
+    public void Derives_sender_when_claim_list_is_absent()
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, sender: null, signatures: null));
+        Transaction transaction = Fill(BuildInput(key, sender: null, claims: null));
 
         Assert.That(transaction.SenderAddress, Is.EqualTo(key.Address));
     }
 
     [Test]
-    public void Fills_every_canonical_signature()
+    public void Fills_every_secp256k1_witness()
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry(), Entry(signer: key.Address)]));
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Claim(), Claim(key: key.Address), Claim(msg: TestItem.KeccakA.BytesToArray())]));
 
-        AssertSignatureRecoversSigner(transaction, 0, key.Address);
-        AssertSignatureRecoversSigner(transaction, 1, key.Address);
+        AssertWitnessRecoversSigner(transaction, 0, key.Address);
+        AssertWitnessRecoversSigner(transaction, 1, key.Address);
+        AssertWitnessRecoversSigner(transaction, 2, key.Address);
     }
 
     [Test]
-    public void Fills_explicit_signer_for_a_contract_sender()
+    public void Fills_explicit_key_for_a_contract_sender()
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, TestItem.AddressB, [Entry(signer: key.Address)]));
+        Transaction transaction = Fill(BuildInput(key, TestItem.AddressB, [Claim(key: key.Address)]));
 
         Assert.That(transaction.SenderAddress, Is.EqualTo(TestItem.AddressB));
-        AssertSignatureRecoversSigner(transaction, 0, key.Address);
+        AssertWitnessRecoversSigner(transaction, 0, key.Address);
     }
 
     [Test]
-    public void Fills_a_signature_the_decoder_and_validation_both_accept()
+    public void Fills_a_witness_the_decoder_and_validation_both_accept()
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry()]));
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Claim()]));
 
         Assert.That(FrameTxValidation.IsWellFormed(transaction, assertEnabled: true, out string? error), Is.True, error);
 
-        // The digest is recomputed from the decoded form, so a fill over a stale preimage fails here.
+        // The digest is recomputed from the decoded body, so a fill over a stale preimage fails here.
         Transaction decoded = EncodeDecode(transaction);
+        decoded.ClaimWitnesses = transaction.ClaimWitnesses;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out error), Is.True, error);
             Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
         }
-        AssertSignatureRecoversSigner(decoded, 0, key.Address);
+        AssertWitnessRecoversSigner(decoded, 0, key.Address);
     }
 
     [Test]
@@ -95,85 +97,66 @@ public class FrameTransactionSigningTests
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry()], chainId: null));
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Claim()], chainId: null));
 
         Assert.That(transaction.ChainId, Is.EqualTo(ChainId));
-        AssertSignatureRecoversSigner(transaction, 0, key.Address);
+        AssertWitnessRecoversSigner(transaction, 0, key.Address);
     }
 
     [Test]
-    public void Preserves_pre_signed_canonical_signature()
+    public void Preserves_a_supplied_witness_while_filling_the_others()
     {
         PrivateKey key = TestItem.PrivateKeyA;
-        byte[] signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        signature[0] = 1;
+        byte[] supplied = new byte[Eip8141Constants.Secp256k1WitnessLength];
+        supplied[0] = 1;
 
-        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry(signature: signature)]));
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Claim(), Claim()], witnesses: [supplied, []]));
 
-        Assert.That(transaction.FrameSignatures![0].Signature, Is.SequenceEqualTo(signature));
+        Assert.That(transaction.ClaimWitnesses![0], Is.EqualTo(supplied));
+        AssertWitnessRecoversSigner(transaction, 1, key.Address);
     }
 
     [Test]
-    public void Preserves_explicit_digest_signature_while_filling_canonical_entries()
-    {
-        PrivateKey key = TestItem.PrivateKeyA;
-        byte[] explicitSignature = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        explicitSignature[0] = 1;
-        FrameSignatureForRpc explicitEntry = Entry(msg: TestItem.KeccakA.BytesToArray(), signature: explicitSignature);
-
-        Transaction transaction = Fill(BuildInput(key, key.Address, [explicitEntry, Entry()]));
-
-        Assert.That(transaction.FrameSignatures![0].Signature, Is.SequenceEqualTo(explicitSignature));
-        AssertSignatureRecoversSigner(transaction, 1, key.Address);
-    }
-
-    [Test]
-    public void Skips_arbitrary_signature_entry()
+    public void Leaves_a_custom_claim_without_witness_bytes_alone()
     {
         PrivateKey key = TestItem.PrivateKeyA;
 
-        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry(TxFrameSignature.SchemeArbitrary), Entry()]));
+        Transaction transaction = Fill(BuildInput(key, key.Address,
+            [new FrameClaimForRpc { Verifier = TestItem.AddressC, Msg = TestItem.KeccakA.BytesToArray(), GasLimit = 10_000 }, Claim()]));
 
-        Assert.That(transaction.FrameSignatures![0].Signature.IsEmpty, Is.True);
-        AssertSignatureRecoversSigner(transaction, 1, key.Address);
+        Assert.That(transaction.ClaimWitnesses![0], Is.Empty);
+        AssertWitnessRecoversSigner(transaction, 1, key.Address);
     }
 
-    private static IEnumerable<TestCaseData> InvalidSenderAndSignerCases()
+    private static IEnumerable<TestCaseData> InvalidSenderAndKeyCases()
     {
         yield return new TestCaseData(TestItem.PrivateKeyA, TestItem.AddressB, null,
-            "frame transaction sender does not match secretKey").SetName("implicit signer differs from sender");
+            "frame transaction sender does not match secretKey").SetName("implicit key differs from sender");
         yield return new TestCaseData(TestItem.PrivateKeyA, TestItem.PrivateKeyA.Address, TestItem.AddressB,
-            "frame signature signer does not match secretKey").SetName("explicit signer differs from key");
+            "frame claim key does not match secretKey").SetName("explicit key differs from secretKey");
         yield return new TestCaseData(null, null, null,
             "frame transaction requires a sender or a secretKey").SetName("sender and key absent");
     }
 
-    [TestCaseSource(nameof(InvalidSenderAndSignerCases))]
-    public void Rejects_invalid_sender_or_signer(PrivateKey? key, Address? sender, Address? signer, string expectedMessage)
+    [TestCaseSource(nameof(InvalidSenderAndKeyCases))]
+    public void Rejects_invalid_sender_or_key(PrivateKey? key, Address? sender, Address? claimKey, string expectedMessage)
     {
-        InputData input = BuildInput(key, sender, [Entry(signer: signer)]);
+        InputData input = BuildInput(key, sender, [Claim(key: claimKey)]);
 
         T8nException? exception = Assert.Throws<T8nException>(() => Fill(input));
 
         Assert.That(exception!.Message, Is.EqualTo(expectedMessage));
     }
 
-    private static IEnumerable<TestCaseData> UnfillableSignatureCases()
-    {
-        yield return new TestCaseData(Entry(msg: TestItem.KeccakA.BytesToArray())).SetName("explicit digest secp256k1");
-        yield return new TestCaseData(Entry(TxFrameSignature.SchemeP256)).SetName("P256");
-    }
-
-    [TestCaseSource(nameof(UnfillableSignatureCases))]
-    public void Rejects_unfillable_signature_entry(FrameSignatureForRpc entry)
+    [Test]
+    public void Rejects_an_unfillable_p256_claim()
     {
         PrivateKey key = TestItem.PrivateKeyA;
-        InputData input = BuildInput(key, key.Address, [Entry(), entry]);
+        InputData input = BuildInput(key, key.Address, [Claim(), new FrameClaimForRpc { Verifier = Eip8141Constants.P256VerifierAddress, Key = TestItem.AddressB.Bytes.ToArray() }]);
 
         T8nException? exception = Assert.Throws<T8nException>(() => Fill(input));
 
-        Assert.That(exception!.Message,
-            Is.EqualTo("cannot fill frame signature 1: only canonical-hash secp256k1 entries are fillable"));
+        Assert.That(exception!.Message, Is.EqualTo("cannot fill frame claim 1: only secp256k1 claims are fillable"));
     }
 
     private static Transaction Fill(InputData input) => input.GetTransactions(null!, ChainId)[0];
@@ -188,12 +171,11 @@ public class FrameTransactionSigningTests
         return decoder.Decode(ref reader, RlpBehaviors.None)!;
     }
 
-    private static FrameSignatureForRpc Entry(byte scheme = TxFrameSignature.SchemeSecp256k1, Address? signer = null,
-        byte[]? msg = null, byte[]? signature = null) =>
-        new() { Scheme = scheme, Signer = signer, Msg = msg ?? [], Signature = signature ?? [] };
+    private static FrameClaimForRpc Claim(Address? key = null, byte[]? msg = null) =>
+        new() { Verifier = Eip8141Constants.Secp256k1VerifierAddress, Key = key?.Bytes.ToArray() ?? [], Msg = msg ?? [] };
 
-    private static InputData BuildInput(PrivateKey? key, Address? sender, FrameSignatureForRpc[]? signatures,
-        ulong? chainId = ChainId)
+    private static InputData BuildInput(PrivateKey? key, Address? sender, FrameClaimForRpc[]? claims,
+        ulong? chainId = ChainId, byte[][]? witnesses = null)
     {
         FrameTransactionForRpc transaction = new()
         {
@@ -214,7 +196,8 @@ public class FrameTransactionSigningTests
                     Value = UInt256.Zero,
                 },
             ],
-            Signatures = signatures,
+            Claims = claims,
+            Witnesses = witnesses,
         };
 
         return new InputData
@@ -224,13 +207,14 @@ public class FrameTransactionSigningTests
         };
     }
 
-    private static void AssertSignatureRecoversSigner(Transaction transaction, int index, Address expected)
+    private static void AssertWitnessRecoversSigner(Transaction transaction, int index, Address expected)
     {
-        ReadOnlySpan<byte> raw = transaction.FrameSignatures![index].Signature.Span;
-        Assert.That(raw.Length, Is.EqualTo(TxFrameSignature.Secp256k1SignatureLength));
+        byte[] raw = transaction.ClaimWitnesses![index];
+        Assert.That(raw.Length, Is.EqualTo(Eip8141Constants.Secp256k1WitnessLength));
 
-        Signature signature = new(raw[1..], raw[0]);
-        ValueHash256 hash = FrameTxSigHash.ComputeValue(transaction);
+        Signature signature = new(raw.AsSpan(1), raw[0]);
+        TxFrameClaim claim = transaction.FrameClaims![index];
+        ValueHash256 hash = claim.ResolveMsg(FrameTxSigHash.ComputeValue(transaction));
         Address? recovered = new EthereumEcdsa(transaction.ChainId!.Value).RecoverAddress(signature, in hash);
 
         Assert.That(recovered, Is.EqualTo(expected));
