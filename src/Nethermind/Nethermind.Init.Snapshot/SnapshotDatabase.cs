@@ -58,9 +58,7 @@ internal static class SnapshotDatabase
         // Checked here too: content or another extraction can appear during a long download, and the extraction would write
         // over it. As at admission, the content is read before the marker: an extraction creates its marker first.
         if (Exists(dbPath))
-            throw new IOException(HasUnfinishedExtraction(dbPath)
-                ? UnfinishedExtraction(dbPath)
-                : $"The database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds content when the snapshot extraction would begin, so nothing was extracted. Make sure no other node is using it. To initialize from the snapshot, empty the database directory, then restart.");
+            throw new IOException(HasUnfinishedExtraction(dbPath) ? UnfinishedExtraction(dbPath) : HoldsContent(dbPath));
 
         Directory.CreateDirectory(dbPath);
         FileStream marker;
@@ -79,6 +77,24 @@ internal static class SnapshotDatabase
             marker.Write(ExtractionMarkerContent);
             marker.Flush(flushToDisk: true);
         }
+
+        ConfirmClaim(dbPath);
+    }
+
+    /// <summary>
+    /// The last step of <see cref="BeginExtraction"/>, once the marker it created is written. No other extraction can
+    /// create its marker while this one is there, and an extraction writes only while its marker is in place, so content
+    /// seen now came from another writer or from an extraction that finished between the check before the create and the
+    /// create. The claim then removes its marker and stops before anything is extracted.
+    /// </summary>
+    /// <exception cref="IOException">The database directory holds content besides the marker.</exception>
+    internal static void ConfirmClaim(string dbPath)
+    {
+        if (!Exists(dbPath))
+            return;
+
+        File.Delete(MarkerPath(dbPath));
+        throw new IOException(HoldsContent(dbPath));
     }
 
     /// <summary>
@@ -156,6 +172,9 @@ internal static class SnapshotDatabase
     }
 
     private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);
+
+    private static string HoldsContent(string dbPath) =>
+        $"The database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds content when the snapshot extraction would begin, so nothing was extracted. Make sure no other node is using it. To initialize from the snapshot, empty the database directory, then restart.";
 
     // How an exclusive create reports an entry already at the marker path: as "file exists" (EEXIST, for an entry of any
     // kind, on Unix; ERROR_FILE_EXISTS for a file on Windows), or on Windows as access denied for a directory there. Any

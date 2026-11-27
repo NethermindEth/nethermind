@@ -63,11 +63,12 @@ public class InitDatabaseSnapshot(
         using FileStream? databaseLock = LockDatabase(dbPath);
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
 
-        // This step deletes nothing in the database directory but its own marker after a successful extraction. The
-        // checkpoint lives in the snapshot directory, which can change or be lost, and cannot tell a partial extraction from
-        // a synced database; the marker can: a successful extraction removes it, and an unfinished one keeps it until the
-        // operator has emptied the directory. The content is read first: an extraction creates its marker before its first
-        // file, so a start that saw its files also sees its marker while that extraction remains unfinished.
+        // This step deletes nothing in the database directory but its own marker, after a successful extraction or when the
+        // claim finds content beside it. The checkpoint lives in the snapshot directory, which can change or be lost, and
+        // cannot tell a partial extraction from a synced database; the marker can: a successful extraction removes it, and an
+        // unfinished one keeps it until the operator has emptied the directory. The content is read first: an extraction
+        // creates its marker before its first file, so a start that saw its files also sees its marker while that extraction
+        // remains unfinished.
         bool populated = SnapshotDatabase.Exists(dbPath);
         if (SnapshotDatabase.HasUnfinishedExtraction(dbPath))
             throw new IOException(SnapshotDatabase.UnfinishedExtraction(dbPath));
@@ -77,7 +78,7 @@ public class InitDatabaseSnapshot(
             if (checkpoint.Read() < SnapshotStage.Extracted)
             {
                 if (_logger.IsWarn)
-                    _logger.Warn($"The database directory {dbPath:hide} holds content and no snapshot extraction marker, so it is kept and snapshot initialization is skipped. To initialize from the snapshot instead, empty the directory first. A partial extraction left by an older version looks the same.");
+                    _logger.Warn($"The database directory {dbPath:hide} holds content and no snapshot extraction marker, so it is kept and snapshot initialization is skipped. To initialize from the snapshot instead, empty the directory first. A partial extraction left by an older version looks the same.{StagedArchiveNote(snapshotConfig.SnapshotFileName, snapshotPath)}");
             }
             else if (_logger.IsInfo)
             {
@@ -200,6 +201,13 @@ public class InitDatabaseSnapshot(
 
     // No directory part, so not rooted either.
     private static bool IsPlainFileName(string name) => name is not ("" or "." or "..") && Path.GetFileName(name) == name;
+
+    // A staged archive can be large, and nothing deletes it while the database is kept. Only a plain file name names a file
+    // in the snapshot directory; the name is checked when the snapshot is initialized.
+    private static string StagedArchiveNote(string fileName, string snapshotPath) =>
+        IsPlainFileName(fileName) && File.Exists(snapshotPath)
+            ? $" A snapshot archive also stays at {(SensitiveLogMasking.Enabled ? "[redacted]" : snapshotPath)}; delete it by hand if the snapshot is not wanted."
+            : "";
 
     // Whether the path is the directory or lies inside it, comparing full paths as configured: links are not resolved, and
     // only whole path components match. Letter case is ignored on Windows and macOS, whose filesystems usually ignore it.
