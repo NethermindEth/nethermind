@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -79,10 +80,19 @@ internal class NodeRecordBulkSetTests
             .. Enumerable.Range(0, 144).Select(i => (Key((byte)((i / 9) << 4 | i % 9), 0), ExistingValue)),
             (Key(0, 1), ExistingValue),
         ];
+        List<(Hash256 key, byte[] value)> missingNibble = [.. PatriciaTreeBulkSetterTests.GenRandomOfLength(8192, seed: 4).Where(item => LacksNibbleFAtTopLevels(item.key))];
+        List<(Hash256 key, byte[] value)> missingNibbleExisting = missingNibble[..(missingNibble.Count / 2)];
+        List<(Hash256 key, byte[] value)> missingNibbleChanges =
+        [
+            .. missingNibbleExisting.Take(1000).Select(item => (item.key, (byte[])[.. item.value, 1])),
+            .. missingNibbleExisting.Skip(1000).Take(1000).Select(item => (item.key, (byte[])null)),
+            .. missingNibble[(missingNibble.Count / 2)..],
+        ];
         List<(Hash256 key, byte[] value)> embeddedBranch = Items((EmbeddedBranchKeyA, OneByteValue), (EmbeddedBranchKeyB, OneByteValue), (CollapseKeyC, ExistingValue));
         List<(Hash256 key, byte[] value)> embeddedExtension = [.. embeddedBranch, (DivergingAt60Key, ExistingValue)];
         IEnumerable<TestCaseData> cases = PatriciaTreeBulkSetterTests.BulkSetTestGen()
             .Append(new TestCaseData(existing, changes).SetName("10k inserts then 2.5k updates, 2.5k deletes and 5k inserts"))
+            .Append(new TestCaseData(missingNibbleExisting, missingNibbleChanges).SetName("Keys missing nibble f at depths 0 to 2, then updates, deletes and inserts"))
             .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..])).SetName("Full root then deletes of all but one leaf"))
             .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..^1])).SetName("Full root then deletes of all but an extension"))
             .Append(new TestCaseData(embeddedBranch, Items((EmbeddedBranchKeyC, OneByteValue))).SetName("Extension over an embedded branch, then a set into the branch"))
@@ -201,6 +211,36 @@ internal class NodeRecordBulkSetTests
                 Assert.That(InvalidRecords(buffer, root), Is.Empty);
                 Assert.That(source.FetchCount, Is.Zero);
             }
+        }
+    }
+
+    [Test]
+    public void Branch_levels_missing_a_nibble_update_their_children_in_parallel()
+    {
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
+
+        List<(Hash256 key, byte[] value)> items = [.. PatriciaTreeBulkSetterTests.GenRandomOfLength(8192, seed: 3).Where(item => LacksNibbleFAtTopLevels(item.key))];
+        (Hash256 expectedRoot, _) = BuildExpectedTrie(items.ToDictionary(item => item.key, item => item.value));
+
+        (ValueHash256 serialRoot, int serialBatches) = BulkSetCountingBatches(canParallelize: false);
+        (ValueHash256 parallelRoot, int parallelBatches) = BulkSetCountingBatches(canParallelize: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialRoot, Is.EqualTo(expectedRoot.ValueHash256), "serial root");
+            Assert.That(parallelRoot, Is.EqualTo(expectedRoot.ValueHash256), "parallel root");
+            // Each child updated in parallel commits its subtree in write batches of its own.
+            Assert.That(parallelBatches, Is.GreaterThan(serialBatches), "write batches");
+        }
+
+        (ValueHash256 Root, int Batches) BulkSetCountingBatches(bool canParallelize)
+        {
+            using NodeRecordBuffer buffer = new(0, NodeRecordBuffer.DefaultGenerationBytes);
+            using NodeRecordBufferPin retain = buffer.PinHead();
+            BatchCountingStore store = new(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeBuffer(1), null).Over(buffer));
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
+            (ValueHash256 root, _) = NodeRecordBulkSet.BulkSet(store, null, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize);
+            return (root, store.Batches);
         }
     }
 
@@ -797,6 +837,9 @@ internal class NodeRecordBulkSetTests
         return (new DictionaryNodeSource(persisted, warmed, null), warmed, persisted, (root.Hash, 0));
     }
 
+    /// <summary>Whether <paramref name="key"/> has no nibble f at depths 0 to 2, so a trie of such keys has no full branch at these depths.</summary>
+    private static bool LacksNibbleFAtTopLevels(Hash256 key) => key.Bytes[0] < 0xf0 && (key.Bytes[0] & 0xf) != 0xf && key.Bytes[1] < 0xf0;
+
     private static (ValueHash256 Hash, ulong Pointer) BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, (ValueHash256 Hash, ulong Pointer) root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
@@ -896,5 +939,23 @@ internal class NodeRecordBulkSetTests
         }
 
         public void Dispose() => committer.Dispose();
+    }
+
+    private sealed class BatchCountingStore(INodeRecordStore store) : INodeRecordStore
+    {
+        private int _batches;
+
+        public int Batches => Volatile.Read(ref _batches);
+
+        public bool TryLocate(ulong pointer, out NodeRecord record) => store.TryLocate(pointer, out record);
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength)
+        {
+            Interlocked.Increment(ref _batches);
+            return store.StartWriteBatch(alignedTotalLength);
+        }
+
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            store.TryLoad(path, hash, action, arg);
     }
 }

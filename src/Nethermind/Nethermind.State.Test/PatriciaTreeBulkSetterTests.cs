@@ -148,12 +148,13 @@ public class PatriciaTreeBulkSetterTests
     }
 
     [Test]
-    public void Parallel_bulk_set_on_a_worker_that_ran_a_failed_job_computes_the_right_root([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme scheme)
+    public void Parallel_bulk_set_on_a_worker_that_ran_a_failed_job_computes_the_right_root([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme scheme,
+        [Values] bool rootMissingNibbleF)
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 
         using MemDb db = new();
-        (Hash256 root, List<(Hash256 key, byte[] value)> updates) = OnNewThread(() => CreatePrefixedTree(db, scheme));
+        (Hash256 root, List<(Hash256 key, byte[] value)> updates) = OnNewThread(() => CreatePrefixedTree(db, scheme, rootMissingNibbleF ? 0xf0 : 0x100));
         Hash256 expected = OnNewThread(() => SetOneByOne(CreateTree(db, scheme, root), updates));
 
         using Rendezvous failingJobs = new();
@@ -207,16 +208,16 @@ public class PatriciaTreeBulkSetterTests
     }
 
     /// <summary>
-    /// A committed tree with 16 keys under each two-nibble prefix, and an update of one key under each prefix whose
-    /// second nibble is below 9: 144 entries over all 16 first nibbles, so a bulk set of them runs in parallel, and one
-    /// entry per depth-2 node, so each job writes it with a single walk from that node.
+    /// A committed tree with 16 keys under each two-nibble prefix below <paramref name="prefixCount"/>, and an update of one key
+    /// under each prefix whose second nibble is below 9: at least 128 entries over at least two first nibbles, so a bulk set of
+    /// them runs in parallel, and one entry per depth-2 node, so each job writes it with a single walk from that node.
     /// </summary>
-    private static (Hash256 root, List<(Hash256 key, byte[] value)> updates) CreatePrefixedTree(MemDb db, INodeStorage.KeyScheme scheme)
+    private static (Hash256 root, List<(Hash256 key, byte[] value)> updates) CreatePrefixedTree(MemDb db, INodeStorage.KeyScheme scheme, int prefixCount = 256)
     {
         Random rng = new(1);
         PatriciaTree tree = CreateTree(db, scheme, Keccak.EmptyTreeHash);
         List<(Hash256 key, byte[] value)> updates = [];
-        for (int prefix = 0; prefix < 256; prefix++)
+        for (int prefix = 0; prefix < prefixCount; prefix++)
         {
             for (int i = 0; i < 16; i++)
             {

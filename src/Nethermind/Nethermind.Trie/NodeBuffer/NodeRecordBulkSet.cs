@@ -27,7 +27,7 @@ namespace Nethermind.Trie.NodeBuffer;
 /// added to the buffer. Entries are bucketed by nibble one level at a time; a leaf or extension the entries split is walked in place, less
 /// the key nibbles the split dropped, and copied out only when it changes. New nodes stay pending in a <see cref="BulkSetWorkingState"/> until
 /// the commit encodes them straight into the buffer one path depth at a time, deepest first, hashing each level together.
-/// A full branch level with enough entries may update its children in parallel, each task committing its subtree in its own working state.
+/// A branch level with at least two children and enough entries may update its children in parallel, each task committing its subtree in its own working state.
 /// Nodes that become unreachable are not removed from the buffer.
 /// </remarks>
 internal static class NodeRecordBulkSet
@@ -36,13 +36,12 @@ internal static class NodeRecordBulkSet
     private const int TinySortMaxCount = 3;
     private const int MaxKeyNibbles = BulkSetWorkingState.MaxKeyNibbles;
     private const int BranchChildCount = BulkSetWorkingState.BranchChildCount;
-    private const int FullMask = (1 << BranchChildCount) - 1;
     private const int MaxWorkers = 16;
 
     /// <summary>Sets every entry's key to its value, deleting it when the value is null or empty, and returns the new root.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="entries">Reordered in place; keys must be unique.</param>
-    /// <param name="canParallelize">Whether the children of a full branch level with enough entries may be updated in parallel.</param>
+    /// <param name="canParallelize">Whether the children of a branch level with at least two children and enough entries may be updated in parallel.</param>
     /// <exception cref="MissingTrieNodeException">The store has no node on a changed path.</exception>
     /// <exception cref="InvalidOperationException">Two entries have the same key.</exception>
     public static (ValueHash256 Hash, ulong Pointer) BulkSet(INodeRecordStore store, Hash256? address, (ValueHash256 Hash, ulong Pointer) root,
@@ -192,7 +191,7 @@ internal static class NodeRecordBulkSet
         public ChildRef Reference => PendingIndex < 0 ? default : ChildRef.ForPending(PendingIndex);
     }
 
-    /// <summary>A branch level whose sixteen children are updated in parallel, each by a task that commits the child's subtree in a working state of its own, so only committed references cross threads.</summary>
+    /// <summary>A branch level whose children are updated in parallel, each by a task that commits the child's subtree in a working state of its own, so only committed references cross threads.</summary>
     private sealed class ParallelChildren
     {
         public bool Flipped;
@@ -202,6 +201,9 @@ internal static class NodeRecordBulkSet
 
         /// <summary>Each child's entries in the entries' array, or in the sort buffer's array when <see cref="Flipped"/>.</summary>
         public FixedArray16<(int Start, int Count)> Ranges;
+
+        /// <summary>The nibbles of the children with entries, in ascending order.</summary>
+        public FixedArray16<byte> Nibbles;
 
         /// <summary>The references to the children before the join, and the committed references of those in <see cref="ChangedMask"/> after it.</summary>
         public FixedArray16<ChildRef> Children;
@@ -293,7 +295,7 @@ internal static class NodeRecordBulkSet
             bool hasRemove = false;
             int nonEmptyCount = 0;
             ParallelChildren? parallelChildren = IsParallel(entries.Length, mask) ? new ParallelChildren() : null;
-            if (parallelChildren is not null) UpdateInParallel(parallelChildren, entries, flipped, path, indexes, node, childrenStart, remainderNibble, remainder);
+            if (parallelChildren is not null) UpdateInParallel(parallelChildren, entries, flipped, path, indexes, mask, node, childrenStart, remainderNibble, remainder);
             path.AppendMut(0);
             for (int remaining = mask; remaining != 0;)
             {
@@ -347,11 +349,11 @@ internal static class NodeRecordBulkSet
         }
 
         private bool IsParallel(int count, int mask) =>
-            _canParallelize && mask == FullMask && count >= PatriciaTree.MinEntriesToParallelizeThreshold && !RuntimeInformation.IsSingleProcessor;
+            _canParallelize && BitOperations.PopCount((uint)mask) >= 2 && count >= PatriciaTree.MinEntriesToParallelizeThreshold && !RuntimeInformation.IsSingleProcessor;
 
-        /// <summary>Updates the sixteen children of <paramref name="node"/> at <paramref name="path"/> in parallel into <paramref name="level"/>, as the serial loop of <see cref="Update"/> would.</summary>
+        /// <summary>Updates the children in <paramref name="mask"/> of <paramref name="node"/> at <paramref name="path"/> in parallel into <paramref name="level"/>, as the serial loop of <see cref="Update"/> would.</summary>
         /// <remarks>An unchanged remainder is left to the caller, which keeps it pending below the new branch.</remarks>
-        private void UpdateInParallel(ParallelChildren level, Span<BulkSetEntry> entries, bool flipped, in TreePath path, ReadOnlySpan<int> indexes,
+        private void UpdateInParallel(ParallelChildren level, Span<BulkSetEntry> entries, bool flipped, in TreePath path, ReadOnlySpan<int> indexes, int mask,
             in Source node, int childrenStart, int remainderNibble, in Source remainder)
         {
             int offset = entries.OffsetIn(flipped ? _sortBuffer : _entries);
@@ -359,17 +361,21 @@ internal static class NodeRecordBulkSet
             level.Path = path;
             level.RemainderNibble = remainderNibble;
             level.Remainder = remainder;
-            for (int nibble = 0; nibble < BranchChildCount; nibble++)
+            int count = 0;
+            for (int remaining = mask; remaining != 0;)
             {
-                int end = nibble == BranchChildCount - 1 ? entries.Length : indexes[nibble + 1];
+                int nibble = BitOperations.TrailingZeroCount(remaining);
+                remaining &= remaining - 1;
+                int end = remaining == 0 ? entries.Length : indexes[BitOperations.TrailingZeroCount(remaining)];
+                level.Nibbles[count++] = (byte)nibble;
                 level.Ranges[nibble] = (offset + indexes[nibble], end - indexes[nibble]);
                 if (nibble != remainderNibble) level.Children[nibble] = childrenStart >= 0 ? _workingState.Children[childrenStart + nibble] : node.Record.View.Child(nibble);
             }
 
-            ParallelUnbalancedWork.For(0, BranchChildCount, ParallelUnbalancedWork.DefaultOptions, (Context: this, Level: level),
-                static (nibble, state) =>
+            ParallelUnbalancedWork.For(0, count, ParallelUnbalancedWork.DefaultOptions, (Context: this, Level: level),
+                static (i, state) =>
                 {
-                    state.Context.UpdateChild(state.Level, nibble);
+                    state.Context.UpdateChild(state.Level, state.Level.Nibbles[i]);
                     return state;
                 });
         }

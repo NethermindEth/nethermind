@@ -16,7 +16,6 @@ public partial class PatriciaTree
     public const int MinEntriesToParallelizeThreshold = 128;
     private const int InPlaceSortThreshold = 32;
     private const int BSearchThreshold = 128;
-    private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
     [Flags]
     public enum Flags
@@ -154,10 +153,10 @@ public partial class PatriciaTree
 
             TreePath childPath = path.Append(nib);
             TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-            jobs[nib] = (jobEntry.OffsetIn(originalEntriesArray), jobEntry.Length, nib, childPath, child, null);
+            jobs.Add((jobEntry.OffsetIn(originalEntriesArray), jobEntry.Length, nib, childPath, child, null));
         }
 
-        ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+        ParallelUnbalancedWork.For(0, jobs.Count, ParallelUnbalancedWork.DefaultOptions,
             GetTraverseStack,
             (i, workerTraverseStack) =>
             {
@@ -270,7 +269,7 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && BitOperations.PopCount((uint)nibMask) >= 2 && !flags.HasFlag(Flags.DoNotParallelize))
         {
             using ArrayPoolList<(
                 int startIdx,
@@ -279,13 +278,13 @@ public partial class PatriciaTree
                 TreePath appendedPath,
                 TrieNode? currentChild,
                 TrieNode? newChild
-                )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
+                )> jobs = new(TrieNode.BranchesCount);
 
             // Kept separate: its lambda captures parameters, whose closure would otherwise be allocated on every
             // recursive BulkSet call.
             BulkSetParallelJobs(in ctx, jobs, entries, ref path, node, indexes, nibMask, flipCount, flags);
 
-            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            for (int i = 0; i < jobs.Count; i++)
             {
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
@@ -301,7 +300,7 @@ public partial class PatriciaTree
                 if (node.IsSealed)
                     node = node.Unseal();
 
-                node.SetChild(i, newChild);
+                node.SetChild(jobs[i].nibble, newChild);
             }
         }
         else
