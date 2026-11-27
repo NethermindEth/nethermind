@@ -526,9 +526,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
                 // For nested call frames, merge the results and restore the previous execution state.
 #pragma warning disable IDE0063 // Cannot simplify: the `goto Failure` above jumps past this scope, which a `using` declaration would forbid (CS8648)
-#if !ZK_EVM
                 OnChildFrameCompleted(_currentState, callResult.ExceptionType, callResult.ShouldRevert, callResult.Output);
-#endif
                 using (VmState<TGasPolicy> previousState = _currentState)
                 {
                     // Restore the previous state from the stack and mark it as a continuation.
@@ -1158,9 +1156,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (!_currentState.IsTopLevel)
         {
-#if !ZK_EVM
             OnChildFrameCompleted(_currentState, errorType, shouldRevert: false, default);
-#endif
         }
 
         // Errors are reported even when no instruction start is open, except a nested precompile's: it runs no
@@ -1376,9 +1372,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (!_currentState.IsTopLevel)
         {
-#if !ZK_EVM
             OnChildFrameCompleted(_currentState, callResult.ExceptionType, shouldRevert: false, default);
-#endif
         }
 
         // If this is the top-level call, return a final transaction substate encapsulating the error.

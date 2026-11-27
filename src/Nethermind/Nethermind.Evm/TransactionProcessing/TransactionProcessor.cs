@@ -524,7 +524,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out refundResult);
 
             if (refundResult.Result)
+            {
+#if !ZK_EVM
                 refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+#endif
+            }
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
@@ -660,7 +664,11 @@ namespace Nethermind.Evm.TransactionProcessing
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             RefundResult refundResult = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);
             if (refundResult.Result)
+            {
+#if !ZK_EVM
                 refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+#endif
+            }
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
