@@ -69,8 +69,9 @@ public partial class EngineModuleTests
             (Prague.Instance, [4]),
             (Osaka.Instance, [5]),
             (Amsterdam.Instance, [6]),
-            // Only getPayloadV7 carries the EIP-8141 dependency proof, so it alone serves a frame fork, Osaka-based or not.
-            (new OverridableReleaseSpec(Osaka.Instance) { IsEip8141Enabled = true }, [7]),
+            // Only getPayloadV7 carries the EIP-8141 dependency proof, and its payload extends Amsterdam's, so a frame fork
+            // without Amsterdam has no getPayload version rather than one whose payload cannot be imported back.
+            (new OverridableReleaseSpec(Osaka.Instance) { IsEip8141Enabled = true }, []),
             (Eip8141Prototype.Instance, [7])
         ];
         foreach ((IReleaseSpec spec, int[] versions) in forks)
