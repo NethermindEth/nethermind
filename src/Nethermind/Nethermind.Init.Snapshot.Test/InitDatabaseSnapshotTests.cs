@@ -424,6 +424,42 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [TestCase(false, false, TestName = "Execute_LoneMarker_StopsBeforeStagingOrAnyRequest")]
+    [TestCase(false, true, TestName = "Execute_LoneMarkerBesideAPartialDownload_StopsWithoutTouchingIt")]
+    [TestCase(true, false, TestName = "Execute_LoneMarkerWhenStreaming_StopsBeforeStagingOrAnyRequest")]
+    [TestCase(true, true, TestName = "Execute_LoneMarkerBesideAStaleArchiveWhenStreaming_StopsWithoutTouchingIt")]
+    public async Task Execute_LoneMarker_StopsBeforeStagingOrAnyRequest(bool streaming, bool staged)
+    {
+        // What a stop between the marker and the first file leaves. The database directory holds nothing else, so it
+        // counts as empty, and only the marker lookup at admission stops the start before it stages or requests anything.
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = streaming;
+        if (staged)
+            File.WriteAllBytes(Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName), [1, 2, 3]);
+        else
+            _snapshotConfig.SnapshotDirectory = Path.Combine(_tempDir.Path, "staging");
+        Dictionary<string, byte[]>? staging = staged ? ContentOf(_snapshotConfig.SnapshotDirectory) : null;
+        Directory.CreateDirectory(_dbPath);
+        File.WriteAllBytes(MarkerPath, []);
+        // Bounded: a start that went on would download the archive before the claim stopped it.
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("was not completed"), "a lone marker shows an unfinished extraction");
+            Assert.That(server.RequestCount, Is.Zero, "nothing may be requested");
+            if (staged)
+                Assert.That(ContentOf(_snapshotConfig.SnapshotDirectory), Is.EqualTo(staging), "the snapshot directory must stay as it was");
+            else
+                Assert.That(Path.Exists(_snapshotConfig.SnapshotDirectory), Is.False, "the snapshot directory must not be created");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath), Is.EquivalentTo(new[] { MarkerPath }), "the marker must stay, alone");
+            Assert.That(File.ReadAllBytes(MarkerPath), Is.Empty, "the marker must stay as it was");
+        }
+    }
+
     [Test]
     public async Task Execute_AfterStreamedExtractionWasInterrupted_StopsAndDeletesNothing()
     {
@@ -606,6 +642,39 @@ public class InitDatabaseSnapshotTests
             Assert.That(File.ReadAllBytes(data), Is.EqualTo(new byte[] { 1, 2, 3 }), "nothing may be changed");
             Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay");
             Assert.That(File.Exists(_snapshotPath), Is.True, "nothing may be extracted");
+        }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // Unix permissions
+    [SupportedOSPlatform("linux")]
+    public async Task Execute_DatabaseDirectoryThatCannotBeListed_KeepsItAndSkipsTheSnapshot()
+    {
+        // Mode 0111: the marker can be looked up, but the directory cannot be listed, so what it holds is unknown and it
+        // counts as holding content. As root it can be listed anyway, the file is found, and the outcome is the same.
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = false;
+        string synced = Path.Combine(_dbPath, "000001.sst");
+        Directory.CreateDirectory(_dbPath);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+        UnixFileMode mode = File.GetUnixFileMode(_dbPath);
+        File.SetUnixFileMode(_dbPath, UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+        // Bounded: a start that took the directory for empty would download the archive first.
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        try
+        {
+            await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
+        }
+        finally
+        {
+            File.SetUnixFileMode(_dbPath, mode);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllBytes(synced), Is.EqualTo(new byte[] { 1, 2, 3 }), "the file must keep its bytes");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath), Is.EquivalentTo(new[] { synced }), "nothing may be extracted, and the directory must not be marked");
+            Assert.That(server.RequestCount, Is.Zero, "the snapshot must be skipped");
         }
     }
 
@@ -923,6 +992,27 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [Test]
+    public async Task Execute_ZipWithTwoEntriesOfOneName_StopsWithoutOverwritingTheFirst()
+    {
+        string first = Path.Combine(_dbPath, "state", "a.sst");
+        _snapshotConfig.SnapshotFileName = "snapshot.zip";
+        _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildZipOfEntries(("state/a.sst", [1]), ("state/a.sst", [2, 2])));
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("already exists"), "the second entry must not overwrite the first");
+            Assert.That(File.ReadAllBytes(first), Is.EqualTo(new byte[] { 1 }), "the first entry must keep its bytes");
+            Assert.That(File.ReadAllText(MarkerPath), Is.EqualTo("Nethermind snapshot extraction in progress"), "the extraction that stopped must stay marked for the operator");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Verified), "the checkpoint must not advance");
+        }
+    }
+
     private void UseArchiveWithTheDirectoryEntryOfLostAndFound(bool zip, Dictionary<string, byte[]> files)
     {
         if (zip)
@@ -1012,8 +1102,8 @@ public class InitDatabaseSnapshotTests
     }
 
     [TestCase(false, TestName = "Execute_SnapshotDirectoryBesideTheDatabaseWithTheSameStart_Initializes")]
-    [TestCase(true, TestName = "Execute_DatabaseThatHoldsContentAndTheSnapshotDirectorySetting_KeepsItAsBefore")]
-    public async Task Execute_SnapshotDirectoryThatNeedsNoCheck_GoesOnAsBefore(bool populated)
+    [TestCase(true, TestName = "Execute_DatabaseThatHoldsContentAndTheSnapshotDirectorySetting_KeepsItWhateverTheSetting")]
+    public async Task Execute_SnapshotDirectoryThatNeedsNoCheck_GoesOn(bool populated)
     {
         using FlakySnapshotServer server = StreamingServer();
         // Beside: whole path components count, so db-snapshot is not inside db.

@@ -81,6 +81,19 @@ internal static class TestArchive
         return zipBuffer.ToArray();
     }
 
+    /// <summary>A zip of exactly <paramref name="entries"/>, in order, so a name may occur more than once.</summary>
+    public static byte[] BuildZipOfEntries(params (string Name, byte[] Data)[] entries)
+    {
+        using MemoryStream zipBuffer = new();
+        using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach ((string name, byte[] data) in entries)
+                WriteZipEntry(zip, name, data);
+        }
+
+        return zipBuffer.ToArray();
+    }
+
     private static void WriteZipEntry(System.IO.Compression.ZipArchive zip, string name, byte[] data)
     {
         using Stream entry = zip.CreateEntry(name).Open();
