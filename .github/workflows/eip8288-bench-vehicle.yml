@@ -99,6 +99,18 @@ jobs:
           git -C "$scratch/nethermind" -c advice.detachedHead=false checkout -q "$NETHERMIND_REF"
           echo "nethermind $NETHERMIND_REF at $(git -C "$scratch/nethermind" rev-parse HEAD)"
           read -ra settings <<< "$BENCH_ENV"
+          if [[ $BENCH_SCENARIOS == builder-claims ]]; then
+            # Claims-based builder bench (tools/eip8288-bench/builder.sh); needs the repo's .NET SDK.
+            curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --jsonfile "$scratch/nethermind/global.json" --install-dir "$HOME/.dotnet"
+            export PATH="$HOME/.dotnet:$PATH" DOTNET_ROOT="$HOME/.dotnet"
+            for profile in local-block-builder whole; do
+              timeout "${TIMEOUT_MINUTES}m" env ${settings[@]+"${settings[@]}"} \
+                "$scratch/nethermind/tools/eip8288-bench/builder.sh" --profile "$profile" --out "$scratch/out/$profile" \
+                | tee "$scratch/out/$profile.txt"
+              { echo "### $profile"; echo '```'; tail -n 20 "$scratch/out/$profile.txt"; echo '```'; } >> "$scratch/out/summary.md"
+            done
+            exit 0
+          fi
           timeout "${TIMEOUT_MINUTES}m" env ${settings[@]+"${settings[@]}"} \
             "$scratch/nethermind/scripts/eip8288-bench/run.sh" "$scratch/out" "$BENCH_SCENARIOS"
 
