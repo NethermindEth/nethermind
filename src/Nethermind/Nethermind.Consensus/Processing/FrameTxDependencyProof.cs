@@ -31,6 +31,9 @@ public static class FrameTxDependencyProof
     public const string VerifierNotDeployed = "custom claim verifier has no code in the block's pre-state";
     public const string VerifierGasExceedsBlockGasLimit = "dependency verification exceeds the block gas limit";
 
+    /// <summary>The block's dependency proof is not available, so the block can reach no verdict; it is not invalid.</summary>
+    public sealed class UnavailableException(string message) : InvalidOperationException(message);
+
     private static readonly RlpLimit WitnessesCountLimit = RlpLimit.For<Block>(Eip8141Constants.MaxDependencyProofBytes, nameof(Block.DependencyProof));
 
     /// <summary>EIP-8141 <c>resolve_dependency</c>: the <c>(verifier, resolved_key, resolved_msg, gas, witness_len)</c> a claim declares.</summary>
@@ -126,7 +129,7 @@ public static class FrameTxDependencyProof
     /// the verifier's own code, so verifying each claim as its transaction executes reaches the verdict the block's
     /// pre-state does once <see cref="CheckVerifiersDeployed"/> has ruled out a verifier deployed earlier in the same block.</remarks>
     /// <exception cref="InvalidBlockException">The proof does not match the header, or does not fit the dependencies.</exception>
-    /// <exception cref="InvalidOperationException">The proof is not available, so no verdict can be reached.</exception>
+    /// <exception cref="UnavailableException">The proof is not available, so no verdict can be reached.</exception>
     public static void AssignWitnesses(Block block)
     {
         // Only a header committing to a proof has one to check; a fork block's header is validated to carry the hash.
@@ -139,7 +142,7 @@ public static class FrameTxDependencyProof
             if (block.Header.DependencyProofHash == Keccak.OfAnEmptyString && !HasClaims(block)) return;
             // The proof travels only with newPayload and is not stored, so a block read back from the database has
             // none; that is no fault of the block, which must not be marked invalid for it.
-            throw new InvalidOperationException($"{Unavailable} for block {block.ToString(Block.Format.Short)}");
+            throw new UnavailableException($"{Unavailable} for block {block.ToString(Block.Format.Short)}");
         }
 
         if (proof.Length > Eip8141Constants.MaxDependencyProofBytes) throw new InvalidBlockException(block, TooLarge);

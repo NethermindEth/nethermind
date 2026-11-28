@@ -192,7 +192,7 @@ public class FrameTxDependencyProofTests
         block.Header.DependencyProofHash = Keccak.Compute(FrameTxDependencyProof.Encode([new byte[65]]));
 
         Assert.That(() => FrameTxDependencyProof.AssignWitnesses(block),
-            Throws.Exception.Not.InstanceOf<InvalidBlockException>().With.Message.Contains(FrameTxDependencyProof.Unavailable));
+            Throws.TypeOf<FrameTxDependencyProof.UnavailableException>().With.Message.Contains(FrameTxDependencyProof.Unavailable));
     }
 
     public enum VerifierState { Code, NoCode, Delegated, Precompile }
