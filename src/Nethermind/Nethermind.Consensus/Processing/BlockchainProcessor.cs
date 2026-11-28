@@ -71,7 +71,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             AllowSynchronousContinuations = true,
         });
 
-    private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers, bool AllowSynchronousProcessing = true);
+    private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers, bool AllowSynchronousProcessing, VerdictSource? Verdict);
 
     private bool _recoveryComplete = false;
     private int _queueCount;
@@ -79,6 +79,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     // Every block between Enqueue and its BlockRemoved, counted per copy: the engine API and sync can queue the
     // same hash twice. One wait is released once the last copy is gone, the other once the copy that had its verdict is.
     private readonly ConcurrentDictionary<Hash256, InFlightBlock> _inFlight = new();
+    // Every verdict not yet answered by its copy's removal, so the copies a stop strands are answered too.
+    private readonly ConcurrentDictionary<VerdictSource, byte> _pendingVerdicts = new();
+    // Set only while the processing loop works on a queue entry, and only on the loop's thread.
+    private VerdictSource? _processingVerdict;
 
     private readonly IProcessingStats _stats;
 
@@ -167,22 +171,38 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Hash256 hash = block.Hash!;
         if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
 
-        BlockVerdictEventArgs verdict = new(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied);
+        if (_processingVerdict is { } verdict && verdict.BlockHash == hash)
+        {
+            verdict.Executed(block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied);
+            // Counted as answered whether or not its caller is still waiting: a resend can still take it.
+            e.Answered = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<BlockVerdict> EnqueueAndWaitForVerdictAsync(Block block, ProcessingOptions processingOptions)
+    {
+        VerdictSource verdict = new(block.Hash!);
+        _pendingVerdicts.TryAdd(verdict, 0);
         try
         {
-            BlockExecuted?.Invoke(this, verdict);
+            // The caller waits for the verdict only, so it must not be held through the commit after it.
+            await Enqueue(block, processingOptions, allowSynchronousProcessing: false, verdict);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (verdict.Task.IsCompleted)
         {
-            // The block is judged and the commit is next; a subscriber must not be able to turn that into a failure
-            // after the verdict has gone out, which is what an exception here would unwind into.
-            if (_logger.IsError) _logger.Error($"Block executed handler failed for {hash}.", exception);
+            // The copy's removal has answered the failure already.
+            if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} for its verdict failed: {exception}");
         }
-        finally
-        {
-            // A subscriber that answered before another one threw has still answered.
-            e.Answered |= verdict.Answered;
-        }
+
+        return await verdict.Task;
+    }
+
+    private void AnswerRemoval(VerdictSource? verdict, BlockRemovedEventArgs e)
+    {
+        if (verdict is null) return;
+        _pendingVerdicts.TryRemove(verdict, out _);
+        verdict.Removed(e);
     }
 
     /// <inheritdoc/>
@@ -211,14 +231,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// the handlers, so a throwing one cannot leave a waiter parked.
     /// </remarks>
     /// <param name="e">The removal.</param>
+    /// <param name="verdict">The verdict on the removed copy, if it was queued for one.</param>
     /// <param name="processed">
     /// Raised by the processing loop for the copy it took, which is the only copy that can have had its verdict. The
     /// enqueue and recovery paths remove copies that never got that far and leave a committing copy's waiters alone.
     /// </param>
-    private void OnBlockRemoved(BlockRemovedEventArgs e, bool processed = false)
+    private void OnBlockRemoved(BlockRemovedEventArgs e, VerdictSource? verdict, bool processed = false)
     {
         try
         {
+            AnswerRemoval(verdict, e);
             BlockRemoved?.Invoke(this, e);
         }
         catch (Exception exception)
@@ -359,6 +381,26 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    /// <summary>The verdict on one queued copy, answered by its execution or by its removal, whichever comes first.</summary>
+    private sealed class VerdictSource(Hash256 blockHash)
+    {
+        private readonly TaskCompletionSource<BlockVerdict> _verdict = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<ProcessingResult> _removed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Hash256 BlockHash { get; } = blockHash;
+
+        public Task<BlockVerdict> Task => _verdict.Task;
+
+        public void Executed(ProcessingResult result) => _verdict.TrySetResult(new BlockVerdict(result, null, null, _removed.Task));
+
+        public void Removed(BlockRemovedEventArgs e)
+        {
+            // Removal first, so a verdict that is the removal arrives with it already done.
+            _removed.TrySetResult(e.ProcessingResult);
+            _verdict.TrySetResult(new BlockVerdict(e.ProcessingResult, e.Message, e.Exception, _removed.Task));
+        }
+    }
+
     private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
@@ -376,14 +418,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (blockEventArgs.Block is not null)
         {
-            _ = Enqueue(blockEventArgs.Block, options, allowSynchronousProcessing: !blockEventArgs.NonBlockingProcessing);
+            _ = Enqueue(blockEventArgs.Block, options, allowSynchronousProcessing: !blockEventArgs.NonBlockingProcessing, verdict: null);
         }
     }
 
     public ValueTask Enqueue(Block block, ProcessingOptions processingOptions)
-        => Enqueue(block, processingOptions, allowSynchronousProcessing: true);
+        => Enqueue(block, processingOptions, allowSynchronousProcessing: true, verdict: null);
 
-    private async ValueTask Enqueue(Block block, ProcessingOptions processingOptions, bool allowSynchronousProcessing)
+    private async ValueTask Enqueue(Block block, ProcessingOptions processingOptions, bool allowSynchronousProcessing, VerdictSource? verdict)
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
@@ -393,7 +435,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
-        ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup(), allowSynchronousProcessing);
+        ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup(), allowSynchronousProcessing, verdict);
 
         if (!_recoveryComplete)
         {
@@ -415,7 +457,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                             // Refused only once the queue is completed, at shutdown. Dropped silently it would leave
                             // the in-flight entry a copy nothing takes off, and every later wait on that hash hanging.
                             Interlocked.Add(ref _currentRecoveryQueueSize, -block.Transactions.Length);
-                            DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException);
+                            DecrementQueue(blockRef.BlockHash, verdict, ProcessingResult.QueueException);
                             return;
                         }
                     }
@@ -430,18 +472,22 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
                 else
                 {
-                    DecrementQueue(blockRef.BlockHash, ProcessingResult.MissingBlock);
+                    DecrementQueue(blockRef.BlockHash, verdict, ProcessingResult.MissingBlock);
                     if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
                 }
             }
             catch (Exception e)
             {
-                DecrementQueue(blockHash, ProcessingResult.QueueException, e);
+                DecrementQueue(blockHash, verdict, ProcessingResult.QueueException, e);
                 if (e is not InvalidOperationException || !_recoveryComplete)
                 {
                     throw;
                 }
             }
+        }
+        else
+        {
+            AnswerRemoval(verdict, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException));
         }
     }
 
@@ -524,6 +570,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _branchProcessor.BlockProcessing -= RearmBlockDeadline;
             // Blocks still queued when the loops ended get no BlockRemoved; whoever waits for them is let go here,
             // whether or not a loop faulted, since a waiter may be holding the engine API's lock.
+            foreach (KeyValuePair<VerdictSource, byte> pending in _pendingVerdicts)
+            {
+                AnswerRemoval(pending.Key, new BlockRemovedEventArgs(pending.Key.BlockHash, ProcessingResult.QueueException));
+            }
+
             foreach (KeyValuePair<Hash256, InFlightBlock> inFlight in _inFlight)
             {
                 inFlight.Value.Release();
@@ -552,10 +603,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
+    private void DecrementQueue(Hash256 blockHash, VerdictSource? verdict, ProcessingResult processingResult, Exception? exception = null)
     {
         Interlocked.Decrement(ref _queueCount);
-        OnBlockRemoved(new BlockRemovedEventArgs(blockHash, processingResult, exception));
+        OnBlockRemoved(new BlockRemovedEventArgs(blockHash, processingResult, exception), verdict);
         FireProcessingQueueEmpty();
     }
 
@@ -579,7 +630,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException, e);
+                    DecrementQueue(blockRef.BlockHash, work.Verdict, ProcessingResult.QueueException, e);
                     notified = true;
 
                     if (e is InvalidOperationException)
@@ -597,7 +648,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (_logger.IsWarn) _logger.Warn($"Recovering block failed. Block: {blockRef}, Exception: {e}");
                 // Once per queued copy. A second removal for the same block takes a copy off whatever entry the
                 // hash names by then, which after a re-enqueue is a live one, and releases its waiters early.
-                if (!notified) DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
+                if (!notified) DecrementQueue(blockRef.BlockHash, work.Verdict, ProcessingResult.Exception, e);
             }
         }
     }
@@ -688,6 +739,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 ? default
                 : CancellationToken.UnsafeRegister(static state => ((CancellationTokenSource)state!).Cancel(), deadline);
             _blockDeadline = deadline;
+            _processingVerdict = work.Verdict;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -703,29 +755,30 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (processedBlock is null)
                 {
-                    NotifyFailedOrSkipped(blockRef, block, error);
+                    NotifyFailedOrSkipped(blockRef, work.Verdict, block, error);
                 }
                 else if (!processedBlock.IsInclusionListSatisfied)
                 {
                     // The block was committed normally; signal the CL via newPayload status only.
-                    NotifyInclusionListUnsatisfied(blockRef, processedBlock);
+                    NotifyInclusionListUnsatisfied(blockRef, work.Verdict, processedBlock);
                 }
                 else
                 {
                     if (isTrace) TraceProcessed(block);
-                    OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success), processed: true);
+                    OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success), work.Verdict, processed: true);
                 }
             }
             catch (OperationCanceledException exception) when (deadline?.IsCancellationRequested == true && !CancellationToken.IsCancellationRequested)
             {
-                NotifyTimedOut(blockRef, exception);
+                NotifyTimedOut(blockRef, work.Verdict, exception);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                NotifyException(blockRef, exception);
+                NotifyException(blockRef, work.Verdict, exception);
             }
             finally
             {
+                _processingVerdict = null;
                 _blockDeadline = null;
                 _deadlineBlockHash = null;
                 Interlocked.Decrement(ref _queueCount);
@@ -735,7 +788,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         // No verdict: a block this slow means the node is struggling or validation missed a reason to reject it, and
         // neither makes the block invalid. It leaves the queue so the chain can move on, and can be processed again.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyTimedOut(BlockRef blockRef, OperationCanceledException exception)
+        void NotifyTimedOut(BlockRef blockRef, VerdictSource? verdict, OperationCanceledException exception)
         {
             // The block that ran out of time can be an ancestor the queued block's branch had to process first.
             Hash256? slowBlockHash = _deadlineBlockHash ?? blockRef.BlockHash;
@@ -745,28 +798,28 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             string retry = _timedOutCount <= MaxTimeoutDoublings ? "a retry of it gets twice the time" : "a retry of it gets no more time";
             if (_logger.IsError) _logger.Error($"Processing block {slowBlockHash} took longer than {timeoutMs} ms; abandoned without a verdict, and {retry}. If this node is just slow, raise Blocks.BlockProcessingTimeoutMs or set it to 0 to disable.");
-            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), verdict, processed: true);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyException(BlockRef blockRef, Exception exception)
+        void NotifyException(BlockRef blockRef, VerdictSource? verdict, Exception exception)
         {
             if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
-            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), verdict, processed: true);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string error)
+        void NotifyFailedOrSkipped(BlockRef blockRef, VerdictSource? verdict, Block block, string error)
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error), processed: true);
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error), verdict, processed: true);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
+        void NotifyInclusionListUnsatisfied(BlockRef blockRef, VerdictSource? verdict, Block block)
         {
             if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
-            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied), processed: true);
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied), verdict, processed: true);
         }
 
         // Reported by the catch below, which every other failure here goes through too: reporting twice would take a
@@ -791,7 +844,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     public event EventHandler? ProcessingQueueEmpty;
-    public event EventHandler<BlockVerdictEventArgs>? BlockExecuted;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
     public event EventHandler<BlockEventArgs>? BlockAdded;
     public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;

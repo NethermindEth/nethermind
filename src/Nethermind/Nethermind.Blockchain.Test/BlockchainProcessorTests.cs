@@ -773,12 +773,12 @@ public class BlockchainProcessorTests
         public ProcessingTestContext HeldAfterVerdict(Block block)
         {
             using ManualResetEventSlim executed = new(false);
-            void OnExecuted(object? sender, BlockHashEventArgs args)
+            void OnExecuted(object? sender, BlockExecutedEventArgs args)
             {
-                if (args.BlockHash == block.Hash) executed.Set();
+                if (args.Block.Hash == block.Hash) executed.Set();
             }
 
-            _processor.BlockExecuted += OnExecuted;
+            _branchProcessor.BlockExecuted += OnExecuted;
             try
             {
                 _branchProcessor.ExecuteBeforeAllowed(block.Hash!);
@@ -786,7 +786,7 @@ public class BlockchainProcessorTests
             }
             finally
             {
-                _processor.BlockExecuted -= OnExecuted;
+                _branchProcessor.BlockExecuted -= OnExecuted;
             }
 
             return this;
@@ -801,6 +801,14 @@ public class BlockchainProcessorTests
         }
 
         public Task EnqueueDirectly(Block block) => Task.Run(async () => await _processor.Enqueue(block, ProcessingOptions.None));
+
+        public Task<BlockVerdict> EnqueueForVerdict(Block block) => _processor.EnqueueAndWaitForVerdictAsync(block, ProcessingOptions.None);
+
+        public ProcessingTestContext OnBlockExecuted(Action<BlockExecutedEventArgs> action)
+        {
+            _branchProcessor.BlockExecuted += (_, args) => action(args);
+            return this;
+        }
 
         public ProcessingTestContext RecoveryFails(Block block)
         {
@@ -1237,6 +1245,61 @@ public class BlockchainProcessorTests
 
         context.Processed(_block1D2).BecomesNewHead();
         await executedCopy.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// A copy queued for its verdict is answered by its own execution, before its commit, or by its own removal, and
+    /// never by another copy of the same block. A copy stranded by a stop, and one queued after it, are answered too.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Verdict_answers_each_copy_by_its_own_execution_removal_or_the_stop()
+    {
+        bool answered = false;
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .CountIs(0)
+            .Suggested(_block1D2, BlockTreeSuggestOptions.None)
+            .Suggested(_block2D4, BlockTreeSuggestOptions.None)
+            .Recovered(_block1D2)
+            .Recovered(_block2D4)
+            .OnBlockExecuted(args => answered |= args.Block.Hash == _block1D2.Hash && args.Answered);
+        // Taken once the block is suggested, so it carries the total difficulty the tree gave it.
+        Block secondCopy = UnrecoveredCopy(_block1D2);
+
+        Task<BlockVerdict> first = context.EnqueueForVerdict(_block1D2);
+        context.HeldAfterVerdict(_block1D2);
+        BlockVerdict firstVerdict = await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<BlockVerdict> second = context.EnqueueForVerdict(secondCopy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstVerdict.Result, Is.EqualTo(ProcessingResult.Success));
+            Assert.That(firstVerdict.Removed.IsCompleted, Is.False, "the verdict comes before the commit");
+            Assert.That(answered, Is.True, "a verdict handed out makes a later failure the commit's");
+            Assert.That(second.IsCompleted, Is.False, "the first copy's verdict is not the second copy's");
+        }
+
+        context.Processed(_block1D2).BecomesNewHead();
+        ProcessingResult firstRemoval = await firstVerdict.Removed.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRemoval, Is.EqualTo(ProcessingResult.Success));
+            Assert.That(second.IsCompleted, Is.False, "the first copy's removal is not the second copy's either");
+        }
+
+        context.Recovered(secondCopy);
+        BlockVerdict secondVerdict = await second.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Task<BlockVerdict> stranded = context.EnqueueForVerdict(_block2D4);
+        await context.DisposeAsync();
+        BlockVerdict strandedVerdict = await stranded.WaitAsync(TimeSpan.FromSeconds(10));
+        BlockVerdict lateVerdict = await context.EnqueueForVerdict(_block2D4).WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondVerdict.Result, Is.EqualTo(ProcessingResult.ProcessingError), "skipped as no better than the head the first copy became");
+            Assert.That(secondVerdict.Removed.IsCompleted, Is.True, "a removal verdict arrives with its removal done");
+            Assert.That(strandedVerdict.Result, Is.EqualTo(ProcessingResult.QueueException));
+            Assert.That(lateVerdict.Result, Is.EqualTo(ProcessingResult.QueueException));
+        }
     }
 
     /// <summary>
