@@ -39,7 +39,16 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// not halted. A chain that meters what a halted frame used reads it when the frame completes; Ethereum never reads
     /// it, and the halted frame's allocation is still consumed in full. Each frame's budget starts it at zero.
     /// </remarks>
+#if ZK_EVM
+    // The guest has no execution hooks consuming this host-only observation. Keeping a field widens every gas copy.
+    public ulong UnspentGasBeforeHalt
+    {
+        readonly get => 0;
+        set { }
+    }
+#else
     public ulong UnspentGasBeforeHalt;
+#endif
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
     /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
