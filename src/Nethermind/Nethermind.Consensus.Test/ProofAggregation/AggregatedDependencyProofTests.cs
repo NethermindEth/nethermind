@@ -253,11 +253,12 @@ public class AggregatedDependencyProofTests
         FakeLeanProofVerifier verifier = new();
         verifier.ProvingGates[DepsHash(MixedTx())] = ownGate;
         DependencyProofCache cache = new(verifier, LimboLogs.Instance);
+        ValueHash256 otherHash = default;
         if (anotherStatementProving)
         {
             Transaction other = FrameTxWith(TestItem.AddressB, LeanSphincsClaim(TestItem.KeccakD, TestItem.KeccakE));
             List<AggregatedDependency> otherDeps = AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(Build.A.Block.WithTransactions(other).TestObject));
-            ValueHash256 otherHash = Eip8288Dependencies.ComputeDepsHash(otherDeps);
+            otherHash = Eip8288Dependencies.ComputeDepsHash(otherDeps);
             verifier.ProvingGates[otherHash] = otherGate;
             cache.Schedule(otherDeps, otherHash, new AggregationInput());
         }
@@ -266,7 +267,7 @@ public class AggregatedDependencyProofTests
         TimeSpan slot = TimeSpan.FromSeconds(12);
         CapturingImprovementContextFactory factory = new(new AggregatingBlockImprovementContextFactory(
             new BlockImprovementContextFactory(producer, slot), cache,
-            new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.BuilderOnly }, new TestSpecProvider(Spec)));
+            new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.BuilderOnly }, new TestSpecProvider(Spec), LimboLogs.Instance));
         using PayloadPreparationService service = new(producer, Substitute.For<ITxPool>(), factory, Substitute.For<ITimerFactory>(), LimboLogs.Instance, slot);
 
         string payloadId = service.StartPreparingPayload(Build.A.BlockHeader.TestObject, new PayloadAttributes { Timestamp = 100 });
@@ -276,6 +277,7 @@ public class AggregatedDependencyProofTests
         {
             otherGate.Set();
             // The first build's own statement waits behind the unrelated one, which must not spend the rebuild.
+            Assert.That(() => cache.TryGetProof(otherHash, out _), Is.True.After(5000, 10));
             await Task.Delay(500);
             Assert.That(producer.Builds, Is.EqualTo(1), "no rebuild for a statement the payload does not need");
         }

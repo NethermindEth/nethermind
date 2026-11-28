@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
@@ -24,8 +25,11 @@ public sealed class AggregatingBlockImprovementContextFactory(
     IBlockImprovementContextFactory inner,
     DependencyProofCache proofCache,
     IBlocksConfig blocksConfig,
-    ISpecProvider specProvider) : IBlockImprovementContextFactory
+    ISpecProvider specProvider,
+    ILogManager logManager) : IBlockImprovementContextFactory
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<AggregatingBlockImprovementContextFactory>();
+
     public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader,
         PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
@@ -39,7 +43,7 @@ public sealed class AggregatingBlockImprovementContextFactory(
         }
 
         // Built from scratch, so a rebuild of the same transactions is not dismissed as no better than the build it replaces.
-        return new RebuildingContext(Start, () => inner.StartBlockImprovementContext(null, parentHeader, payloadAttributes, startDateTime, UInt256.Zero, cts), proofCache);
+        return new RebuildingContext(Start, () => inner.StartBlockImprovementContext(null, parentHeader, payloadAttributes, startDateTime, UInt256.Zero, cts), proofCache, _logger);
     }
 
     private sealed class RebuildingContext : IBlockImprovementContext
@@ -48,15 +52,17 @@ public sealed class AggregatingBlockImprovementContextFactory(
         private readonly IBlockImprovementContext _first;
         private readonly Func<IBlockImprovementContext> _rebuild;
         private readonly DependencyProofCache _proofCache;
+        private readonly ILogger _logger;
         private ValueHash256? _awaited;
         private IBlockImprovementContext? _second;
         private volatile BlockProductionSnapshot? _best;
         private volatile bool _disposed;
 
-        public RebuildingContext(Func<IBlockImprovementContext> start, Func<IBlockImprovementContext> rebuild, DependencyProofCache proofCache)
+        public RebuildingContext(Func<IBlockImprovementContext> start, Func<IBlockImprovementContext> rebuild, DependencyProofCache proofCache, ILogger logger)
         {
             _rebuild = rebuild;
             _proofCache = proofCache;
+            _logger = logger;
             // Subscribed before the build starts, so a proof its build schedules cannot complete unseen.
             proofCache.ScheduledProofCompleted += OnProven;
             try
@@ -111,10 +117,23 @@ public sealed class AggregatingBlockImprovementContextFactory(
         {
             bool awaited;
             lock (_lock) awaited = _awaited == depsHash;
-            if (awaited) Rebuild();
+            // Off the prover's thread, which raised the event and would book a failure here against the proof.
+            if (awaited) Task.Run(Rebuild);
         }
 
         private void Rebuild()
+        {
+            try
+            {
+                StartRebuild();
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError) _logger.Error("EIP-8288 payload rebuild failed", exception);
+            }
+        }
+
+        private void StartRebuild()
         {
             IBlockImprovementContext second;
             lock (_lock)
