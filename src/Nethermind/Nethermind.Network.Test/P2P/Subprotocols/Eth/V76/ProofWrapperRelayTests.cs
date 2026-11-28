@@ -556,6 +556,31 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>The differing copy is kept as the alternate and recorded once the recorded copy fails validation.</summary>
+    [Test]
+    public async Task Fetch_BlobTransactionAlternate_IsRecordedOnceTheRecordedCopyFails()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(true);
+        using Context context = new(registry: registry);
+        Transaction alternate = FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 2);
+        ProofWrapper first = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 1));
+        ProofWrapper second = context.Wrapper(alternate, Tx(1, TestItem.KeccakC));
+        await context.Relay.OnAnnouncement(context.Peer(first), [Announcement(first)]);
+        await context.Relay.OnAnnouncement(context.Peer(second), [Announcement(second)]);
+        registry.ReceivedWithAnyArgs(1).RecordTransaction(default!, default!);
+
+        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(false);
+        context.Relay.Prune();
+
+        using (Assert.EnterMultipleScope())
+        {
+            registry.ReceivedWithAnyArgs(2).RecordTransaction(default!, default!);
+            registry.Received(1).RecordTransaction(Arg.Any<ISparseBlobPoolPeer>(),
+                Arg.Is<Transaction>(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0] == 2));
+        }
+    }
+
     /// <summary>Another wrapper covering the same blob-carrying transaction adds no provider and does not restart sampling.</summary>
     [Test]
     public async Task Fetch_SecondWrapperOfABlobTransaction_AddsNoProvider()

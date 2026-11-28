@@ -74,6 +74,10 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <summary>Wanted wrappers, waiting or being fetched; announcements beyond them are not recorded.</summary>
     private const int MaxFetches = 4096;
 
+    /// <summary>Blob-carrying transactions held, one per transaction, as the alternate to a recorded copy with other blob
+    /// metadata.</summary>
+    private const int MaxAlternates = 256;
+
     /// <summary>Wanted wrappers one peer may open, so that no peer fills <see cref="MaxFetches"/> alone.</summary>
     private const int MaxFetchesOpenedPerPeer = 512;
 
@@ -104,6 +108,7 @@ public sealed class ProofWrapperRelay : IDisposable
     private readonly LruKeyCache<ValueHash256> _discarded = new(PeerRecordCapacity, "discarded proof wrappers");
     private readonly EncodingCache _encodings = new(MaxEncodingBytes);
     private readonly LruCache<ValueHash256, ValueHash256> _sampledEncodings = new(PeerRecordCapacity, "blob transaction encodings awaiting cells");
+    private readonly LruCache<ValueHash256, BlobAlternate> _blobAlternates = new(MaxAlternates, "blob transaction alternates");
     private readonly ConcurrentDictionary<IProofWrapperPeer, PeerState> _peers = new();
     private readonly LruCache<PublicKey, NodeBudget> _budgets = new(NodeBudgetCapacity, "proof wrapper node budgets");
     private readonly NodeBudget _global = new();
@@ -660,6 +665,8 @@ public sealed class ProofWrapperRelay : IDisposable
         if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash
             && _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash))
         {
+            // Kept as the one alternate, the latest, for when the recorded copy fails or expires.
+            _blobAlternates.Set(txHash, new BlobAlternate(transaction, encodingHash, peer));
             return AcceptTxResult.IncompleteBlobData;
         }
 
@@ -868,10 +875,13 @@ public sealed class ProofWrapperRelay : IDisposable
         });
     }
 
-    /// <summary>Releases held wrappers none of whose transactions are pending any more, and keeps the proofs of the rest
-    /// remembered for block building.</summary>
+    /// <summary>Releases held wrappers none of whose transactions are pending any more, keeps the proofs of the rest
+    /// remembered for block building, and records the alternate of each blob-carrying transaction whose recorded copy the
+    /// sparse blobpool no longer holds, because its validation failed or it expired.</summary>
     internal void Prune()
     {
+        RecordAlternates();
+
         List<ProofWrapper> held;
         lock (_lock) held = [.. _heldOrder];
 
@@ -951,6 +961,18 @@ public sealed class ProofWrapperRelay : IDisposable
         Transaction[] transactions = new Transaction[chosen.Count];
         for (int i = 0; i < chosen.Count; i++) (transactions[i], encodings[i]) = chosen[i];
         return ProofWrapperCodec.Create(encodings, transactions, canonical, proof);
+    }
+
+    private void RecordAlternates()
+    {
+        if (_sparseBlobPoolPeerRegistry is null) return;
+        foreach (KeyValuePair<ValueHash256, BlobAlternate> entry in _blobAlternates.ToArray())
+        {
+            if (_sparseBlobPoolPeerRegistry.HasRecordedTransaction(entry.Key) || !_blobAlternates.Delete(entry.Key)) continue;
+            BlobAlternate alternate = entry.Value;
+            _sampledEncodings.Set(entry.Key, alternate.EncodingHash);
+            _sparseBlobPoolPeerRegistry.RecordTransaction(alternate.Peer, alternate.Transaction);
+        }
     }
 
     private bool IsCovered(Hash256 txHash)
@@ -1044,6 +1066,9 @@ public sealed class ProofWrapperRelay : IDisposable
             Successes = 0;
         }
     }
+
+    /// <summary>A blob-carrying transaction from a verified wrapper, waiting for the recorded copy of it to give way.</summary>
+    private sealed record BlobAlternate(Transaction Transaction, ValueHash256 EncodingHash, ISparseBlobPoolPeer Peer);
 
     /// <summary>A wanted wrapper: the peers that announced it, and the one it is being fetched from, if any.</summary>
     private sealed class Fetch(IProofWrapperPeer announcer, NodeBudget opener)
