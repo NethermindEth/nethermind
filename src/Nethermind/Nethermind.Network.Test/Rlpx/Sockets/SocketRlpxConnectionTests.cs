@@ -544,6 +544,51 @@ public class SocketRlpxConnectionTests
     }
 
     [Test]
+    public async Task Drops_a_packet_whose_sender_checked_writability_before_another_crossed_the_high_watermark()
+    {
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync();
+        test.Socket.SendGate = sending.Task;
+        byte[] bulk = Content(100_000, 1);
+        byte[] late = Content(100, 2);
+        byte[] next = Content(100, 3);
+        int bulkPackets = 0;
+
+        // The late packet passes the writability check, then another thread crosses the watermark while it serializes.
+        Thread other = new(() =>
+        {
+            while (test.Connection.IsWritable)
+            {
+                test.Enqueue(bulk);
+                bulkPackets++;
+            }
+        });
+        int lateLength = test.Connection.Enqueue(new PayloadMessage(late, () =>
+        {
+            other.Start();
+            other.Join();
+        }) { AdaptivePacketType = 0x10 });
+        sending.SetResult();
+        for (int i = 0; i < bulkPackets; i++)
+        {
+            await test.Peer.ReceivePacketAsync(test.Cancellation);
+        }
+
+        Assert.That(() => test.Connection.IsWritable, Is.True.After(5000, 10));
+        test.Enqueue(next);
+        (byte, byte[]) received = await test.Peer.ReceivePacketAsync(test.Cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lateLength, Is.Zero, "the late packet is dropped");
+            Assert.That(bulkPackets, Is.EqualTo(30));
+            Assert.That(received, Is.EqualTo(((byte)0x10, next)), "the late packet is never sent");
+        }
+
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
     public async Task Charges_a_delayed_packet_when_it_is_queued()
     {
         await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync(sendLatency: TimeSpan.FromSeconds(30));

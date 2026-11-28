@@ -948,8 +948,7 @@ internal sealed class SocketRlpxConnection(
         }
 
         (byte[] buffer, int length) = Serialize(_serializationService, message, _pool);
-        TryAdmit(buffer, length, raw: false);
-        return length;
+        return TryAdmit(buffer, length, raw: false) ? length : 0;
     }
 
     private void QueueRaw(byte[] data)
@@ -963,7 +962,11 @@ internal sealed class SocketRlpxConnection(
     /// Queues a packet with the encoding mode and send time it has now, and charges it to the outbound bytes, or releases
     /// it if the connection has closed: the one place where a packet is either published or released.
     /// </summary>
-    private void TryAdmit(byte[] buffer, int length, bool raw)
+    /// <returns>
+    /// <see langword="false"/> if the packet is dropped at the high watermark, which a sender that checked
+    /// <see cref="IsWritable"/> before another crossed it can reach. A packet dropped by a close counts as sent, as on DotNetty.
+    /// </returns>
+    private bool TryAdmit(byte[] buffer, int length, bool raw)
     {
         // The handshake messages are not delayed: DotNetty writes them without going through PacketSender.
         long sendAfter = raw || _sendLatencyMs == 0 ? 0 : Environment.TickCount64 + _sendLatencyMs;
@@ -973,7 +976,13 @@ internal sealed class SocketRlpxConnection(
             if (_isClosed)
             {
                 _pool.Return(buffer);
-                return;
+                return true;
+            }
+
+            if (!raw && !_outboundBytes.IsWritable)
+            {
+                _pool.Return(buffer);
+                return false;
             }
 
             _sendQueue.Enqueue(new OutboundItem(buffer, length, raw, _encodingMode, sendAfter));
@@ -986,6 +995,8 @@ internal sealed class SocketRlpxConnection(
         {
             _sendSignal.Release();
         }
+
+        return true;
     }
 
     private void Charge(long bytes)
