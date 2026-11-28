@@ -404,28 +404,37 @@ public class ProofWrapperRelayTests
             for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(peer, [Announcement(context.Wrapper(Tx((ulong)(p * 10 + i), TestItem.KeccakA)))]);
         }
 
-        // The last node arrives at the cap and still gets its fair share of it.
-        Assert.That(peers.Sum(peer => peer.Requests), Is.EqualTo(64 + 64 / 17));
+        // Fresh nodes share only the unreserved three quarters of the cap.
+        Assert.That(peers.Sum(peer => peer.Requests), Is.EqualTo(48));
     }
 
-    /// <summary>At the global cap, a node without failures still gets its fair share, so many nodes cannot shut it out.</summary>
+    /// <summary>Many fresh nodes cannot exceed the global cap nor take its reserved part from a node that served a valid proof.</summary>
     [Test]
-    public void Requests_AtTheGlobalCap_StillServeANodeWithinItsFairShare()
+    public async Task Requests_FreshNodes_CannotStarveAProvenNode()
     {
         using Context context = new();
+        ProofWrapper first = context.Wrapper(Tx(600, TestItem.KeccakB));
+        FakePeer proven = context.Peer(first);
+        await context.Relay.OnAnnouncement(proven, [Announcement(first)]);
         Task gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
-        for (int p = 0; p < 16; p++)
+        List<FakePeer> fresh = [];
+        for (int p = 0; p < 30; p++)
         {
             FakePeer flooder = context.Peer();
             flooder.Gate = gate;
+            fresh.Add(flooder);
             for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(flooder, [Announcement(context.Wrapper(Tx((ulong)(p * 10 + i), TestItem.KeccakA)))]);
         }
 
-        FakePeer honest = context.Peer();
-        honest.Gate = gate;
-        _ = context.Relay.OnAnnouncement(honest, [Announcement(context.Wrapper(Tx(500, TestItem.KeccakA)))]);
+        proven.Gate = gate;
+        _ = context.Relay.OnAnnouncement(proven, [Announcement(context.Wrapper(Tx(500, TestItem.KeccakA)))]);
 
-        Assert.That(honest.Requests, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Relay.TryGetHeld(first.Hash.ValueHash256, out _), Is.True);
+            Assert.That(fresh.Sum(peer => peer.Requests), Is.EqualTo(48));
+            Assert.That(proven.Requests, Is.EqualTo(2), "its first fetch and one from the reserved part");
+        }
     }
 
     /// <summary>Proofs not verified before take from the sender's verification budget; a proof verified before is free.</summary>

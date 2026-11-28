@@ -315,7 +315,7 @@ public sealed class ProofWrapperRelay : IDisposable
                     }
                     else
                     {
-                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, state.Budget.Requests, MaxRequests)) continue;
+                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, MaxRequests)) continue;
                         state.Budget.Requests++;
                         _requests++;
                         batch = [];
@@ -428,11 +428,10 @@ public sealed class ProofWrapperRelay : IDisposable
         if (++budget.Failures == MaxFailuresPerPeer) DropAnnouncer(peer);
     }
 
-    /// <summary>Whether a node may take one more of a globally capped resource: below the cap anyone may, and at it a node
-    /// without failures still may within its fair share, so that many nodes together cannot shut out an honest one.</summary>
-    /// <remarks>Called under <see cref="_lock"/>.</remarks>
-    private bool WithinGlobalCap(NodeBudget budget, int used, int usedByNode, int cap) =>
-        used < cap || (budget.Failures == 0 && usedByNode < cap / Math.Max(1, _peers.Count));
+    /// <summary>Whether a node may take one more of a globally capped resource. The cap is hard; its last quarter is kept for
+    /// nodes that have served a valid proof, so that fresh nodes, however many, cannot shut out a proven one.</summary>
+    private static bool WithinGlobalCap(NodeBudget budget, int used, int cap) =>
+        used < cap - cap / 4 || (used < cap && budget.Successes > 0);
 
     /// <summary>Takes one verification from <paramref name="budget"/>'s window, and from the global one.</summary>
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
@@ -442,7 +441,7 @@ public sealed class ProofWrapperRelay : IDisposable
         budget.Roll(now);
         _global.Roll(now);
         if (budget.Verifications >= MaxVerificationsPerNode
-            || !WithinGlobalCap(budget, _global.Verifications, budget.Verifications, MaxVerifications)) return false;
+            || !WithinGlobalCap(budget, _global.Verifications, MaxVerifications)) return false;
         budget.Verifications++;
         _global.Verifications++;
         return true;
@@ -591,6 +590,7 @@ public sealed class ProofWrapperRelay : IDisposable
             return;
         }
 
+        lock (_lock) state.Budget.Successes++;
         state.Exchange(wrapper);
         Accept(wrapper);
     }
@@ -993,6 +993,9 @@ public sealed class ProofWrapperRelay : IDisposable
         public int Failures;
         public int Opened;
         public int Verifications;
+
+        /// <summary>Valid proofs the node has served, which admit it to the reserved part of the global caps.</summary>
+        public int Successes;
         private long _windowStart;
 
         /// <summary>Starts a new verification window once the current one has passed.</summary>
