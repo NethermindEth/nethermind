@@ -665,8 +665,8 @@ public sealed class ProofWrapperRelay : IDisposable
         if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash
             && _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash))
         {
-            // Kept as the one alternate, the latest, for when the recorded copy fails or expires.
-            _blobAlternates.Set(txHash, new BlobAlternate(transaction, encodingHash, peer));
+            // Kept as the one alternate, the first, for when the recorded copy fails or expires; a later one cannot displace it.
+            if (!_blobAlternates.TryGet(txHash, out _)) _blobAlternates.Set(txHash, new BlobAlternate(transaction, encodingHash, peer));
             return AcceptTxResult.IncompleteBlobData;
         }
 
