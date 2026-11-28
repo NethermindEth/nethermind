@@ -157,7 +157,6 @@ public sealed class ProofWrapperRelay : IDisposable
         if (!IsActive || !_peers.TryGetValue(peer, out PeerState? state)) return Task.CompletedTask;
 
         List<ValueHash256> wanted = [];
-        bool fetches = Volatile.Read(ref state.ProofFailures) < MaxProofFailuresPerPeer && Volatile.Read(ref state.Fetches) < MaxFetchesPerPeer;
         lock (_lock)
         {
             foreach (WrapperAnnouncement announcement in announcements)
@@ -174,7 +173,6 @@ public sealed class ProofWrapperRelay : IDisposable
                 // Equal digests identify coverage held already, despite different proof bytes.
                 if (_discarded.Get(announcement.Hash) || _heldDigests.ContainsKey((announcement.DepsHash, announcement.TxsHash))) continue;
 
-                if (!fetches) continue;
                 if (_fetches.TryGetValue(announcement.Hash, out Fetch? fetch))
                 {
                     if (!fetch.Announcers.Contains(peer)) fetch.Announcers.Add(peer);
@@ -246,7 +244,14 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         if (!_peers.TryGetValue(peer, out PeerState? state)) return;
 
-        Interlocked.Increment(ref state.Fetches);
+        // Every path to a peer passes here, failover included, so the per-peer limits hold on all of them.
+        if (Interlocked.Increment(ref state.Fetches) > MaxFetchesPerPeer || Volatile.Read(ref state.ProofFailures) >= MaxProofFailuresPerPeer)
+        {
+            Interlocked.Decrement(ref state.Fetches);
+            foreach (ValueHash256 hash in hashes) TryNextAnnouncer(hash, peer);
+            return;
+        }
+
         try
         {
             Dictionary<ValueHash256, ValueHash256[]>? manifests = await FetchManifests(peer, state, hashes);

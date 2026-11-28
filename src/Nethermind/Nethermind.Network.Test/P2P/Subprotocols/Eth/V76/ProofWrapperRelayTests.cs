@@ -173,6 +173,39 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>Failing over to another announcer does not bypass its limits: one that sent too many invalid proofs is dropped.</summary>
+    [Test]
+    public async Task Fetch_FailoverToAnAnnouncerOverItsLimit_SkipsIt()
+    {
+        using Context context = new();
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+        FakePeer empty = context.Peer();
+        FakePeer flooder = context.Peer();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        empty.Gate = release.Task;
+        Task first = context.Relay.OnAnnouncement(empty, [Announcement(wrapper)]);
+        // Joins as the alternate announcer while still within its limits.
+        await context.Relay.OnAnnouncement(flooder, [Announcement(wrapper)]);
+        for (int i = 0; i < 8; i++)
+        {
+            Transaction tx = Tx((ulong)(100 + i), TestItem.KeccakA);
+            ProofWrapper invalid = ProofWrapperCodec.Create([ProofWrapperCodec.Normalize(tx)!], [tx],
+                Eip8288Dependencies.Canonicalize(ProofWrapperCodec.AggregatedDependencies(tx)), [1, 2, 3]);
+            flooder.Served = invalid;
+            await context.Relay.OnAnnouncement(flooder, [Announcement(invalid)]);
+        }
+
+        flooder.Served = wrapper;
+        release.SetResult();
+        await first;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flooder.Requests, Is.EqualTo(8), "the failover did not fetch from the flooder");
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.False);
+        }
+    }
+
     [Test]
     public async Task Fetch_ConcurrentFetchesFromOnePeer_AreCapped()
     {
