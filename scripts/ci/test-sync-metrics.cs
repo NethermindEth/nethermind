@@ -34,6 +34,20 @@ foreach (var prefix in new[] { "", "job\tstep\t" })
         Cases.Equal(400000000, counters["accounts"]!.GetValue<int>());
         Cases.Equal(1600000000, counters["slots"]!.GetValue<int>());
     });
+foreach (var (end, expected) in new (string, double?)[]
+{
+    ("00.100000000", null),
+    ("03.100000000", 0d),
+    ("03.900000000", 0.1),
+})
+    Cases.Test($"fractional snap phase ending at {end}", () =>
+    {
+        var found = new Dictionary<string, DateTimeOffset>();
+        var counters = new JsonObject();
+        Metrics.ParseLine("2026-09-16T12:00:00.900000000Z Starting snap sync.", found, counters);
+        Metrics.ParseLine($"2026-09-16T12:00:{end}Z Snap sync completed.", found, counters);
+        Cases.Equal(expected, Metrics.Minutes(found, "snap_start", "snap_end"));
+    });
 Cases.Test("missing and reversed timestamps", () =>
 {
     var found = new Dictionary<string, DateTimeOffset>();

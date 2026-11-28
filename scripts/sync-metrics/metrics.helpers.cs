@@ -10,7 +10,7 @@ static partial class Metrics
 {
     [GeneratedRegex(@"Accounts=(\d+), Slots=(\d+)")]
     private static partial Regex StateCountsRegex();
-    [GeneratedRegex(@"(?:^|\t)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z\s")]
+    [GeneratedRegex(@"(?:^|\t)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s")]
     private static partial Regex TimestampRegex();
 
     internal static readonly Dictionary<string, string> Markers = new()
@@ -28,7 +28,7 @@ static partial class Metrics
         foreach (var (key, marker) in Markers)
         {
             if (found.ContainsKey(key) || !line.Contains(marker, StringComparison.Ordinal)) continue;
-            found[key] = DateTimeOffset.ParseExact(timestamp.Groups[1].Value, "yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+            found[key] = DateTimeOffset.Parse(timestamp.Groups[1].ValueSpan, CultureInfo.InvariantCulture);
             var count = StateCountsRegex().Match(line);
             if (key == "verify_end_flat" && count.Success)
             {
