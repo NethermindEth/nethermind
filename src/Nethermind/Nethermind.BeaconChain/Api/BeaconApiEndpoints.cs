@@ -15,8 +15,10 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
@@ -32,7 +34,7 @@ internal static class BeaconApiEndpoints
     public static void AddServices(IServiceCollection services,
         BeaconChainSpec spec, IBeaconChainStatusSource statusSource, SlotClock slotClock,
         BeaconChainStore store, LocalMetadataSource metadataSource, IEngineDriver engine,
-        ILogManager logManager, BeaconP2P? p2p = null, PeerManager? peerManager = null,
+        ILogManager logManager, IBeaconNodeValidatorApi validatorApi, CommitteeCacheLru committees, BeaconP2P? p2p = null, PeerManager? peerManager = null,
         BeaconDiscovery? discovery = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         HeadSnapshotHolder? headSnapshots = null, DataColumnSidecarPool? columnPool = null)
     {
@@ -44,6 +46,7 @@ internal static class BeaconApiEndpoints
         services.AddSingleton(metadataSource);
         services.AddSingleton(engine);
         services.AddSingleton(logManager);
+        services.AddSingleton(validatorApi);
         if (p2p is not null) services.AddSingleton(p2p);
         if (peerManager is not null) services.AddSingleton(peerManager);
         if (discovery is not null) services.AddSingleton(discovery);
@@ -51,6 +54,7 @@ internal static class BeaconApiEndpoints
         services.AddSingleton(captureHead);
         services.AddScoped(_ => captureHead());
         services.AddSingleton<ValidatorIndexCache>();
+        services.AddSingleton(committees);
         services.AddSingleton<StateCommitteeCache>();
         services.AddSingleton(_ => new System.Threading.RateLimiting.ConcurrencyLimiter(new()
         {
@@ -69,6 +73,18 @@ internal static class BeaconApiEndpoints
             try
             {
                 await next(httpCtx);
+            }
+            catch (BeaconNodeApiException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
+            {
+                // A refusal of the validator API is part of its contract, so its message is written for the caller.
+                await ApiErrors.Write(httpCtx, e.Error switch
+                {
+                    BeaconNodeApiError.InvalidRequest => StatusCodes.Status400BadRequest,
+                    BeaconNodeApiError.NotFound => StatusCodes.Status404NotFound,
+                    BeaconNodeApiError.NotSupported => StatusCodes.Status501NotImplemented,
+                    BeaconNodeApiError.NotReady => StatusCodes.Status503ServiceUnavailable,
+                    _ => StatusCodes.Status500InternalServerError,
+                }, e.Message);
             }
             catch (UnsupportedForkException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
             {

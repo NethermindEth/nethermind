@@ -156,6 +156,10 @@ public interface IBlockImporter
     /// <inheritdoc cref="OnGossipAggregate(SignedAggregateAndProof)"/>
     bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
 
+    /// <summary>Feeds an unaggregated attestation that passed the <c>beacon_attestation_{subnet_id}</c> gossip checks to fork choice; refused ones are counted and dropped.</summary>
+    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    bool? OnGossipAttestation(Attestation attestation);
+
     /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
     /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
     bool? OnGossipAttesterSlashing(AttesterSlashing slashing);

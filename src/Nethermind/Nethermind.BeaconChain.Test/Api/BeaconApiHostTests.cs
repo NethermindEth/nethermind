@@ -20,6 +20,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -70,14 +71,19 @@ public class BeaconApiHostTests : BeaconApiFixture
         "GET /eth/v1/node/peers/{peerId} json",
         "GET /eth/v1/node/syncing json",
         "GET /eth/v1/node/version json",
+        "GET /eth/v1/validator/attestation_data json",
         "GET /eth/v1/validator/{**path} none",
         "GET /eth/v2/beacon/blocks/{blockId} ssz+json",
         "GET /eth/v2/beacon/blocks/{blockId}/attestations json",
         "GET /eth/v2/debug/beacon/states/{stateId} ssz+json",
+        "GET /eth/v2/validator/duties/proposer/{epoch} json",
         "POST /eth/v1/beacon/states/{stateId}/validator_balances json body:*/*",
         "POST /eth/v1/beacon/states/{stateId}/validator_identities ssz+json body:*/*",
         "POST /eth/v1/beacon/states/{stateId}/validators json body:*/*",
+        "POST /eth/v1/validator/duties/attester/{epoch} json body:*/*",
+        "POST /eth/v1/validator/duties/sync/{epoch} json body:*/*",
         "POST /eth/v1/validator/{**path} none",
+        "POST /eth/v2/beacon/pool/attestations json body:*/*",
     ];
 
     /// <summary>A handler that is not public, lacks its attribute or whose service is not mapped is otherwise only a 404.</summary>
@@ -305,7 +311,7 @@ public class BeaconApiHostTests : BeaconApiFixture
         HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/validator/duties/proposer/12345");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501));
         JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("non-attesting"));
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not served"));
     }
 
     [Test]
@@ -489,7 +495,7 @@ public class BeaconApiHostTests : BeaconApiFixture
     {
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         BeaconApiHost host = new(apiConfig, Spec, _host.StatusHolder, _host.Clock, _host.Store,
-            new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance);
+            new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>(), new());
 
         await host.StartAsync(CancellationToken.None);
         await host.DisposeAsync();

@@ -131,7 +131,7 @@ public class BeaconChainServiceGloasAnchorTests
             config,
             spec,
             store,
-            new BlockImporterFactory(spec, store, pubkeyCache, engine, config, logManager, new DataColumnSidecarPool(), clock),
+            new BlockImporterFactory(spec, store, pubkeyCache, engine, config, logManager, new DataColumnSidecarPool(), clock, new()),
             engine,
             pool,
             new RangeSync(pool, logManager, new DataColumnSidecarPool(), spec, RangeSyncTests.ClockAtGenesis(spec)),

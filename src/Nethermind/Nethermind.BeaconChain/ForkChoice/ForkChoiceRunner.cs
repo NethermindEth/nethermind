@@ -112,8 +112,7 @@ public sealed class ForkChoiceRunner
     private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
     private readonly Dictionary<BlockProposer, (int Total, int PtcTimely)> _proposalCounts = [];
 
-    /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
-    private readonly EpochCache _committees = new();
+    private readonly CommitteeCacheLru _committees;
 
     /// <summary>Makes the hasher of one checkpoint state advance, which serves every <c>process_slot</c> state root of that advance.</summary>
     /// <remarks>An incremental hasher pays one full merkleization per advance instead of one per skipped slot.</remarks>
@@ -181,8 +180,9 @@ public sealed class ForkChoiceRunner
         IForkChoiceStateProvider stateProvider,
         PubkeyCache pubkeys,
         IGloasBlockStateProvider? gloasStateProvider = null,
-        ILogManager? logManager = null)
-        : this(spec, stateProvider, pubkeys, gloasStateProvider, FuluAnchor(spec, anchorState, anchorBlock), logManager)
+        ILogManager? logManager = null,
+        CommitteeCacheLru? committees = null)
+        : this(spec, stateProvider, pubkeys, gloasStateProvider, FuluAnchor(spec, anchorState, anchorBlock), logManager, committees)
     {
     }
 
@@ -209,8 +209,9 @@ public sealed class ForkChoiceRunner
         IForkChoiceStateProvider stateProvider,
         PubkeyCache pubkeys,
         IGloasBlockStateProvider gloasStateProvider,
-        ILogManager? logManager = null)
-        : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock), logManager)
+        ILogManager? logManager = null,
+        CommitteeCacheLru? committees = null)
+        : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock), logManager, committees)
     {
         _parentBlockHashes[_bootstrapCheckpoint.Root] = anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
         IndexValidPayloadAncestors(_bootstrapCheckpoint.Root);
@@ -222,8 +223,10 @@ public sealed class ForkChoiceRunner
         PubkeyCache pubkeys,
         IGloasBlockStateProvider? gloasStateProvider,
         AnchorNode anchor,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        CommitteeCacheLru? committees)
     {
+        _committees = committees ?? new CommitteeCacheLru();
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ForkChoiceRunner>();
         _spec = spec;
         _stateProvider = stateProvider;
@@ -608,7 +611,7 @@ public sealed class ForkChoiceRunner
             block.StateRoot!,
             CheckpointRef.From(postState.CurrentJustifiedCheckpoint!),
             CheckpointRef.From(postState.FinalizedCheckpoint!),
-            EpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
+            EpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache(_committees)),
             executionStatus,
             block.Body?.ExecutionPayload?.BlockHash);
         _lastBlock = (blockRoot, new ForkedBeaconState.OfFulu(postState));
@@ -677,7 +680,7 @@ public sealed class ForkChoiceRunner
             block.StateRoot!,
             CheckpointRef.From(postState.CurrentJustifiedCheckpoint!),
             CheckpointRef.From(postState.FinalizedCheckpoint!),
-            GloasEpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
+            GloasEpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache(_committees)),
             ExecutionStatus.Optimistic,
             bid.BlockHash!,
             isGloas: true,
@@ -1165,8 +1168,8 @@ public sealed class ForkChoiceRunner
 
         CommitteeCache committees = state switch
         {
-            ForkedBeaconState.OfFulu fulu => _committees.GetCommitteeCache(fulu.State, targetEpoch),
-            ForkedBeaconState.OfGloas gloas => _committees.GetCommitteeCache(gloas.State, targetEpoch),
+            ForkedBeaconState.OfFulu fulu => _committees.GetOrBuild(fulu.State, targetEpoch),
+            ForkedBeaconState.OfGloas gloas => _committees.GetOrBuild(gloas.State, targetEpoch),
             _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
         };
         ReadOnlySpan<int> committee = committees.GetBeaconCommittee(slot, committeeIndex);
@@ -1825,8 +1828,8 @@ public sealed class ForkChoiceRunner
             ulong headEpoch = BeaconStateAccessors.ComputeEpochAtSlot(headSlot);
             CommitteeCache committees = GetBlockState(headRoot) switch
             {
-                ForkedBeaconState.OfFulu fulu => _committees.GetCommitteeCache(fulu.State, headEpoch),
-                ForkedBeaconState.OfGloas gloas => _committees.GetCommitteeCache(gloas.State, headEpoch),
+                ForkedBeaconState.OfFulu fulu => _committees.GetOrBuild(fulu.State, headEpoch),
+                ForkedBeaconState.OfGloas gloas => _committees.GetOrBuild(gloas.State, headEpoch),
                 ForkedBeaconState state => throw new NotSupportedException($"Unhandled block state {state.GetType().Name}"),
             };
 
@@ -2039,8 +2042,8 @@ public sealed class ForkChoiceRunner
     {
         CommitteeCache committees = state switch
         {
-            ForkedBeaconState.OfFulu fulu => _committees.GetCommitteeCache(fulu.State, targetEpoch),
-            ForkedBeaconState.OfGloas gloas => _committees.GetCommitteeCache(gloas.State, targetEpoch),
+            ForkedBeaconState.OfFulu fulu => _committees.GetOrBuild(fulu.State, targetEpoch),
+            ForkedBeaconState.OfGloas gloas => _committees.GetOrBuild(gloas.State, targetEpoch),
             _ => throw new NotSupportedException($"Unhandled checkpoint state {state.GetType().Name}"),
         };
         try
@@ -2240,7 +2243,7 @@ public sealed class ForkChoiceRunner
     private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ulong blockSlot, ulong targetSlot, BeaconFork targetFork, bool requireHeld = false)
     {
         Hash256 blockStateRoot = _protoArray.Nodes[_protoArray.IndexOf(blockRoot) ?? throw new ForkChoiceException($"Block {blockRoot} is unknown to fork choice")].StateRoot;
-        EpochCache cache = new() { Hasher = new KnownSlotRoots(blockSlot, KnownAdvanceRoots(blockRoot, blockStateRoot, blockSlot, targetSlot), CheckpointStateHasher()) };
+        EpochCache cache = new(_committees) { Hasher = new KnownSlotRoots(blockSlot, KnownAdvanceRoots(blockRoot, blockStateRoot, blockSlot, targetSlot), CheckpointStateHasher()) };
         ForkedBeaconState state = IsGloasSlot(blockSlot)
             ? new ForkedBeaconState.OfGloas(((ForkedBeaconState.OfGloas)GetBlockState(blockRoot)).State.Clone())
             : new ForkedBeaconState.OfFulu(requireHeld

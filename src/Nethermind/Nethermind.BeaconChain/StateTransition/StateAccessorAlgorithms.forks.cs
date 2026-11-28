@@ -142,14 +142,14 @@ public static partial class BeaconStateAccessors
     /// committee-cache key.
     /// </summary>
     /// <remarks>Returns <see cref="Hash256.Zero"/> near genesis where no decision block exists.</remarks>
-    public static partial Hash256 GetShufflingDecisionRoot(this AccessorState state, ulong epoch)
+    public static partial Hash256 GetShufflingDecisionRoot(this LegacyState state, ulong epoch)
     {
         ulong decisionSlot = epoch >= Presets.MinSeedLookahead
             ? BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch - Presets.MinSeedLookahead)
             : 0;
         if (decisionSlot > 0)
             decisionSlot--;
-        return state.Slot == 0 ? Hash256.Zero : state.GetBlockRootAtSlot(decisionSlot);
+        return state.Slot == 0 ? Hash256.Zero : BeaconStateAccessors.GetBlockRootAtSlot(state.Slot, state.BlockRoots!, decisionSlot);
     }
 
     /// <summary>

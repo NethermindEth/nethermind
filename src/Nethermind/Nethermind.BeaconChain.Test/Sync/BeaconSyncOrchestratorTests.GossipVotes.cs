@@ -53,6 +53,20 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Queued_gossip_attestation_is_fed_to_fork_choice_on_the_worker()
+    {
+        Harness harness = CreateHarness();
+        Attestation attestation = new();
+
+        bool queued = harness.Orchestrator.QueueGossipAttestation(attestation);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(queued, Is.True);
+        Assert.That(harness.Importer.GossipOperations, Is.EqualTo(new object[] { attestation }));
+    }
+
+    [Test]
     public async Task Payload_attestation_pair_is_verified_at_most_the_attempt_limit_of_times_whatever_the_signature()
     {
         (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();

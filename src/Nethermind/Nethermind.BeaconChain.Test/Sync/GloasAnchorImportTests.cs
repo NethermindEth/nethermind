@@ -771,7 +771,7 @@ public class GloasAnchorImportTests
     {
         PubkeyCache pubkeys = new();
         pubkeys.Build(validators);
-        return new BlockImporterFactory(chain.Spec, store, pubkeys, engine, new BeaconChainConfig(), logManager ?? LimboLogs.Instance, new DataColumnSidecarPool(), clock,
+        return new BlockImporterFactory(chain.Spec, store, pubkeys, engine, new BeaconChainConfig(), logManager ?? LimboLogs.Instance, new DataColumnSidecarPool(), clock, new(),
             forkChoiceSnapshots: forkChoiceSnapshots);
     }
 

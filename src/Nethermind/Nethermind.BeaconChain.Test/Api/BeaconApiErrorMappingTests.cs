@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using NSubstitute;
@@ -45,7 +46,7 @@ public class BeaconApiErrorMappingTests
         IBeaconChainStatusSource failingStatus = Substitute.For<IBeaconChainStatusSource>();
         failingStatus.CurrentHead.Throws(new InvalidOperationException(UnrelatedInternalDetail));
         BeaconApiEndpoints.AddServices(builder.Services, Spec, failingStatus, _host.Clock, _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance);
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>(), new());
         _pipeline = builder.Build();
         BeaconApiEndpoints.UseMiddleware(_pipeline, LimboLogs.Instance);
         BeaconApiHost.MapRoutes(_pipeline);

@@ -1777,6 +1777,7 @@ public partial class BeaconSyncOrchestratorTests
         public void OnFinalized(CheckpointRef finalized) => Finalizations.Add(finalized);
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => Consume(aggregate);
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
+        public bool? OnGossipAttestation(Attestation attestation) => Consume(attestation);
         public bool? AcceptsGossipOperations { get; set; } = true;
         public Func<object, bool?>? GossipOperationVerdict { get; set; }
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);

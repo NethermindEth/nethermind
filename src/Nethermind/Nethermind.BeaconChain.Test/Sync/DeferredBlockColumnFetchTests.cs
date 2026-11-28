@@ -1469,6 +1469,7 @@ public class DeferredBlockColumnFetchTests
         public void OnFinalized(CheckpointRef finalized) => inner.OnFinalized(finalized);
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => inner.OnGossipAggregate(aggregate);
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => inner.OnGossipAggregate(aggregate);
+        public bool? OnGossipAttestation(Attestation attestation) => inner.OnGossipAttestation(attestation);
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => inner.OnGossipAttesterSlashing(slashing);
         public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => inner.OnGossipAttesterSlashing(slashing);
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => inner.OnGossipPayloadAttestation(message);
@@ -1534,7 +1535,7 @@ public class DeferredBlockColumnFetchTests
             fixture.Sampled = [.. new DiscoveryNodeCustodySource(fixture._discovery).Current!.SampledColumns];
             fixture._time = new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(fixture.Chain.Spec.GenesisTime + fixture.Chain.Spec.SlotsPerEpoch * fixture.Chain.Spec.SecondsPerSlot)).UtcDateTime);
             fixture.Clock = new SlotClock(fixture.Chain.Spec, fixture._time);
-            fixture.Importer = new BlockImporterFactory(fixture.Chain.Spec, fixture._store, fixture.Chain.Pubkeys, fixture.Engine, new BeaconChainConfig(), LimboLogs.Instance, fixture.SidecarPool, fixture.Clock, fixture._discovery)
+            fixture.Importer = new BlockImporterFactory(fixture.Chain.Spec, fixture._store, fixture.Chain.Pubkeys, fixture.Engine, new BeaconChainConfig(), LimboLogs.Instance, fixture.SidecarPool, fixture.Clock, new(), fixture._discovery)
                 .Create(new ForkedBeaconState.OfFulu(fixture.Chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
             return fixture;
         }
@@ -1607,7 +1608,7 @@ public class DeferredBlockColumnFetchTests
                 new BeaconChainConfig(),
                 Chain.Spec,
                 _store,
-                new BlockImporterFactory(Chain.Spec, _store, Chain.Pubkeys, Engine, new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, _discovery),
+                new BlockImporterFactory(Chain.Spec, _store, Chain.Pubkeys, Engine, new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, new(), _discovery),
                 Engine,
                 pool,
                 RangeSync,

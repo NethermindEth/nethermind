@@ -550,7 +550,7 @@ public class RangeSyncColumnCustodyTests
                 new BeaconChainConfig(),
                 Chain.Spec,
                 fixture.Store,
-                new BlockImporterFactory(Chain.Spec, fixture.Store, Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, Discovery),
+                new BlockImporterFactory(Chain.Spec, fixture.Store, Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, new(), Discovery),
                 new NoOpEngineDriver(),
                 pool,
                 CreateRangeSync(peers),

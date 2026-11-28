@@ -441,6 +441,7 @@ public partial class BeaconSyncOrchestratorTests
         public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => inner.VerifyEnvelopeSignature(envelope);
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => RecordVote(() => inner.OnGossipAggregate(aggregate));
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => RecordVote(() => inner.OnGossipAggregate(aggregate));
+        public bool? OnGossipAttestation(Attestation attestation) => RecordVote(() => inner.OnGossipAttestation(attestation));
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => RecordVote(() => inner.OnGossipAttesterSlashing(slashing));
         public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => RecordVote(() => inner.OnGossipAttesterSlashing(slashing));
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => RecordVote(() => inner.OnGossipPayloadAttestation(message));

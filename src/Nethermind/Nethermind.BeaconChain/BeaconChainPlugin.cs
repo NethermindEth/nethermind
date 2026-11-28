@@ -14,8 +14,10 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -65,6 +67,7 @@ public class BeaconChainModule : Module
                 return spec;
             })
             .AddSingleton<BeaconChainStore>()
+            .AddSingleton<CommitteeCacheLru>()
             .AddSingleton<PubkeyCache, BeaconChainSpec>(static spec => new PubkeyCache { SignatureVerifier = spec.SignatureVerifier })
             .AddSingleton<CheckpointSync>()
             .AddSingleton<BeaconChainStatusHolder>()
@@ -86,6 +89,7 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconSyncOrchestrator>()
             .AddSingleton<ForkChoiceSnapshotHolder>()
             .AddSingleton<ProposerLookaheadHolder>()
+            .AddSingleton<IBeaconNodeValidatorApi, BeaconNodeValidatorApi>()
             .AddSingleton<FailedBlockRoots>()
             .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
             .AddSingleton<INodeColumnCustodySource, BeaconDiscovery>(discovery => new DiscoveryNodeCustodySource(discovery))

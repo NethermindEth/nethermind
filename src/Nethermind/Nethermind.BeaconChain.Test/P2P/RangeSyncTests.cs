@@ -135,7 +135,7 @@ public partial class RangeSyncTests
             (startSlot, count, columns) => [.. columns.Select(c => chain.Columns[(int)c])]);
         SlotClock clock = chain.ClockAtEpoch(1);
         RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, clock, discovery);
-        IBlockImporter importer = new BlockImporterFactory(chain.Spec, store, chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, sidecarPool, clock, discovery)
+        IBlockImporter importer = new BlockImporterFactory(chain.Spec, store, chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, sidecarPool, clock, new(), discovery)
             .Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
 
         List<BlockImportResult> results = [];

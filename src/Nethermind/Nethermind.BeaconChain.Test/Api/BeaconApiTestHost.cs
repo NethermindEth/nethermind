@@ -17,6 +17,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
+using NSubstitute;
 using Snappier;
 using ExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
 using Transaction = Nethermind.Merge.Plugin.SszRest.SszTransaction;
@@ -44,7 +46,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public HttpClient Client { get; private set; } = null!;
     public PeerManager? PeerManager { get; }
 
-    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine, bool forkAwareStore, BeaconChainService? driver)
+    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine, bool forkAwareStore, BeaconChainService? driver, IBeaconNodeValidatorApi? validatorApi)
     {
         Spec = spec;
         Db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
@@ -65,14 +67,14 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         apiConfig.Host = "127.0.0.1";
         apiConfig.Port = 0;
         Host = new BeaconApiHost(apiConfig, spec, StatusHolder, Clock, Store,
-            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots, driver: driver);
+            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, validatorApi ?? Substitute.For<IBeaconNodeValidatorApi>(), new(), peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots, driver: driver);
     }
 
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null,
-        IEngineDriver? engine = null, bool forkAwareStore = true, BeaconChainService? driver = null)
+        IEngineDriver? engine = null, bool forkAwareStore = true, BeaconChainService? driver = null, IBeaconNodeValidatorApi? validatorApi = null)
     {
-        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine, forkAwareStore, driver);
+        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine, forkAwareStore, driver, validatorApi);
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;
