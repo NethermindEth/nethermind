@@ -41,7 +41,7 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <summary>How often pending transactions no held wrapper covers are aggregated into a new wrapper.</summary>
     public static readonly TimeSpan AggregationInterval = TimeSpan.FromSeconds(6);
 
-    private const int MaxHeldWrappers = 256;
+    private const int MaxHeldWrappers = DependencyProofCache.MaxStatements / 2;
     private const long MaxHeldBytes = 64 * 1024 * 1024;
 
     // The held wrappers' proofs stay remembered for block building, so they must fit the statement cache together.
@@ -442,7 +442,8 @@ public sealed class ProofWrapperRelay : IDisposable
         Dictionary<ValueHash256, ValueHash256[]> manifests = [];
         foreach (ServedManifest manifest in Match(served, large, static m => m.Hash))
         {
-            state.Announced.TryGet(manifest.Hash, out WrapperAnnouncement announcement);
+            // An announcement the bounded record forgot cannot be checked; the wrapper fetch then leaves it to another announcer.
+            if (!state.Announced.TryGet(manifest.Hash, out WrapperAnnouncement announcement)) continue;
             ValueHash256[] txHashes = [.. manifest.TransactionHashes];
             if (!IsValidManifest(txHashes, announcement)) throw new ProtocolViolation("manifest does not match its announcement");
             if (AllCovered(txHashes))

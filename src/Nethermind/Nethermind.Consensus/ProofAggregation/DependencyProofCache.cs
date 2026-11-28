@@ -18,8 +18,9 @@ namespace Nethermind.Consensus.ProofAggregation;
 public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManager logManager) : ILeanProofVerifier
 {
     private const int MaxVerified = 256;
-    // Proof wrappers and received blocks share the statements with this builder's own, so they are bounded by bytes first.
-    private const int MaxStatements = 256;
+    /// <summary>The statements held.</summary>
+    /// <remarks>Mempool aggregation keeps its held wrappers to half of these, as it does their proof bytes.</remarks>
+    public const int MaxStatements = 512;
     /// <summary>The proof bytes of the statements held.</summary>
     /// <remarks>Mempool aggregation keeps the proofs of its held wrappers within half of it, so that they do not evict one
     /// another, while builds and received blocks share the rest.</remarks>

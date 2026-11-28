@@ -352,6 +352,25 @@ public class ProofWrapperRelayTests
     }
 
     [Test]
+    public async Task Manifest_ForgottenAnnouncement_DoesNotBlameThePeer()
+    {
+        using Context context = new();
+        context.Relay.AddLocal(context.Wrapper(Tx(0, TestItem.KeccakA)));
+        FakePeer peer = context.Peer();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peer.Gate = release.Task;
+        WrapperAnnouncement large = new(300_000, TestItem.KeccakF.ValueHash256, default, default);
+        peer.Manifests.Add(new ServedManifest(large.Hash, [TestItem.KeccakA.ValueHash256]));
+        Task fetch = context.Relay.OnAnnouncement(peer, [large]);
+        _ = context.Relay.OnAnnouncement(peer, Announcements(0, 4096));
+
+        release.SetResult();
+        await fetch;
+
+        Assert.That(peer.Disconnected, Is.False);
+    }
+
+    [Test]
     public async Task Announcement_FromARemovedPeer_RecordsNothing()
     {
         using Context context = new();
@@ -683,8 +702,13 @@ public class ProofWrapperRelayTests
             return [new ServedWrapper(wrapper.Hash.ValueHash256, item)];
         }
 
-        public Task<IReadOnlyList<ServedManifest>> GetProofWrapperManifests(IReadOnlyList<ValueHash256> hashes, CancellationToken token) =>
-            Task.FromResult<IReadOnlyList<ServedManifest>>([]);
+        public List<ServedManifest> Manifests { get; } = [];
+
+        public async Task<IReadOnlyList<ServedManifest>> GetProofWrapperManifests(IReadOnlyList<ValueHash256> hashes, CancellationToken token)
+        {
+            await Gate;
+            return Manifests.FindAll(m => System.Linq.Enumerable.Contains(hashes, m.Hash));
+        }
 
         public void Disconnect(string reason) => Disconnected = true;
     }
