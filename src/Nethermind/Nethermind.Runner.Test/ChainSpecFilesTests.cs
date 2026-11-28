@@ -50,12 +50,15 @@ namespace Nethermind.Runner.Test
         [TestCaseSource(nameof(ShippedChainSpecs))]
         public void Every_shipped_chainspec_builds_a_spec_provider(string chainSpecPath)
         {
+            Assert.That(TestContext.CurrentContext.Test.Name, Does.Not.Contain(Path.DirectorySeparatorChar.ToString()),
+                "the case name is the TEST_CHUNK key, so it must not depend on the output directory");
+
             ChainSpec chainSpec = _loader.LoadEmbeddedOrFromFile(chainSpecPath);
 
             Assert.That(() => new ChainSpecBasedSpecProvider(chainSpec, LimboLogs.Instance), Throws.Nothing);
         }
 
-        private static string[] ShippedChainSpecs()
+        private static IEnumerable<TestCaseData> ShippedChainSpecs()
         {
             string folder = Path.Combine(TestContext.CurrentContext.TestDirectory, "chainspec");
             List<string> paths = [];
@@ -73,7 +76,10 @@ namespace Nethermind.Runner.Test
             // than asserted: this runs at discovery time, where an assertion failure is a fixture load error.
             if (paths.Count == 0) throw new InvalidOperationException($"no chainspecs found under {folder}");
 
-            return paths.ToArray();
+            foreach (string path in paths)
+            {
+                yield return new TestCaseData(path).SetArgDisplayNames(Path.GetFileName(path));
+            }
         }
     }
 }
