@@ -24,9 +24,12 @@ try
     var next = checked(Convert.ToInt64(minor, minor.StartsWith('0') ? 8 : 10) + 1);
     var version = $"{branch.Groups[1].Value}.{next.ToString(CultureInfo.InvariantCulture)}.0";
     var text = File.ReadAllText(args[1]);
-    var current = ScriptVersion.Property(text, "VersionPrefix");
+    // Comments are matched first so that a commented-out element is neither read nor rewritten.
+    var elements = VersionPrefix().Matches(text).Where(match => match.Groups[1].Success).ToArray();
+    if (elements.Length == 0) throw new InvalidOperationException($"error: '{args[1]}' declares no <VersionPrefix>");
+    var current = string.Join('\n', elements.Select(match => match.Groups[1].Value));
     var update = current != version;
-    if (update) File.WriteAllText(args[1], VersionPrefix().Replace(text, $"<VersionPrefix>{version}</VersionPrefix>"));
+    if (update) File.WriteAllText(args[1], VersionPrefix().Replace(text, match => match.Groups[1].Success ? $"<VersionPrefix>{version}</VersionPrefix>" : match.Value));
     Console.WriteLine(update ? $"Updated version from {current} to {version}" : $"Version {version} is already set in {args[1]}");
     Console.WriteLine($"needs_update={update.ToString().ToLowerInvariant()}\ncurrent_version={current}\nnew_version={version}");
     return 0;
@@ -41,6 +44,6 @@ partial class Program
 {
     [GeneratedRegex(@"\Arefs/heads/release/([0-9]+)\.([0-9]+)\.0\z")]
     private static partial Regex ReleaseBranch();
-    [GeneratedRegex(@"<VersionPrefix>.*</VersionPrefix>")]
+    [GeneratedRegex(@"(?s:<!--.*?-->)|<VersionPrefix>(.*?)</VersionPrefix>")]
     private static partial Regex VersionPrefix();
 }
