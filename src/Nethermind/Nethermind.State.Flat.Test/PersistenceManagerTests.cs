@@ -856,6 +856,38 @@ public class PersistenceManagerTests
         toConvert?.Base?.Dispose();
     }
 
+    [TestCase(5UL, 80, false, true, TestName = "DetermineSnapshotAction_OverSnapshotCount_FinalityStalled_Converts")]
+    [TestCase(16UL, 80, false, false, TestName = "DetermineSnapshotAction_OverSnapshotCount_BoundaryFinalizedBelowDepthGate_WaitsForPersist")]
+    [TestCase(16UL, 32, false, true, TestName = "DetermineSnapshotAction_OverSnapshotCount_DepthExceedsCountLimit_Converts")]
+    [TestCase(16UL, 80, true, true, TestName = "DetermineSnapshotAction_OverSnapshotCount_HeldPersist_Converts")]
+    public void DetermineSnapshotAction_OverSnapshotCount_ConversionRespectsFinalizedPersist(
+        ulong finalizedBlock, int maxInMemoryBaseSnapshotCount, bool held, bool expectConversion)
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 0, enableLongFinality: true, maxInMemoryBaseSnapshotCount, hook);
+
+        using Snapshot expected = CreateSnapshot(Block0, CreateStateId(16), compacted: false);
+        for (ulong block = 17; block <= 96; block++)
+        {
+            using Snapshot backlog = CreateSnapshot(CreateStateId(block - 1), CreateStateId(block));
+        }
+        _finalizedStateProvider.SetFinalizedBlockNumber(finalizedBlock);
+        if (held) hook.Hold();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) =
+            pm.DetermineSnapshotAction(CreateStateId(16 + ByteBudgetMinReorgDepth - 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.SnapshotCount, Is.GreaterThan(maxInMemoryBaseSnapshotCount));
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert is not null, Is.EqualTo(expectConversion));
+        }
+        toConvert?.Compacted?.Dispose();
+        toConvert?.Base?.Dispose();
+    }
+
     [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
     [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
     [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]

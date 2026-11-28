@@ -157,23 +157,30 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     public ArenaWriter CreateWriter(long estimatedSize, bool small = false)
     {
-        using Lock.Scope scope = _lock.EnterScope();
         bool dedicated = estimatedSize >= _dedicatedArenaThreshold;
-        ArenaFile file = dedicated
-            ? CreateArenaFile(estimatedSize, dedicated: true, small: small)
-            : GetOrCreateArena(estimatedSize, small);
-        long offset = file.Frontier;
-        // Reserve: remove from the mutable pool so no concurrent CreateWriter picks the same
-        // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
-        // Dedicated files never enter the mutable pool. Route off file.Small (not the small
-        // arg) so the remove always targets the same pool the file was scanned from.
-        if (!dedicated)
+        ArenaFile file;
+        long offset;
+        using (_lock.EnterScope())
         {
-            PoolFor(file).Remove(file.Id);
-            file.WriterActive = true;
+            file = dedicated
+                ? CreateArenaFile(estimatedSize, dedicated: true, small: small)
+                : GetOrCreateArena(estimatedSize, small);
+            offset = file.Frontier;
+            // Reserve: remove from the mutable pool so no concurrent CreateWriter picks the same
+            // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
+            // Dedicated files never enter the mutable pool. Route off file.Small (not the small
+            // arg) so the remove always targets the same pool the file was scanned from.
+            if (!dedicated)
+            {
+                PoolFor(file).Remove(file.Id);
+                file.WriterActive = true;
+            }
         }
+
+        // The file is reserved for this writer, so opening its stream and allocating the write
+        // buffer need not hold up the other writers on the manager lock.
         FileStream stream = file.CreateWriteStream(offset);
-        return new ArenaWriter(this, file, dedicated, offset, stream);
+        return new ArenaWriter(this, file, dedicated, offset, stream, estimatedSize);
     }
 
     // The mutable pool a shared arena belongs to, chosen by its tier.
