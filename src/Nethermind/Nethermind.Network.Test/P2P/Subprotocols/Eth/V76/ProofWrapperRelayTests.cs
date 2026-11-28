@@ -230,6 +230,89 @@ public class ProofWrapperRelayTests
         Assert.That(() => wrappers.TrueForAll(w => context.Relay.TryGetHeld(w.Hash.ValueHash256, out _)), Is.True.After(5000, 10));
     }
 
+    [Test]
+    public async Task Fetch_BusyAnnouncer_FailsOverAtOnceToAnotherAnnouncer()
+    {
+        using Context context = new();
+        FakePeer busy = context.Peer();
+        busy.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(busy, [Announcement(context.Wrapper(Tx((ulong)(10 + i), TestItem.KeccakA)))]);
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+        FakePeer other = context.Peer(wrapper);
+
+        _ = context.Relay.OnAnnouncement(busy, [Announcement(wrapper)]);
+        await context.Relay.OnAnnouncement(other, [Announcement(wrapper)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(busy.Requests, Is.EqualTo(4));
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
+        }
+    }
+
+    /// <summary>A removed peer's fetches go to their next announcer, and those it alone announced are forgotten, so a later
+    /// announcement fetches them.</summary>
+    [Test]
+    public async Task RemovePeer_ReassignsItsFetches_AndForgetsThoseWithoutAnnouncers()
+    {
+        using Context context = new();
+        FakePeer leaving = context.Peer();
+        leaving.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        ProofWrapper shared = context.Wrapper(Tx(0, TestItem.KeccakA));
+        ProofWrapper sole = context.Wrapper(Tx(1, TestItem.KeccakA));
+        FakePeer other = context.Peer(shared);
+        _ = context.Relay.OnAnnouncement(leaving, [Announcement(shared)]);
+        _ = context.Relay.OnAnnouncement(other, [Announcement(shared)]);
+        for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(leaving, [Announcement(context.Wrapper(Tx((ulong)(10 + i), TestItem.KeccakA)))]);
+        _ = context.Relay.OnAnnouncement(leaving, [Announcement(sole)]);
+
+        context.Relay.RemovePeer(leaving);
+
+        Assert.That(() => context.Relay.TryGetHeld(shared.Hash.ValueHash256, out _), Is.True.After(5000, 10));
+        Assert.That(context.Relay.FetchCount, Is.Zero);
+        await context.Relay.OnAnnouncement(context.Peer(sole), [Announcement(sole)]);
+        Assert.That(context.Relay.TryGetHeld(sole.Hash.ValueHash256, out _), Is.True);
+    }
+
+    [Test]
+    public async Task Fetch_RepeatedTimeouts_StopFetchingFromThePeer()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        peer.TimesOut = true;
+        for (int i = 0; i <= 8; i++) await context.Relay.OnAnnouncement(peer, [Announcement(context.Wrapper(Tx((ulong)i, TestItem.KeccakA)))]);
+
+        Assert.That(peer.Requests, Is.EqualTo(8));
+    }
+
+    [Test]
+    public void Announcements_BeyondTheFetchBound_AreNotRecorded()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        peer.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        List<WrapperAnnouncement> announcements = [];
+        for (int i = 0; i < 4200; i++) announcements.Add(new WrapperAnnouncement(100, Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, default, default));
+
+        _ = context.Relay.OnAnnouncement(peer, announcements);
+
+        Assert.That(context.Relay.FetchCount, Is.EqualTo(4096));
+    }
+
+    [Test]
+    public void EncodingCache_IsBoundedByBytes()
+    {
+        ProofWrapperRelay.EncodingCache cache = new(100);
+        for (int i = 0; i < 10; i++) cache.Set(Keccak.Compute([(byte)i]).ValueHash256, new byte[40]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Bytes, Is.LessThanOrEqualTo(100));
+            Assert.That(cache.TryGet(Keccak.Compute([9]).ValueHash256), Is.Not.Null);
+            Assert.That(cache.TryGet(Keccak.Compute([0]).ValueHash256), Is.Null);
+        }
+    }
+
     /// <summary>A hash whose announcers are all exhausted is forgotten, so a later announcement fetches it again.</summary>
     [Test]
     public async Task Fetch_HashOutOfAnnouncers_IsFetchedOnALaterAnnouncement()
@@ -497,6 +580,7 @@ public class ProofWrapperRelayTests
         public List<WrapperAnnouncement> Announced { get; } = [];
         public List<bool> CompactFlags { get; } = [];
         public bool CompactReferencesEverything { get; set; }
+        public bool TimesOut { get; set; }
         public bool Disconnected { get; private set; }
         public Task Gate { get; set; } = Task.CompletedTask;
         public int Requests => Volatile.Read(ref _requests);
@@ -508,6 +592,7 @@ public class ProofWrapperRelayTests
             Interlocked.Increment(ref _requests);
             CompactFlags.Add(compact);
             await Gate;
+            if (TimesOut) throw new TimeoutException();
             if (ServeAll)
             {
                 List<ServedWrapper> all = [];
