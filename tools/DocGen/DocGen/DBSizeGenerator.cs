@@ -36,7 +36,7 @@ internal static class DBSizeGenerator
         dbSizeSourcePath ??= AppDomain.CurrentDomain.BaseDirectory;
 
         List<string?> chains = Directory
-            .GetFiles(dbSizeSourcePath)
+            .EnumerateFiles(dbSizeSourcePath, "*.json")
             .Select(Path.GetFileNameWithoutExtension)
             .OrderBy(c =>
             {
@@ -45,6 +45,12 @@ internal static class DBSizeGenerator
                 return i == -1 ? int.MaxValue : i;
             })
             .ToList();
+
+        if (chains.Count == 0)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]No JSON database size reports found in[/] {dbSizeSourcePath}");
+            return;
+        }
 
         GenerateFile(Path.Join(docsPath, "docs", "fundamentals"), dbSizeSourcePath, chains!);
         GenerateFile(Path.Join(docsPath, "versioned_docs", $"version-{GetLatestVersion(docsPath)}", "fundamentals"), dbSizeSourcePath, chains!);
