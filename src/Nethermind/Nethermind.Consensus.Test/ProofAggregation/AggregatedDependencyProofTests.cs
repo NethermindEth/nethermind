@@ -191,6 +191,8 @@ public class AggregatedDependencyProofTests
     [TestCase(500, 0, new[] { 250, 250 })]
     [TestCase(500, 3, new[] { 250, 250 })]
     [TestCase(17, 9, new[] { 17 })]
+    [TestCase(20, 2, new[] { 20 })]
+    [TestCase(20, 3, new[] { 20 })]
     [TestCase(20, 5, new[] { 20 })]
     public void Prove_FoldsSignaturesInTheFewestEqualLeaves(int signatures, int recursive, int[] leaves)
     {

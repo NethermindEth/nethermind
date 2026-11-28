@@ -47,9 +47,11 @@ export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_USE_MSBUILD_SERVER=0 UseSharedCompil
 dotnet build "$root/src/Nethermind/Nethermind.Benchmark.Runner" -c release -p:NethermindCryptoLeanTestAssets=true -v q -nologo
 runner="$root/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release/Nethermind.Benchmark.Runner"
 
+# A run replaces its results; give each profile its own --out to keep both.
+rm -f "$out/builder.jsonl"
 export EIP8288_BENCH_RESULTS="$out" EIP8288_BENCH_PROFILE="$profile" EIP8288_BENCH_VECTORS="$(dirname "$runner")/lean-vectors"
 # One build serves every case; BenchmarkDotNet still runs each (schedule, N) case in a process of its own.
-EIP8288_BENCH_CLAIMS="${claims// /,}" "${scope[@]}" "$runner" --quick --artifacts "$out/bdn" \
+EIP8288_BENCH_CLAIMS="${claims// /,}" ${scope[@]+"${scope[@]}"} "$runner" --quick --artifacts "$out/bdn" \
   --filter "*DependencyProofAggregationBenchmarks*"
 
 if ! command -v python3 >/dev/null; then

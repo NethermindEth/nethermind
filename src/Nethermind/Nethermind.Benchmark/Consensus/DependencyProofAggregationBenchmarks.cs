@@ -38,6 +38,7 @@ public class DependencyProofAggregationBenchmarks
     private const double BuilderUploadBitsPerSecond = 50_000_000;
 
     private const int NarrowLeafSignatures = 16;
+    private const int MeasuredIterations = 3;
 
     [ParamsSource(nameof(ClaimCounts))]
     public int Claims { get; set; }
@@ -136,7 +137,8 @@ public class DependencyProofAggregationBenchmarks
             claims = Claims,
             profile = Environment.GetEnvironmentVariable("EIP8288_BENCH_PROFILE") ?? "unspecified",
             processors = Environment.ProcessorCount,
-            proveMs = Median([.. _iterationMs.Skip(1)]),
+            // IterationSetup also runs around warmups; the --quick job's three measured iterations come last.
+            proveMs = Median([.. _iterationMs.TakeLast(MeasuredIterations)]),
             slotMs = 12_000,
             cpuCores = _cpu.TotalMilliseconds / Math.Max(1, _iterationMs.Sum()),
             peakRssMiB = Process.GetCurrentProcess().PeakWorkingSet64 / (1024.0 * 1024.0),
