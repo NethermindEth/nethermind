@@ -51,8 +51,11 @@ public class ExecutionPayloadV5 : ExecutionPayloadV4, IExecutionPayloadFactory<E
         return baseResult;
     }
 
-    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>
-        newPayloadVersion >= EngineApiVersions.NewPayload.V7 && specProvider.GetSpec(BlockNumber, Timestamp).IsEip8141Enabled;
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
+        return newPayloadVersion >= EngineApiVersions.NewPayload.V7 && spec.IsEip8141Enabled && spec.IsAmsterdamEnabled;
+    }
 
     /// <summary>
     /// Gets or sets <see cref="Block.DependencyProof"/> as defined in
