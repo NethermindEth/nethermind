@@ -3,7 +3,10 @@
 
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -78,6 +81,25 @@ public class SnapshotCompactorTests
         {
             Assert.That(actual!.Nonce, Is.EqualTo(expected.Nonce));
             Assert.That(actual!.Balance, Is.EqualTo(expected.Balance));
+        }
+    }
+
+    [Test]
+    public void StartMerge_runs_on_the_calling_thread_only_on_a_single_processor()
+    {
+        int callerThread = Environment.CurrentManagedThreadId;
+        int mergeThread = 0;
+
+        Task merge = SnapshotCompactor.StartMerge(() => Volatile.Write(ref mergeThread, Environment.CurrentManagedThreadId));
+        bool ranInline = Volatile.Read(ref mergeThread) == callerThread;
+        // Spin rather than Wait, which could inline a merge the pool has not started yet.
+        Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref mergeThread) != 0, TimeSpan.FromSeconds(30)), Is.True);
+        merge.Wait();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ranInline, Is.EqualTo(RuntimeInformation.IsSingleProcessor));
+            Assert.That(mergeThread == callerThread, Is.EqualTo(RuntimeInformation.IsSingleProcessor));
         }
     }
 
