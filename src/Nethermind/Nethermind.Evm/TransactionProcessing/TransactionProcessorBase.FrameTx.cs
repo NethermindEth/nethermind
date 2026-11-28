@@ -765,7 +765,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Address sender = tx.SenderAddress!;
         ValueHash256? sigHash = null;
         if (!opts.HasFlag(ExecutionOptions.FrameClaimsPreVerified)
-            && !VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: false, skipVerification: false, acceptAggregated: false, out string? claimError))
+            && !VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: false, skipVerification: false, acceptAggregated: true, out string? claimError))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(claimError!);
         }
@@ -1038,8 +1038,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// checked; see <see cref="FrameTxClaimVerifier.CheckWitnesses"/>.</param>
     /// <param name="skipVerification">Checks only the witnesses' shape: execution-apis#907 exempts signature checks
     /// from eth_simulateV1.</param>
-    /// <param name="acceptAggregated">Skips the leanSPHINCS claims a block's verified EIP-8288 dependency proof has
-    /// proven; see <see cref="FrameTxClaimVerifier.AggregatedWitness"/>.</param>
+    /// <param name="acceptAggregated">Skips the leanSPHINCS claims a verified EIP-8288 proof has proven; see
+    /// <see cref="FrameTxClaimVerifier.AggregatedWitness"/>.</param>
     private bool VerifyFrameClaims(Transaction tx, ref ValueHash256? sigHash, IReleaseSpec spec, bool allowPlaceholders, bool skipVerification, bool acceptAggregated, out string? error)
     {
         error = null;

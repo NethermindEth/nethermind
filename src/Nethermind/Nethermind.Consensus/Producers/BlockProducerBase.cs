@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -145,7 +146,21 @@ namespace Nethermind.Consensus.Producers
             {
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    Block? processedBlock;
+                    try
+                    {
+                        processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    }
+                    catch (AggregatedProofNotReadyException)
+                    {
+                        // EIP-8518: the proof of the block's aggregated transactions is still being prepared, so the block
+                        // is rebuilt without them.
+                        if (Logger.IsDebug) Logger.Debug($"Rebuilding block {block.Number} without aggregated transactions while their proof is prepared");
+                        block = PrepareBlock(parent, payloadAttributes, flags);
+                        block.AbandonToken = _abandonToken;
+                        processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    }
+
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");

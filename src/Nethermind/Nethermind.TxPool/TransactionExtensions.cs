@@ -307,5 +307,12 @@ namespace Nethermind.TxPool
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
 
         public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null || tx.ClaimWitnesses is not null;
+
+        /// <summary>Whether <paramref name="tx"/>'s blob availability is established by EIP-8070 cell sampling: a blob
+        /// transaction, or a blob-carrying frame transaction from a verified EIP-8518 proof wrapper, whose blob data the wrapper
+        /// elides.</summary>
+        /// <remarks>Other frame transactions carry their blobs whole.</remarks>
+        public static bool SamplesBlobCells(this Transaction tx) =>
+            tx.SupportsBlobs || (tx.SupportsFrames && tx.CarriesBlobs && FrameTxClaimVerifier.HasAggregatedWitness(tx));
     }
 }

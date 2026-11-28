@@ -28,6 +28,7 @@ using Eth66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Eth68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Eth72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Eth74 = Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
+using Eth76 = Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Snap1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Snap2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 
@@ -101,6 +102,11 @@ public class MessageDecodingCompatibilityTests
         yield return Sample.Of(static () => new Eth72.CellsMessage72(1, [TestItem.KeccakA.ValueHash256], [[new byte[Ckzg.BytesPerCell], new byte[Ckzg.BytesPerCell]]], CellMask()));
         yield return Sample.Of(static () => new Eth74.GetDependencyProofsMessage(1, Hashes()));
         yield return Sample.Of(static () => new Eth74.DependencyProofsMessage(1, new ArrayPoolList<byte[]>(2) { Array.Empty<byte>(), new byte[] { 0x01, 0xc0 } }));
+        yield return Sample.Of(static () => new Eth76.NewProofWrapperHashesMessage([new Eth76.WrapperAnnouncement(100, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256)]));
+        yield return Sample.Of(static () => new Eth76.GetProofWrappersMessage(1, [TestItem.KeccakA.ValueHash256], compact: true));
+        yield return Sample.Of(static () => new Eth76.ProofWrappersMessage(1, [new Eth76.ServedWrapper(TestItem.KeccakA.ValueHash256, [0xc3, 0xc0, 0xc0, 0x80])]));
+        yield return Sample.Of(static () => new Eth76.GetProofWrapperManifestsMessage(1, [TestItem.KeccakA.ValueHash256]));
+        yield return Sample.Of(static () => new Eth76.ProofWrapperManifestsMessage(1, [new Eth76.ServedManifest(TestItem.KeccakA.ValueHash256, [TestItem.KeccakB.ValueHash256])]));
         yield return Sample.Of(static () => new Snap1.GetAccountRangeMessage { RequestId = 1, AccountRange = new(TestItem.KeccakA, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256), ResponseBytes = 1000 });
         yield return Sample.Of(static () => new Snap1.AccountRangeMessage
         {

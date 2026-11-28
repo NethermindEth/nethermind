@@ -134,4 +134,54 @@ public static class FrameTxTestFrames
         BinaryPrimitives.WriteUInt64BigEndian(data, deadline);
         return new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero, data);
     }
+
+    /// <summary>A leanSPHINCS claim of <paramref name="publicKey"/> over <paramref name="message"/>.</summary>
+    public static TxFrameClaim LeanSphincsClaim(Hash256 publicKey, Hash256 message) =>
+        new(Eip8141Constants.LeanSphincsVerifierAddress, publicKey.BytesToArray(), message.BytesToArray(), 0, 0);
+
+    /// <summary>A hashed frame transaction with a leanSPHINCS claim per key and message, each witnessed by a placeholder
+    /// signature, and optionally a SECP256K1 claim with a placeholder witness after them.</summary>
+    public static Transaction LeanSphincsTx(ulong nonce, bool withSecp256k1Claim, params (Hash256 Key, Hash256 Message)[] claims)
+    {
+        TxFrameClaim[] frameClaims = new TxFrameClaim[claims.Length + (withSecp256k1Claim ? 1 : 0)];
+        byte[][] witnesses = new byte[frameClaims.Length][];
+        for (int i = 0; i < claims.Length; i++)
+        {
+            frameClaims[i] = LeanSphincsClaim(claims[i].Key, claims[i].Message);
+            witnesses[i] = new byte[Eip8141Constants.LeanSphincsSignatureSize];
+            Array.Fill(witnesses[i], (byte)(i + 1));
+        }
+
+        if (withSecp256k1Claim)
+        {
+            frameClaims[^1] = Secp256k1Claim(null);
+            witnesses[^1] = new byte[Eip8141Constants.Secp256k1WitnessLength];
+            Array.Fill(witnesses[^1], (byte)0xee);
+        }
+
+        Transaction tx = FrameTx(TestItem.AddressA, frameClaims, SelfVerify());
+        tx.ChainId = TestBlockchainIds.ChainId;
+        tx.Nonce = nonce;
+        tx.ClaimWitnesses = witnesses;
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    /// <summary>A <see cref="LeanSphincsTx"/> carrying one blob, with a placeholder commitment and cell proofs filled with
+    /// <paramref name="proofFill"/>, and its blob data in full.</summary>
+    public static Transaction LeanSphincsBlobTx(ulong nonce, byte proofFill = 0)
+    {
+        Transaction tx = LeanSphincsTx(nonce, withSecp256k1Claim: false, (TestItem.KeccakA, TestItem.KeccakB));
+        byte[] commitment = new byte[CkzgLib.Ckzg.BytesPerCommitment];
+        commitment[0] = 0xc0;
+        commitment[1] = (byte)nonce;
+        byte[] versionedHash = new byte[32];
+        KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, versionedHash);
+        byte[] proofs = new byte[CkzgLib.Ckzg.CellsPerExtBlob * ShardBlobNetworkWrapper.BytesPerProof];
+        Array.Fill(proofs, proofFill);
+        tx.BlobVersionedHashes = [versionedHash];
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper([new byte[CkzgLib.Ckzg.BytesPerBlob]], [commitment], proofs, ProofVersion.V1);
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
 }

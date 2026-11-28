@@ -4,14 +4,16 @@
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>Registers EIP-8288 proof verification and builder aggregation.</summary>
+/// <summary>Registers EIP-8288 proof verification, builder aggregation, and the block building of EIP-8518 aggregated transactions.</summary>
 /// <remarks>The native Lean backend verifies EIP-8141 leanSPHINCS claims only on chains with EIP-8288 scheduled, where
 /// startup checks it is available; elsewhere such claims stay unverifiable, as without this module.</remarks>
 public sealed class Eip8288Module : Module
@@ -22,5 +24,8 @@ public sealed class Eip8288Module : Module
         .Bind<ILeanProofVerifier, DependencyProofCache>()
         .AddSingleton<ILeanSphincsVerifier, ISpecProvider, NativeLeanProofVerifier>(static (specProvider, native) =>
             specProvider.GetFinalSpec().IsEip8288Enabled ? native : UnavailableLeanSphincsVerifier.Instance)
-        .AddDecorator<IBlockProcessor, AggregatingBlockProcessor>();
+        .AddDecorator<IBlockProcessor, AggregatingBlockProcessor>()
+        .AddScoped<AggregatedTxProduction>()
+        .AddDecorator<BlockProcessor.IBlockProductionTransactionPicker, AggregatedTxPicker>()
+        .AddLast<ITxGossipPolicy, AggregatedTxGossipPolicy>();
 }

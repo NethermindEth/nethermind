@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -23,6 +24,7 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private readonly ITxPoolConfig _txPoolConfig;
     private readonly IChainHeadSpecProvider? _specProvider;
     private readonly IChainHeadInfoProvider? _chainHeadInfoProvider;
+    private readonly bool _aggregatesMempool;
     private bool _eip7594Enabled;
 
     public event Action? Changed;
@@ -50,7 +52,18 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         ITxPoolConfig txPoolConfig,
         IChainHeadSpecProvider? specProvider,
         IChainHeadInfoProvider? chainHeadInfoProvider)
+        : this(poSSwitcher, txPoolConfig, specProvider, chainHeadInfoProvider, blocksConfig: null)
     {
+    }
+
+    public MergeP2PCapabilityResolver(
+        IPoSSwitcher poSSwitcher,
+        ITxPoolConfig txPoolConfig,
+        IChainHeadSpecProvider? specProvider,
+        IChainHeadInfoProvider? chainHeadInfoProvider,
+        IBlocksConfig? blocksConfig)
+    {
+        _aggregatesMempool = blocksConfig?.DependencyProofAggregation == DependencyProofAggregation.Mempool;
         _poSSwitcher = poSSwitcher;
         _txPoolConfig = txPoolConfig;
         _specProvider = specProvider ?? chainHeadInfoProvider?.SpecProvider;
@@ -84,7 +97,12 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
             // EIP-8512 eth/74 adds the exchange of the EIP-8141 dependency proofs, which block sync needs as they are in
             // neither headers nor bodies. It is advertised once EIP-8141 is scheduled, not active: a session keeps its
             // negotiated version, so a peer connected before the fork would otherwise stay on eth/72.
-            if (IsEip8141Scheduled()) capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth74));
+            if (IsEip8141Scheduled())
+            {
+                capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth74));
+                // EIP-8518 eth/76 adds proof wrapper exchange, which only a node aggregating its mempool takes part in.
+                if (_aggregatesMempool && IsEip8288Scheduled()) capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth76));
+            }
         }
     }
 
@@ -103,6 +121,8 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private bool IsEip7594Enabled() => _specProvider?.GetCurrentHeadSpec().IsEip7594Enabled ?? false;
 
     private bool IsEip8141Scheduled() => _specProvider?.GetFinalSpec().IsEip8141Enabled ?? false;
+
+    private bool IsEip8288Scheduled() => _specProvider?.GetFinalSpec().IsEip8288Enabled ?? false;
 
     public void Dispose()
     {

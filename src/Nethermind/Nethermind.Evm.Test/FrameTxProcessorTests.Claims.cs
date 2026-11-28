@@ -203,6 +203,23 @@ public partial class FrameTxProcessorTests
         Assert.That(Measure(withClaim: true), Is.EqualTo(Measure(withClaim: false)));
     }
 
+    /// <summary>The pool's prefix simulation takes the stand-in a verified EIP-8288 proof leaves for a leanSPHINCS witness,
+    /// as an EIP-8518 proof wrapper hands it; a decoded empty witness is still refused.</summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void PrefixSimulation_AggregatedLeanSphincsWitness_IsTakenAsProven(bool aggregated)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameClaims = [FrameTxTestFrames.LeanSphincsClaim(TestItem.KeccakA, TestItem.KeccakB)];
+        tx.ClaimWitnesses = [aggregated ? FrameTxClaimVerifier.AggregatedWitness : []];
+
+        TransactionResult result = SimulateValidationPrefix(tx);
+
+        Assert.That(result.ErrorDescription ?? string.Empty,
+            aggregated ? Does.Not.Contain(FrameTxClaimVerifier.InvalidWitnessLength) : Does.Contain(FrameTxClaimVerifier.InvalidWitnessLength));
+    }
+
     /// <summary>Claims are verified against the block's pre-state, outside any transaction, so nothing a custom
     /// verifier reads, its own code or a precompile it calls, enters the block access list.</summary>
     [Test]

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
@@ -172,7 +173,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         txSize = encodedTx.Count;
                     }
-                    else if (!unservable && TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    // EIP-8518: a transaction known only from a proof wrapper has no complete pooled form to serve.
+                    else if (!unservable && TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx)
+                        && !FrameTxClaimVerifier.HasAggregatedWitness(tx))
                     {
                         responseTx = PreparePooledTransactionForResponse(tx);
                         txSize = responseTx.GetLength();

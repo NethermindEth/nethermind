@@ -46,10 +46,9 @@ public interface IBlocksConfig : IConfig
     double SingleBlockImprovementOfSlot { get; set; }
 
     /// <summary>Where this node aggregates EIP-8288 dependency proofs. Defaults to <see cref="DependencyProofAggregation.None"/>.</summary>
-    /// <remarks>Applies only on chains with EIP-8288 scheduled, and only to what the node produces: every node accepts and
-    /// verifies both raw and aggregated dependency proofs. Aggregation runs the native Lean prover, which takes seconds per
-    /// proof, off the payload deadline.</remarks>
-    [ConfigItem(Description = "EIP-8288: where this node aggregates the leanSPHINCS witnesses of its blocks' claims into one recursive proof. `None` produces raw witnesses; `BuilderOnly` aggregates when building a block, once a proof is ready and smaller than the raw witnesses. Received blocks are verified either way.", DefaultValue = "None", HiddenFromDocs = true)]
+    /// <remarks>Applies only on chains with EIP-8288 scheduled: every node accepts and verifies both raw and aggregated
+    /// dependency proofs. Aggregation runs the native Lean prover, which takes seconds per proof, off the payload deadline.</remarks>
+    [ConfigItem(Description = "EIP-8288: where this node aggregates the leanSPHINCS witnesses of EIP-8141 claims into recursive proofs. `None` produces raw witnesses. `Mempool` aggregates pending transactions into proof wrappers exchanged over `eth/76` (EIP-8518) and builds blocks from them. `BuilderOnly`, a development option, aggregates only when building a block. Received blocks are verified either way.", DefaultValue = "None")]
     DependencyProofAggregation DependencyProofAggregation { get; set; }
 
     [ConfigItem(Description = "State pre-warming level while processing blocks: `None`, `Block` (warm the block's own transactions), or `BlockAndMempool` (also speculatively warm from the mempool between blocks).", DefaultValue = "BlockAndMempool")]

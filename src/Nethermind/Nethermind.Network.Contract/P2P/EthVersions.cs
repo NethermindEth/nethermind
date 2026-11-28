@@ -20,4 +20,8 @@ public static class EthVersions
     /// <summary>EIP-8512 dependency proof exchange; built on <see cref="Eth72"/>, as EIP-8408's <c>eth/73</c> is not
     /// implemented, and advertised once EIP-8141, which introduces the dependency proof, is scheduled.</summary>
     public const byte Eth74 = 74;
+
+    /// <summary>EIP-8518 proof wrapper exchange for mempool aggregation; built directly on <see cref="Eth74"/>, and advertised
+    /// once EIP-8288 is scheduled on a node aggregating its mempool.</summary>
+    public const byte Eth76 = 76;
 }

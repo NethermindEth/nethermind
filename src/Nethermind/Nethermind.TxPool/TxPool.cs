@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
@@ -214,7 +215,8 @@ namespace Nethermind.TxPool
             IIncomingTxFilter[]? incomingTxFilters = null,
             bool thereIsPriorityContract = false,
             IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
-            IStateHeaderProvider? stateHeaderProvider = null)
+            IStateHeaderProvider? stateHeaderProvider = null,
+            IBlocksConfig? blocksConfig = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _senderWidth = frameTxWidthLedger.SenderWidth;
@@ -381,7 +383,8 @@ namespace Nethermind.TxPool
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSimulationBudgetFilter(frameTxPrefixSimulator, _logger), // before FrameTxClaimFilter: no recoveries for a transaction the spent budget will defer anyway
-                new FrameTxClaimFilter(_specProvider, ecdsa, _logger, _headInfo), // last: elliptic-curve work per signature, up to what FrameTxVerifyGasFilter allows, so let the cheap filters reject first
+                new FrameTxClaimFilter(_specProvider, ecdsa, _logger, _headInfo,
+                    acceptAggregated: blocksConfig?.DependencyProofAggregation == DependencyProofAggregation.Mempool), // last: elliptic-curve work per signature, up to what FrameTxVerifyGasFilter allows, so let the cheap filters reject first
             ];
 
             if (incomingTxFilters is not null)
