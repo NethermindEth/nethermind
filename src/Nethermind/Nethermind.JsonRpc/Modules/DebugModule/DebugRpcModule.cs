@@ -741,6 +741,46 @@ public class DebugRpcModule(
         }
     }
 
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null, CancellationToken cancellationToken = default)
+    {
+        if (!IsAbsoluteLocalPath(fileName))
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(AbsoluteLocalPathError, ErrorCodes.InvalidParams);
+        }
+
+        byte[] blockRlp;
+        try
+        {
+            using FileStream stream = new(fileName, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 0);
+            // Reading only the reported length bounds devices such as /dev/zero, which report none.
+            if (!stream.CanSeek)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("could not read file: not a regular file", ErrorCodes.InvalidInput);
+            }
+
+            // The length is read once, as the file can grow between the check and the allocation.
+            long length = stream.Length;
+            long maxLength = Math.Min(jsonRpcConfig.MaxRequestBodySize ?? Array.MaxLength, Array.MaxLength);
+            if (length > maxLength)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: larger than {maxLength} bytes", ErrorCodes.InvalidInput);
+            }
+
+            blockRlp = new byte[length];
+            stream.ReadExactly(blockRlp);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: {exception.Message}", ErrorCodes.InvalidInput);
+        }
+
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = debug_traceBlock(blockRlp, options, cancellationToken);
+        // RLP diagnostics quote input bytes, which here come from a file the caller may not otherwise be able to read.
+        return result.Result.Error?.StartsWith("could not decode block", StringComparison.Ordinal) == true
+            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("could not decode block", ErrorCodes.InvalidInput)
+            : result;
+    }
+
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null, CancellationToken cancellationToken = default)
     {
         // The block tree's pending hash aliases the head, not a next-block candidate.
@@ -1239,6 +1279,12 @@ public class DebugRpcModule(
     }
 
     private const string ExistingFileError = "location would overwrite an existing file";
+    private const string AbsoluteLocalPathError = "file path must be an absolute local path";
+
+    // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
+    // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
+    private static bool IsAbsoluteLocalPath(string path) =>
+        Path.IsPathFullyQualified(path) && path is not ['/' or '\\', '/' or '\\', ..];
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
@@ -1248,11 +1294,9 @@ public class DebugRpcModule(
             return ResultWrapper<IEnumerable<BadBlock>>.Success(blocks.Select(ToBadBlock));
         }
 
-        // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
-        // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
-        if (!Path.IsPathFullyQualified(file) || file is ['/' or '\\', '/' or '\\', ..])
+        if (!IsAbsoluteLocalPath(file))
         {
-            return ResultWrapper<IEnumerable<BadBlock>>.Fail("file path must be an absolute local path", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(AbsoluteLocalPathError, ErrorCodes.InvalidParams);
         }
 
         // Checked up front to fail before serializing, and so an existing directory fails the same way on every

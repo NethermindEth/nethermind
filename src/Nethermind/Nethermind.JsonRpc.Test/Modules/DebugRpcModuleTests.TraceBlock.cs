@@ -3497,6 +3497,71 @@ public partial class DebugRpcModuleTests
             response);
     }
 
+    [Test]
+    public async Task Debug_traceBlockFromFile_matches_debug_traceBlock([Values("head", "genesis")] string content)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        byte[] blockRlp = Rlp.Encode(content == "head" ? context.Blockchain.BlockTree.Head : context.Blockchain.BlockTree.FindBlock(0));
+        string fileName = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(fileName, blockRlp);
+            GethTraceOptions options = new() { Tracer = "callTracer" };
+
+            string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", blockRlp.ToHexString(true), options);
+            string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockFromFile", fileName, options);
+
+            Assert.That(JsonElement.DeepEquals(JsonDocument.Parse(response).RootElement, JsonDocument.Parse(expected).RootElement),
+                $"{response}{Environment.NewLine}{expected}");
+        }
+        finally
+        {
+            File.Delete(fileName);
+        }
+    }
+
+    [TestCase("missing", ErrorCodes.InvalidInput, "could not read file: .+")]
+    [TestCase("directory", ErrorCodes.InvalidInput, "could not read file: .+")]
+    [TestCase("nul", ErrorCodes.InvalidInput, "could not read file: .+")]
+    [TestCase("oversized", ErrorCodes.InvalidInput, "could not read file: larger than 2 bytes")]
+    [TestCase("relative", ErrorCodes.InvalidParams, "file path must be an absolute local path")]
+    [TestCase("unc", ErrorCodes.InvalidParams, "file path must be an absolute local path")]
+    // RLP diagnostics would quote the file's bytes.
+    [TestCase("garbage", ErrorCodes.InvalidInput, "could not decode block")]
+    public async Task Debug_traceBlockFromFile_fails(string kind, int code, string message)
+    {
+        using Context context = await Context.Create();
+        context.Blockchain.RpcConfig.MaxRequestBodySize = 2;
+        string fileName = kind switch
+        {
+            "directory" => Path.GetTempPath(),
+            "nul" => Path.Combine(Path.GetTempPath(), "a\0b"),
+            "oversized" or "garbage" => Path.GetTempFileName(),
+            "relative" => Path.GetRandomFileName(),
+            "unc" => "//localhost/share/block.rlp",
+            _ => Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())
+        };
+        try
+        {
+            if (kind == "oversized") await File.WriteAllBytesAsync(fileName, [0xc2, 0x80, 0x80]);
+            if (kind == "garbage") await File.WriteAllBytesAsync(fileName, [0x01, 0x02]);
+
+            string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockFromFile", fileName);
+
+            JsonElement error = JsonDocument.Parse(response).RootElement.GetProperty("error");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(code), response);
+                Assert.That(error.GetProperty("message").GetString(), Does.Match($"^{message}$"), response);
+            }
+        }
+        finally
+        {
+            if (kind is "oversized" or "garbage") File.Delete(fileName);
+        }
+    }
+
     [TestCaseSource(nameof(TraceBlockSource))]
     public async Task Debug_traceBlock(Func<TestRpcBlockchain, Transaction[]> factory, GethTraceOptions options, string expected)
     {

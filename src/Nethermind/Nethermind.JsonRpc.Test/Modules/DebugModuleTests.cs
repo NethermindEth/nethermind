@@ -250,7 +250,6 @@ public class DebugModuleTests
         RpcTest.AssertSuccess<byte[]>(response);
     }
 
-    [TestCase("debug_traceBlockFromFile", "file")]
     [TestCase("debug_dumpBlock", "latest")]
     [TestCase("debug_gcStats")]
     [TestCase("debug_memStats", "latest")]
