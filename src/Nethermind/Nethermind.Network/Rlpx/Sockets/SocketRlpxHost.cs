@@ -389,7 +389,19 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
     {
         SetSocketOption(socket, SocketOptionLevel.Tcp, SocketOptionName.NoDelay);
         SetSocketOption(socket, SocketOptionLevel.Socket, SocketOptionName.KeepAlive);
-        _sessions.Activate(session, connection.Closed);
+        try
+        {
+            _sessions.Activate(session, connection.Closed);
+        }
+        catch (Exception e)
+        {
+            // A failing subscriber closes only this connection, as a failing handler closes only its channel on DotNetty.
+            if (_logger.IsError) _logger.Error($"Failed to activate {session:hide}", e);
+            Untrack(connection);
+            _ = connection.DisconnectAsync();
+            return;
+        }
+
         connection.Start(session);
         _ = connection.Completion.ContinueWith(
             static (_, state) =>

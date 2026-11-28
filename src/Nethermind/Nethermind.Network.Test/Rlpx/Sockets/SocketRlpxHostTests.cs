@@ -185,6 +185,39 @@ public class SocketRlpxHostTests
     }
 
     [Test]
+    public async Task Closes_only_the_connection_whose_session_subscriber_throws()
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets);
+        SocketRlpxHost host = (SocketRlpxHost)container.Resolve<IRlpxHost>();
+        int sessions = 0;
+        host.SessionCreated += (_, _) =>
+        {
+            if (Interlocked.Increment(ref sessions) == 1) throw new InvalidOperationException("Subscriber failure");
+        };
+        try
+        {
+            await host.Init();
+            IPEndPoint listener = new(IPAddress.Loopback, host.ListenerEndPoint!.Port);
+            using Socket first = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            await first.ConnectAsync(listener);
+            using CancellationTokenSource timeout = new(Timeout);
+            Assert.That(await ReceiveAsync(first, timeout.Token), Is.Zero, "the failed connection is closed");
+
+            using Socket second = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            await second.ConnectAsync(listener);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => Volatile.Read(ref sessions), Is.EqualTo(2).After(5000, 10), "the listener still accepts");
+                Assert.That(host.ConnectionCount, Is.EqualTo(1), "the failed connection is no longer tracked");
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
     public async Task Returns_false_for_a_refused_dial()
     {
         await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets);
