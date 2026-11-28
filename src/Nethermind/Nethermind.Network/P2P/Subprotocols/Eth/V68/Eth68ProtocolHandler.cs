@@ -426,14 +426,14 @@ public class Eth68ProtocolHandler(ISession session,
     private static void Add(NewPooledTransactionHashesMessageSerializer.PooledMessage message, Transaction tx)
     {
         message.TypeList.Add((byte)tx.Type);
-        message.SizeList.Add(tx.GetLength());
+        message.SizeList.Add(tx.GetNetworkLength());
         message.HashList.Add(tx.Hash!.ValueHash256);
     }
 
     // The serializer is looked up by the static message type, which must not be the pooled subclass.
     private void SendAnnouncement(NewPooledTransactionHashesMessage68 message) => Send(message);
 
-    protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
+    protected override bool CanServePooledTransaction(MempoolTransaction tx) => !IsSparseBlobTransaction(tx);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -449,8 +449,8 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
-        ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+        IOwnedReadOnlyList<MempoolTransaction> transactions = request.Transactions;
+        ReadOnlySpan<MempoolTransaction> transactionsSpan = transactions.AsSpan();
         int startIdx = request.StartIndex;
         for (int i = startIdx; i < transactionsSpan.Length; i++)
         {
@@ -474,7 +474,7 @@ public class Eth68ProtocolHandler(ISession session,
         !TryGetTxShape(in hash, out (int Size, TxType Type) txShape)
         || txShape.Size == size && txShape.Type == type;
 
-    private bool ValidateSizeAndType(Transaction? tx)
+    private bool ValidateSizeAndType(MempoolTransaction tx)
         => tx is not null
         && !IsSparseBlobTransaction(tx)
         && (!TryTakeTxShape(tx.Hash!, out (int Size, TxType Type) txShape) || (MatchesAnnouncedTransactionSize(tx, txShape.Size) && tx.Type == txShape.Type));
@@ -482,13 +482,13 @@ public class Eth68ProtocolHandler(ISession session,
     /// <summary>
     /// Checks a fetched pooled transaction against the size its announcement declared.
     /// </summary>
-    protected static bool MatchesAnnouncedSize(Transaction tx, int announcedSize)
+    protected static bool MatchesAnnouncedSize(MempoolTransaction tx, int announcedSize)
     {
         int actualSize = tx.GetLength();
         return actualSize == announcedSize
             || tx.SupportsBlobs
             && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-            && GetGethBlobTransactionSizeEstimate(tx, wrapper) == announcedSize;
+            && GetGethBlobTransactionSizeEstimate(tx.Transaction, wrapper) == announcedSize;
     }
 
     // geth estimates the network wrapper as the canonical transaction plus a separately wrapped sidecar.
@@ -499,13 +499,13 @@ public class Eth68ProtocolHandler(ISession session,
             Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
             + Rlp.LengthOfSequence(wrapper.ProofCount * Rlp.LengthOfByteString(ShardBlobNetworkWrapper.BytesPerProof, firstByte: 0)));
-        return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
+        return checked(tx.GetLength() + Rlp.LengthOfSequence(sidecarContentLength));
     }
 
-    protected virtual bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize) =>
+    protected virtual bool MatchesAnnouncedTransactionSize(MempoolTransaction tx, int announcedSize) =>
         MatchesAnnouncedSize(tx, announcedSize);
 
-    private static bool IsSparseBlobTransaction(Transaction tx) =>
-        tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && !lightTx.BlobCellMask.IsFull
+    private static bool IsSparseBlobTransaction(MempoolTransaction tx) =>
+        tx.Transaction is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && !lightTx.BlobCellMask.IsFull
         || tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper && !wrapper.HasFullBlobs();
 }

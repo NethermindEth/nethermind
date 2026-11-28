@@ -704,14 +704,16 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
     }
 
-    internal event Action<Transaction>? TransactionAnnounced;
+    internal event Action<MempoolTransaction>? TransactionAnnounced;
 
     public Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) =>
         _transactionRelay.GetPendingAccount(address, account, nonceLimit);
 
-    public async Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
+    public async Task BroadcastTransactionAsync(MempoolTransaction transaction, CancellationToken cancellationToken)
     {
         _transactionRelay.AddVerified(transaction);
+        // Announcements carry the size and cell mask of the sidecar, which only the light form remembers.
+        Transaction announced = transaction.CarriesBlobs ? new LightTransaction(transaction) : transaction.Transaction;
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
         ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
@@ -720,7 +722,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             int sent = 0;
             foreach (PeerInfo peer in pool.InitializedPeers)
             {
-                try { peer.SyncPeer.SendNewTransaction(transaction); sent++; }
+                try { peer.SyncPeer.SendNewTransaction(announced); sent++; }
                 catch (Exception exception)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Transaction relay to {peer.SyncPeer.Node:c} failed: {exception.Message}");

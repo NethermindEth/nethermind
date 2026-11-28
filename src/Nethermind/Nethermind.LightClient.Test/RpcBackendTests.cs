@@ -1084,7 +1084,7 @@ public class RpcBackendTests
         using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
         Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
         new EthereumEcdsa(1).Sign(key, transaction, true);
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         yield return new("eth_sendRawTransaction", Parameters("0x" + Convert.ToHexString(encoded).ToLowerInvariant()));
     }
 
@@ -3140,7 +3140,7 @@ public class RpcBackendTests
         Transaction transaction = new() { Nonce = scenario == "nonce" ? 6UL : 7UL, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
         new EthereumEcdsa(scenario == "wrong-chain" ? 2UL : 1UL).Sign(key, transaction, true);
         transaction.Hash = transaction.CalculateHash();
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         if (scenario == "trailing") encoded = [.. encoded, 0];
         JsonElement parameters = Parameters("0x" + Convert.ToHexString(encoded).ToLowerInvariant());
         if (scenario == "valid")
@@ -3182,7 +3182,7 @@ public class RpcBackendTests
         }
         Transaction transaction = new() { Nonce = outcome == "timeout" || outcome == "unready" ? 7UL : 8UL, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
         new EthereumEcdsa(1).Sign(key, transaction, true);
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
             await provider.Rpc.InvokeAsync("eth_sendRawTransactionSync", Parameters("0x" + Convert.ToHexString(encoded), 5), CancellationToken.None));
@@ -3207,7 +3207,7 @@ public class RpcBackendTests
         using Provider provider = new(new Account(7, 1_000_000), headNumber: 20_000_000, accountAddress: key.Address);
         Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
         new EthereumEcdsa(1).Sign(key, transaction, true);
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         ConsensusTests.RepairClock clock = new();
         TaskCompletionSource nextHead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using RpcBackend rpc = new(provider, () => provider.Head, 1, specProvider: MainnetSpecProvider.Instance,
@@ -3243,7 +3243,7 @@ public class RpcBackendTests
         Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
         new EthereumEcdsa(1).Sign(key, transaction, true);
         transaction.Hash = transaction.CalculateHash();
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         LogRangeSource headers = new(20_000_000, 20_000_001);
         VerifiedHead start = headers.Head(20_000_000);
         VerifiedHead next = headers.Head(20_000_001);
@@ -3263,7 +3263,7 @@ public class RpcBackendTests
                 Task.FromException<Block>(new RpcException(-32000, "No execution peer supplied authenticated block data.")), Task.FromResult(included));
         else source.GetBlockAsync(newHeader, Arg.Any<CancellationToken>()).Returns(included);
         source.GetReceiptsAsync(newHeader, Arg.Any<CancellationToken>(), 1).Returns(new[] { new TxReceipt { StatusCode = 1, GasUsedTotal = 21_000, Logs = [] } });
-        source.BroadcastTransactionAsync(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        source.BroadcastTransactionAsync(Arg.Any<MempoolTransaction>(), Arg.Any<CancellationToken>()).Returns(_ =>
         {
             latest = next;
             return Task.CompletedTask;
@@ -3330,7 +3330,7 @@ public class RpcBackendTests
             new EthereumEcdsa(1).Sign(key, transaction, true);
             transaction.Hash = transaction.CalculateHash();
             JsonElement parameters = Parameters("0x" + Convert.ToHexString(TxDecoder.Instance.Encode(transaction,
-                RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm)).ToLowerInvariant());
+                RlpBehaviors.SkipTypedWrapping)).ToLowerInvariant());
             if (rules is "none" or "listed")
             {
                 object submittedHash = await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None);
@@ -3370,7 +3370,7 @@ public class RpcBackendTests
                 Transaction transaction = new() { Nonce = nonce, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
                 new EthereumEcdsa(1).Sign(key, transaction, true);
                 return Parameters("0x" + Convert.ToHexString(TxDecoder.Instance.Encode(transaction,
-                    RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm)).ToLowerInvariant());
+                    RlpBehaviors.SkipTypedWrapping)).ToLowerInvariant());
             }
 
             if (relayFails)
@@ -3429,11 +3429,10 @@ public class RpcBackendTests
             MaxFeePerBlobGas = 2,
             To = Address.Zero,
             BlobVersionedHashes = hashes,
-            NetworkWrapper = wrapper,
         };
         new EthereumEcdsa(1).Sign(key, transaction);
         transaction.Hash = transaction.CalculateHash();
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = MempoolTxDecoder.Instance.Encode(new MempoolTransaction(transaction, wrapper), RlpBehaviors.SkipTypedWrapping);
         JsonElement parameters = Parameters("0x" + Convert.ToHexString(encoded).ToLowerInvariant());
         if (tamper)
         {
@@ -3668,7 +3667,7 @@ public class RpcBackendTests
         public TaskCompletionSource? BlockGate { get; set; }
         public VerifiedHead? LastQueriedHead { get; private set; }
         public List<(string Kind, Hash256? BlockHash)> Requests { get; } = [];
-        public List<Transaction> Broadcasts { get; } = [];
+        public List<MempoolTransaction> Broadcasts { get; } = [];
         public Exception? BroadcastFailure { get; set; }
         public bool OmitProof { get; init; }
         public bool TamperProof { get; init; }
@@ -3715,7 +3714,7 @@ public class RpcBackendTests
             return Task.FromResult(_code);
         }
 
-        public Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
+        public Task BroadcastTransactionAsync(MempoolTransaction transaction, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (BroadcastFailure is not null) throw BroadcastFailure;

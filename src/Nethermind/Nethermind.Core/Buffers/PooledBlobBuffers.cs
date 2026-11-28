@@ -39,18 +39,5 @@ internal sealed class PooledBlobBuffers(byte[][] buffers)
         return true;
     }
 
-    internal static void Return(Transaction transaction)
-    {
-        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-            && wrapper.PooledBuffers?.Return() == true)
-        {
-            transaction.NetworkWrapper = null;
-        }
-    }
-
-    internal static void Disown(Transaction transaction)
-    {
-        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-            wrapper.PooledBuffers?.Disown();
-    }
+    internal static void Disown(ShardBlobNetworkWrapper? wrapper) => wrapper?.PooledBuffers?.Disown();
 }

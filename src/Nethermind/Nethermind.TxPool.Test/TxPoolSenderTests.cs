@@ -77,7 +77,7 @@ public class TxPoolSenderTests
     {
         EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        txPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         ITxSigner signer = Substitute.For<ITxSigner>();
         signer.TrySign(Arg.Any<Transaction>()).Returns(call =>
         {
@@ -111,7 +111,7 @@ public class TxPoolSenderTests
     {
         EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        txPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         TxPoolSender sender = BuildSender(out INonceManager _, txPool, ecdsa: ecdsa,
             spec: new OverridableReleaseSpec(SpuriousDragon.Instance) { ValidateChainId = false });
         Transaction tx = Build.A.Transaction.WithNonce(0).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId + 1), TestItem.PrivateKeyA).TestObject;
@@ -127,7 +127,7 @@ public class TxPoolSenderTests
 
         Address[] submitted = [.. txPool.ReceivedCalls()
             .Where(static call => call.GetMethodInfo().Name == nameof(ITxPool.SubmitTx))
-            .Select(static call => ((Transaction)call.GetArguments()[0]).SenderAddress)];
+            .Select(static call => ((MempoolTransaction)call.GetArguments()[0]).SenderAddress)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(otherAddress, Is.Not.EqualTo(TestItem.AddressA), "precondition: without its chain id the signature recovers another address");
@@ -142,7 +142,7 @@ public class TxPoolSenderTests
     {
         EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        txPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         TxPoolSender sender = BuildSender(out INonceManager _, txPool, ecdsa: ecdsa);
         Transaction tx = FrameTx(nonce: 0);
         tx.Signature = Build.A.Transaction.Signed(ecdsa, TestItem.PrivateKeyB).TestObject.Signature;
@@ -163,7 +163,7 @@ public class TxPoolSenderTests
         if (txPool is null)
         {
             txPool = Substitute.For<ITxPool>();
-            txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+            txPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         }
 
         TxSealer sealer = new(signer ?? Substitute.For<ITxSigner>(), Timestamper.Default);

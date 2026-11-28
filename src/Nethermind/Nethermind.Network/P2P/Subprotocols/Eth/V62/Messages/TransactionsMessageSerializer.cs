@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null) : IMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
-        private static readonly TransactionDecoder TxDecoder = TransactionDecoder.Instance;
+        private static readonly MempoolTxDecoder TxDecoder = MempoolTxDecoder.Instance;
 
         /// <summary>The largest measure <see cref="IsOverSizeLimit"/> can read off an RLP short-form item.</summary>
         /// <remarks>
@@ -59,9 +59,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             RlpWriter writer = RlpWriter.ContentWriter(destination);
 
             RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
-            foreach (Transaction tx in message.Transactions.AsSpan())
+            foreach (MempoolTransaction tx in message.Transactions.AsSpan())
             {
-                TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
+                TxDecoder.Encode(ref writer, tx);
             }
 
             writer.EndSequence(sequence);
@@ -71,7 +71,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public TransactionsMessage Deserialize(ReadOnlySpan<byte> data)
         {
             RlpReader ctx = new(data);
-            IOwnedReadOnlyList<Transaction> transactions = DeserializeTxs(ref ctx, _maxTxSize, t_knownTransactionFilter, out int skippedCount);
+            IOwnedReadOnlyList<MempoolTransaction> transactions = DeserializeTxs(ref ctx, _maxTxSize, t_knownTransactionFilter, out int skippedCount);
             return new TransactionsMessage(transactions) { SkippedCount = skippedCount };
         }
 
@@ -82,11 +82,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             int contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                Transaction tx = message.Transactions[i];
-                int txLength = tx.MayHaveNetworkForm
-                    ? TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)
-                    : TransactionDecoder.GetWrappedTxLength(tx.Type, tx.GetLength());
-                Debug.Assert(txLength == TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm), "cached transaction length is stale");
+                MempoolTransaction tx = message.Transactions[i];
+                int txLength = tx.NetworkWrapper is null
+                    ? TransactionDecoder.GetWrappedTxLength(tx.Transaction.Type, tx.Transaction.GetLength())
+                    : TxDecoder.GetLength(tx);
+                Debug.Assert(txLength == TxDecoder.GetLength(tx), "cached transaction length is stale");
                 contentLength += txLength;
             }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         /// <summary>Decodes a transaction list that takes all of <paramref name="ctx"/>.</summary>
-        internal static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
+        internal static IOwnedReadOnlyList<MempoolTransaction> DeserializeTxs(ref RlpReader ctx) =>
             DeserializeTxs(ref ctx, long.MaxValue, knownFilter: null, out _);
 
         internal static int ReadTransactionCount(ref RlpReader ctx) => ctx.EnterSequence(out _).CountItems(RlpLimit);
@@ -104,14 +104,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         /// <param name="maxTxSize">The size cap, or <see cref="long.MaxValue"/> to decode every item without measuring it.</param>
         /// <param name="knownFilter">Settles already-known items, which are then skipped; <see langword="null"/> decodes every item.</param>
         /// <param name="skippedCount">The number of items skipped for exceeding the cap.</param>
-        private static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader reader, long maxTxSize, IKnownTransactionFilter? knownFilter, out int skippedCount)
+        private static IOwnedReadOnlyList<MempoolTransaction> DeserializeTxs(ref RlpReader reader, long maxTxSize, IKnownTransactionFilter? knownFilter, out int skippedCount)
         {
             RlpReader ctx = reader.EnterSequence(out int itemLength);
             int length = ctx.CountItems(RlpLimit);
 
             bool isSizeGuarded = maxTxSize != long.MaxValue;
             int skipped = 0;
-            ArrayPoolList<Transaction> result = [with(length)];
+            ArrayPoolList<MempoolTransaction> result = [with(length)];
             try
             {
                 for (int i = 0; i < length; i++)
@@ -132,13 +132,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                             continue;
                         }
 
-                        Transaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers | RlpBehaviors.ExcludeHashes);
+                        MempoolTransaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.PoolBlobBuffers | RlpBehaviors.ExcludeHashes);
                         tx.Hash = new Hash256(in hash);
                         result.Add(tx);
                         continue;
                     }
 
-                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers));
+                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.PoolBlobBuffers));
                 }
                 reader.ExitSequence(ctx, itemLength);
                 reader.CheckEnd();
@@ -147,10 +147,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
             catch
             {
-                foreach (Transaction tx in result)
+                foreach (MempoolTransaction tx in result)
                 {
+                    tx.NetworkWrapper?.ReturnPooledBuffers();
                     tx.ClearPreHash();
-                    TransactionDecoder.TxObjectPool.Return(tx);
+                    TransactionDecoder.TxObjectPool.Return(tx.Transaction);
                 }
                 result.Dispose();
                 throw;

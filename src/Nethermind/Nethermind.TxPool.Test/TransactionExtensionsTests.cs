@@ -85,9 +85,9 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
 
         /// <summary>A frame transaction in its own EIP-8250 domain, priced at what admission recorded.</summary>
-        private static Transaction KeyedTx(ulong nonce, long cost, Hash256 hash)
+        private static MempoolTransaction KeyedTx(ulong nonce, long cost, Hash256 hash)
         {
-            Transaction tx = Build.A.Transaction
+            MempoolTransaction tx = Build.A.Transaction
                 .WithType(TxType.FrameTx)
                 .WithSenderAddress(TestItem.AddressA)
                 .WithNonce(nonce)

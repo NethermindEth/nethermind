@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 if (block is BlockToProduce blockToProduce
-                    && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes
+                    && blockToProduce.TxByteLength + currentTx.GetLength() > _maxTxLengthBytes
                     && blockToProduce.TransactionsExemptFromByteLimit?.Contains(currentTx) != true)
                 {
                     return NewArgs(block, currentTx, transactionsInBlock).Set(

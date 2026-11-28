@@ -5,6 +5,7 @@ using System;
 using NonBlocking;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -76,7 +77,7 @@ namespace Nethermind.TxPool
         private readonly ILogger _logger;
         private readonly ITimestamper _timestamper;
 
-        public TxBroadcaster(IComparer<Transaction> comparer,
+        public TxBroadcaster(IComparer<MempoolTransaction> comparer,
             ITimerFactory timerFactory,
             ITxPoolConfig txPoolConfig,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -104,9 +105,9 @@ namespace Nethermind.TxPool
         }
 
         // only for testing reasons
-        internal Transaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
+        internal MempoolTransaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
 
-        public bool Broadcast(Transaction tx, bool isPersistent)
+        public bool Broadcast(MempoolTransaction tx, bool isPersistent)
         {
             if (isPersistent)
             {
@@ -118,19 +119,19 @@ namespace Nethermind.TxPool
             return true;
         }
 
-        private bool StartBroadcast(Transaction tx)
+        private bool StartBroadcast(MempoolTransaction tx)
         {
             // broadcast local tx only if MaxFeePerGas is not lower than configurable percent of current base fee
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
 
             if (tx is not null
-                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree()))
+                && (tx.Transaction.MaxFeePerGas >= _baseFeeThreshold || tx.Transaction.IsFree()))
             {
-                Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
-                if (_persistentTxs.TryInsert(tx.Hash, broadcastTx, out Transaction? removed)
+                MempoolTransaction broadcastTx = PrecomputeBlobAnnouncement(tx);
+                if (_persistentTxs.TryInsert(tx.Transaction.Hash, broadcastTx, out MempoolTransaction? removed)
                     && removed?.Hash != tx.Hash)
                 {
-                    NotifyPeersAboutLocalTx(broadcastTx);
+                    NotifyPeersAboutLocalTx(broadcastTx.Transaction);
                     return true;
                 }
             }
@@ -138,17 +139,19 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        private void BroadcastOnce(Transaction tx)
+        private void BroadcastOnce(MempoolTransaction tx)
         {
-            Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
+            Transaction broadcastTx = PrecomputeBlobAnnouncement(tx).Transaction;
             lock (_accumulatedTxsLock)
             {
                 _accumulatedTemporaryTxs.Add(broadcastTx);
             }
         }
 
-        private static Transaction PrecomputeBlobAnnouncement(Transaction tx) =>
-            tx.CarriesBlobs && tx is not LightTransaction ? new LightTransaction(tx) : tx;
+        private static MempoolTransaction PrecomputeBlobAnnouncement(MempoolTransaction tx) =>
+            tx.Transaction.CarriesBlobs && tx.Transaction is not LightTransaction
+                ? tx with { Transaction = new LightTransaction(tx), NetworkWrapper = null }
+                : tx;
 
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
@@ -181,10 +184,10 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            foreach (Transaction tx in _persistentTxs.GetSnapshot())
+            foreach (MempoolTransaction tx in _persistentTxs.GetSnapshot())
             {
                 if (tx.SupportsFrames
-                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    && FrameTxValidation.TryGetExpiryDeadline(tx.Transaction, out ulong deadline)
                     && timestamp > deadline)
                 {
                     StopBroadcast(tx.Hash!);
@@ -194,14 +197,14 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, MempoolTransaction, AddressAsKey>.SortedPoolEventArgs args)
         {
-            if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            if (HasExpiryDeadline(args.Value.Transaction)) Interlocked.Increment(ref _expiringFrameTxCount);
         }
 
-        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, MempoolTransaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
-            if (HasExpiryDeadline(args.Value))
+            if (HasExpiryDeadline(args.Value.Transaction))
             {
                 int remaining = Interlocked.Decrement(ref _expiringFrameTxCount);
                 AssertExpiringFrameTxCountNotNegative(remaining);
@@ -288,12 +291,13 @@ namespace Nethermind.TxPool
             List<Transaction>? persistentHashesToSend = null;
 
             bool broadcastAllTxs = _txPoolConfig.PeerNotificationThreshold == 100;
-            IEnumerable<Transaction> txsToPickFrom = broadcastAllTxs
+            IEnumerable<MempoolTransaction> txsToPickFrom = broadcastAllTxs
                 ? _persistentTxs.GetSnapshot()
                 : _persistentTxs.GetFirsts();
 
-            foreach (Transaction tx in txsToPickFrom)
+            foreach (MempoolTransaction mempoolTx in txsToPickFrom)
             {
+                Transaction tx = mempoolTx.Transaction;
                 if (numberOfPersistentTxsToBroadcast > 0)
                 {
                     if (!tx.CanPayBaseFee(_headInfo.CurrentBaseFee))
@@ -330,7 +334,7 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out Transaction? _);
+                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out MempoolTransaction? _);
                 if (hasBeenRemoved)
                 {
                     if (_logger.IsTrace) _logger.Trace(
@@ -350,9 +354,9 @@ namespace Nethermind.TxPool
             {
                 ulong nonce = includedTx.Nonce;
                 // Ascending nonce order bounds the scan; the domain decides which of those entries is superseded.
-                foreach (Transaction tx in _persistentTxs.TakeWhile(includedTx.SenderAddress!, t => t.Nonce <= nonce))
+                foreach (MempoolTransaction tx in _persistentTxs.TakeWhile(includedTx.SenderAddress!, t => t.Transaction.Nonce <= nonce))
                 {
-                    if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(includedTx, tx))
+                    if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(includedTx, tx.Transaction))
                     {
                         StopBroadcast(tx.Hash!);
                     }
@@ -473,14 +477,14 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(in ValueHash256 hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {
                 return true;
             }
 
-            transaction = default;
+            transaction = null;
             return false;
         }
 

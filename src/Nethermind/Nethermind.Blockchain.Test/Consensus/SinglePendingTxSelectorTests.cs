@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void When_many_transactions_returns_one_with_lowest_nonce_and_highest_timestamp()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            txSource.GetTransactions(_anyParent, _anyTargetBlock, 1000000).ReturnsForAnyArgs(new[]
+            txSource.GetTransactions(_anyParent, _anyTargetBlock, 1000000).ReturnsForAnyArgs(new MempoolTransaction[]
             {
                 Build.A.Transaction.WithNonce(6).TestObject,
                 Build.A.Transaction.WithNonce(1).WithTimestamp(7).TestObject,
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             });
 
             SinglePendingTxSelector selector = new(txSource);
-            Transaction[] result = selector.GetTransactions(_anyParent, _anyTargetBlock, 1000000).ToArray();
+            Transaction[] result = selector.GetTransactions(_anyParent, _anyTargetBlock, 1000000).Select(static tx => tx.Transaction).ToArray();
             Assert.That(result.Length, Is.EqualTo(1));
             using (Assert.EnterMultipleScope())
             {

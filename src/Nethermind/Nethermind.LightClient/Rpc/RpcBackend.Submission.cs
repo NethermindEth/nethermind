@@ -13,7 +13,7 @@ internal sealed partial class RpcBackend
 {
     private readonly SemaphoreSlim _sendReceiptRequests = new(8, 8);
 
-    internal async ValueTask<SerializedJson> GetPendingTransactionViewAsync(Transaction tx, ulong secondsPerSlot, CancellationToken token)
+    internal async ValueTask<SerializedJson> GetPendingTransactionViewAsync(MempoolTransaction tx, ulong secondsPerSlot, CancellationToken token)
     {
         TransactionForRpcContext context = new(chainId);
         if (tx.SupportsFrames && specProvider is not null && getLatestHead?.Invoke() is { } head)
@@ -21,7 +21,9 @@ internal sealed partial class RpcBackend
             BlockHeader header = await execution.GetHeaderAsync(head, token);
             context = TransactionForRpcContext.ForPending(specProvider, header, secondsPerSlot);
         }
-        return BoundedJson.Serialize(TransactionForRpc.FromTransaction(tx, context));
+        TransactionForRpc view = TransactionForRpc.FromTransaction(tx.Transaction, context);
+        if (view is BlobTransactionForRpc blobView) blobView.PopulateSidecar(tx.NetworkWrapper);
+        return BoundedJson.Serialize(view);
     }
 
     internal async Task<SerializedJson> SendRawTransactionSyncAsync(byte[] raw, ulong? timeoutMs, CancellationToken cancellationToken)

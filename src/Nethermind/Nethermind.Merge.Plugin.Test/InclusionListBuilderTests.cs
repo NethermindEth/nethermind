@@ -59,9 +59,9 @@ public class InclusionListBuilderTests
     /// <param name="emptyBucketSenders">Senders the snapshot holds an empty bucket for.</param>
     private static ITxPool PoolOf(Address[]? emptyBucketSenders, params Transaction[] readyTxs)
     {
-        Dictionary<AddressAsKey, Transaction[]> bySender = readyTxs
+        Dictionary<AddressAsKey, MempoolTransaction[]> bySender = readyTxs
             .GroupBy(tx => new AddressAsKey(tx.SenderAddress!))
-            .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
+            .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).Select(static tx => (MempoolTransaction)tx).ToArray());
         foreach (Address sender in emptyBucketSenders ?? []) bySender[new AddressAsKey(sender)] = [];
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(bySender);

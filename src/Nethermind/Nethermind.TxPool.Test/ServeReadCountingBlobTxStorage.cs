@@ -30,40 +30,40 @@ internal sealed class ServeReadCountingBlobTxStorage(BlobTxStorage inner)
 
     internal void ResetCounts() => (FullRowReads, SidecarFreeReads) = (0, 0);
 
-    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         FullRowReads++;
         return inner.TryGet(hash, sender, timestamp, out transaction);
     }
 
-    public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         SidecarFreeReads++;
         return inner.TryGetWithoutBlobs(hash, sender, out transaction);
     }
 
-    public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
+    public int TryGetMany(TxLookupKey[] keys, int count, MempoolTransaction?[] results)
     {
         FullRowReads += count;
         return inner.TryGetMany(keys, count, results);
     }
 
-    public IEnumerable<LightTransaction> GetAll() => inner.GetAll();
-    public void Add(Transaction transaction) => inner.Add(transaction);
-    public void AddWithoutBlobs(Transaction transaction) => inner.AddWithoutBlobs(transaction);
+    public IEnumerable<MempoolTransaction> GetAll() => inner.GetAll();
+    public void Add(MempoolTransaction transaction) => inner.Add(transaction);
+    public void AddWithoutBlobs(MempoolTransaction transaction) => inner.AddWithoutBlobs(transaction);
     public void Delete(in ValueHash256 hash, in UInt256 timestamp) => inner.Delete(hash, timestamp);
 
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out MempoolTransaction[]? blockBlobTransactions)
         => inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
 
-    public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+    public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<MempoolTransaction> blockBlobTransactions)
         => inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
 
     public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => inner.DeleteBlobTransactionsFromBlock(blockNumber);
 
     void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys) => ((IAtomicBlobTxStorage)inner).DeleteMany(keys);
 
-    void IAtomicBlobTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+    void IAtomicBlobTxStorage.Replace(MempoolTransaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
         => ((IAtomicBlobTxStorage)inner).Replace(transaction, obsoleteTimestamps);
 
     string? ISpecChangeValidationStorage.GetSpecChangeValidationMarker() => ((ISpecChangeValidationStorage)inner).GetSpecChangeValidationMarker();

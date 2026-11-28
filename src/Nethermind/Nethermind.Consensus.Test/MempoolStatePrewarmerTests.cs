@@ -48,7 +48,7 @@ public class MempoolStatePrewarmerTests
     [Test]
     public void SelectDelta_WhenEmpty_ReturnsEmpty([Values] bool missingSender)
     {
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(missingSender ? [new Transaction()] : [], []);
+        Transaction[] delta = SelectDelta(missingSender ? [new Transaction()] : [], []);
 
         Assert.That(delta, Is.Empty, "an empty selection yields no transactions to warm");
     }
@@ -60,11 +60,11 @@ public class MempoolStatePrewarmerTests
         Dictionary<AddressAsKey, int> warmedPerSender = [];
         if (reused)
         {
-            MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+            SelectDelta(ordered, warmedPerSender);
             warmedPerSender.Clear();
         }
 
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+        Transaction[] delta = SelectDelta(ordered, warmedPerSender);
 
         using (Assert.EnterMultipleScope())
         {
@@ -80,8 +80,8 @@ public class MempoolStatePrewarmerTests
         Transaction[] ordered = [.. BuildSenderTxs(TestItem.PrivateKeyA, 3)];
         Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-        MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
-        Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+        SelectDelta(ordered, warmedPerSender);
+        Transaction[] secondPass = SelectDelta(ordered, warmedPerSender);
 
         Assert.That(secondPass, Is.Empty, "a sender whose whole selected set is already warmed is skipped on the next pass");
     }
@@ -91,9 +91,9 @@ public class MempoolStatePrewarmerTests
     {
         Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-        MempoolStatePrewarmer.SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 2), warmedPerSender);
+        SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 2), warmedPerSender);
         // A later-nonce transaction arrives for the same sender.
-        Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 4), warmedPerSender);
+        Transaction[] secondPass = SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 4), warmedPerSender);
 
         Assert.That(secondPass.Length, Is.EqualTo(4), "when new transactions arrive the sender's full group is replayed so predecessors are present");
     }
@@ -109,8 +109,8 @@ public class MempoolStatePrewarmerTests
         ];
         Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender, gasBudget: 100);
-        Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender, gasBudget: 100);
+        Transaction[] delta = SelectDelta(ordered, warmedPerSender, gasBudget: 100);
+        Transaction[] secondPass = SelectDelta(ordered, warmedPerSender, gasBudget: 100);
 
         using (Assert.EnterMultipleScope())
         {
@@ -132,7 +132,7 @@ public class MempoolStatePrewarmerTests
         ];
         Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender, gasBudget: 100);
+        Transaction[] delta = SelectDelta(ordered, warmedPerSender, gasBudget: 100);
 
         using (Assert.EnterMultipleScope())
         {
@@ -151,7 +151,7 @@ public class MempoolStatePrewarmerTests
         RepeatingDeltaPreWarmer preWarmer = new(passes: 1);
         using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
-            .Returns(transactions);
+            .Returns([.. transactions]);
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
         Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -173,7 +173,7 @@ public class MempoolStatePrewarmerTests
         using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
         int pass = 0;
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
-            .Returns(_ => ++pass < lateArrivalPass ? queue[..pass] : [late, .. queue[..pass]]);
+            .Returns(_ => ++pass < lateArrivalPass ? [.. queue[..pass]] : [late, .. queue[..pass]]);
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
         Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -199,7 +199,7 @@ public class MempoolStatePrewarmerTests
         using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
         int pass = 0;
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
-            .Returns(_ => Enumerable.Reverse(arrivals[..++pass]).ToArray());
+            .Returns(_ => [.. Enumerable.Reverse(arrivals[..++pass])]);
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
         Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -230,18 +230,18 @@ public class MempoolStatePrewarmerTests
         Dictionary<AddressAsKey, int> warmed = [];
         Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
 
-        Transaction[] first = MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch);
+        Transaction[] first = SelectDelta(interleaved, warmed, scratch);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(a.Concat(b)));
             Assert.That(scratch, Is.Empty);
         }
-        Assert.That(MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch), Is.Empty);
+        Assert.That(SelectDelta(interleaved, warmed, scratch), Is.Empty);
 
         Transaction[] extended = BuildSenderTxs(TestItem.PrivateKeyB, count + 1);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
+            Assert.That(SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
             Assert.That(scratch, Is.Empty);
         }
     }
@@ -252,8 +252,8 @@ public class MempoolStatePrewarmerTests
         Transaction[] transactions = BuildSenderTxs(TestItem.PrivateKeyA, 2);
         Dictionary<AddressAsKey, int> warmed = [];
         Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
-        Assert.Throws<InvalidOperationException>(() => MempoolStatePrewarmer.SelectDelta(FailingSource(), warmed, scratch));
-        Assert.That(MempoolStatePrewarmer.SelectDelta(transactions, warmed, scratch), Is.EqualTo(transactions));
+        Assert.Throws<InvalidOperationException>(() => SelectDelta(FailingSource(), warmed, scratch));
+        Assert.That(SelectDelta(transactions, warmed, scratch), Is.EqualTo(transactions));
 
         IEnumerable<Transaction> FailingSource()
         {
@@ -275,7 +275,7 @@ public class MempoolStatePrewarmerTests
         Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
         bool drained = false;
 
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(CancellingSource(), warmed, scratch, cancellation.Token);
+        Transaction[] delta = SelectDelta(CancellingSource(), warmed, scratch, cancellation.Token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -373,7 +373,7 @@ public class MempoolStatePrewarmerTests
 
         Assert.That(await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.Null, "a pass cancelled during selection has no delta");
 
-        IEnumerable<Transaction> CancellingSource()
+        IEnumerable<MempoolTransaction> CancellingSource()
         {
             yield return transactions[0];
             cancellation.Cancel();
@@ -519,7 +519,7 @@ public class MempoolStatePrewarmerTests
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
-            .Returns(BuildSenderTxs(TestItem.PrivateKeyA, 1));
+            .Returns([.. BuildSenderTxs(TestItem.PrivateKeyA, 1)]);
         IBlockProducerTxSourceFactory txSourceFactory = Substitute.For<IBlockProducerTxSourceFactory>();
         txSourceFactory.Create().Returns(txSource);
 
@@ -620,6 +620,10 @@ public class MempoolStatePrewarmerTests
 
         public void Dispose() { }
     }
+
+    private static Transaction[] SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
+        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> bySender = null, CancellationToken token = default, ulong gasBudget = ulong.MaxValue) =>
+        MempoolStatePrewarmer.SelectDelta(orderedTxs.Select(static tx => (MempoolTransaction)tx), warmedPerSender, bySender, token, gasBudget);
 
     private static Transaction[] BuildSenderTxs(PrivateKey sender, int count) =>
         Enumerable.Range(0, count)

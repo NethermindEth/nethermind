@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.TxPool;
@@ -34,8 +35,13 @@ public sealed class SpecChangeTxValidator(ulong chainId) :
     public ValidationResult IsWellFormedAfterFullValidation(Transaction transaction, IReleaseSpec releaseSpec) =>
         ValidationResult.Success;
 
-    public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec) =>
-        LightTxValidator.IsWellFormed(transaction, releaseSpec);
+    public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec)
+    {
+        ValidationResult result = LightTxValidator.IsWellFormed(transaction, releaseSpec);
+        return result && transaction.ProofVersion is ProofVersion proofVersion && proofVersion != releaseSpec.BlobProofVersion
+            ? TxErrorMessages.InvalidProofVersion
+            : result;
+    }
 
     private sealed class SpecChangeSignatureTxValidator(ulong chainId) : ITxValidator
     {

@@ -40,11 +40,11 @@ public class CompositeTxSourceTests
                 {
                     GeneratedTransaction transaction = Build.A.GeneratedTransaction.To(address).WithGasPrice(UInt256.Zero).TestObject;
                     txs.Add(transaction);
-                    return new[] { transaction };
+                    return new MempoolTransaction[] { transaction };
                 }
                 else
                 {
-                    return Array.Empty<Transaction>();
+                    return Array.Empty<MempoolTransaction>();
                 }
             });
             return immediateTransactionSource;
@@ -62,12 +62,12 @@ public class CompositeTxSourceTests
         ITxSource immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, targetBlock, TestItem.AddressD, expected, true);
 
         Transaction[] originalTxs = Build.A.Transaction.TestObjectNTimes(5);
-        innerPendingTxSelector.GetTransactions(parentHeader, targetBlock, Arg.Any<ulong>()).Returns(originalTxs);
+        innerPendingTxSelector.GetTransactions(parentHeader, targetBlock, Arg.Any<ulong>()).Returns([.. originalTxs]);
 
         CompositeTxSource compositeTxSource = new(
             immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
 
-        Transaction[] transactions = compositeTxSource.GetTransactions(parentHeader, targetBlock, gasLimit).ToArray();
+        Transaction[] transactions = compositeTxSource.GetTransactions(parentHeader, targetBlock, gasLimit).Select(static tx => tx.Transaction).ToArray();
         expected.AddRange(originalTxs);
 
         Assert.That(transactions, Is.EqualTo(expected));

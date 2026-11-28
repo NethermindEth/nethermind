@@ -29,8 +29,9 @@ public sealed class SendPolicyTxSender(
     private static readonly AcceptTxResult Refused = new("send policy");
     private readonly ILogger _logger = logManager.GetClassLogger<SendPolicyTxSender>();
 
-    public async ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+    public async ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)> SendTransaction(MempoolTransaction mempoolTx, TxHandlingOptions txHandlingOptions)
     {
+        Transaction tx = mempoolTx.Transaction;
         // Where the spec does not validate chain ids, the pool accepts a legacy signature for another chain, and block
         // processing recovers it over the chain id it carries; so does the inner sender, which refuses a sender set here
         // that is not that account.
@@ -58,12 +59,12 @@ public sealed class SendPolicyTxSender(
             if (!config.WarnOnly) return (hash, Refused.WithMessage(refusal));
         }
 
-        if (entry is null) return await inner.SendTransaction(tx, txHandlingOptions);
+        if (entry is null) return await inner.SendTransaction(mempoolTx, txHandlingOptions);
 
         bool accepted = false;
         try
         {
-            (Hash256 Hash, AcceptTxResult? AddTxResult) result = await inner.SendTransaction(tx, txHandlingOptions);
+            (Hash256 Hash, AcceptTxResult? AddTxResult) result = await inner.SendTransaction(mempoolTx, txHandlingOptions);
             accepted = result.AddTxResult?.Equals(AcceptTxResult.Accepted) == true;
             return result;
         }

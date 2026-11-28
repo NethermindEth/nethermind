@@ -25,14 +25,14 @@ internal sealed class KeyedNonceDisjointnessFilter(
     TxDistinctSortedPool standardPool,
     TxDistinctSortedPool blobPool) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.SupportsFrames || !KeyedNonceManager.UsesKeyedNonce(tx))
+        if (!tx.Transaction.SupportsFrames || !KeyedNonceManager.UsesKeyedNonce(tx.Transaction))
         {
             return AcceptTxResult.Accepted;
         }
 
-        OverlapSearch search = new(tx);
+        OverlapSearch search = new(tx.Transaction);
         standardPool.VisitBucket(tx.SenderAddress!, ref search, Visit);
         if (!search.Overlaps)
         {
@@ -48,9 +48,9 @@ internal sealed class KeyedNonceDisjointnessFilter(
         return AcceptTxResult.Accepted;
     }
 
-    private static bool Visit(Transaction pending, ref OverlapSearch state)
+    private static bool Visit(MempoolTransaction pending, ref OverlapSearch state)
     {
-        if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending))
+        if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending.Transaction))
         {
             return true;
         }

@@ -43,7 +43,7 @@ public class InclusionListTxSourceTests
             Build.A.BlockHeader.WithNumber(0).TestObject,
             Build.A.BlockHeader.WithNumber(1).TestObject,
             30_000_000UL,
-            payloadAttributes);
+            payloadAttributes).Select(static tx => tx.Transaction);
 
     [Test]
     public void Empty_when_no_payload_attributes()

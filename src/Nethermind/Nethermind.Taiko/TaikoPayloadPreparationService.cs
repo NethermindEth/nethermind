@@ -213,7 +213,7 @@ public class TaikoPayloadPreparationService(
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
         Transaction[] transactions = BuildTransactions(payloadAttributes);
 
-        return new BlockToProduce(header, transactions, [], payloadAttributes.Withdrawals);
+        return new BlockToProduce(header, Array.ConvertAll(transactions, static tx => (MempoolTransaction)tx), [], payloadAttributes.Withdrawals);
     }
 
     public ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)

@@ -35,7 +35,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     private const int FullTxKeyLength = 64;
     private const int ElidedTxKeyLength = 33;
     private const byte ElidedTxKeyPrefix = 0x01;
-    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static readonly MempoolTxDecoder _txDecoder = MempoolTxDecoder.Instance;
     private static ReadOnlySpan<byte> SpecChangeValidationMarkerKey => "spec-change-validation"u8;
     private static readonly Lock[] _transactionLocks = CreateTransactionLocks();
     private readonly Lock _processedTransactionsLock = new();
@@ -47,14 +47,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
-    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction) =>
+    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out MempoolTransaction? transaction) =>
         TryGetFullTx(hash, sender, timestamp, RlpBehaviors.None, out transaction);
 
     /// <inheritdoc/>
-    bool IBlobTxElidedReadStorage.TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction) =>
+    bool IBlobTxElidedReadStorage.TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out MempoolTransaction? transaction) =>
         TryGetFullTx(hash, sender, timestamp, RlpBehaviors.ExcludeBlobs, out transaction);
 
-    private bool TryGetFullTx(in ValueHash256 hash, Address sender, in UInt256 timestamp, RlpBehaviors extraBehaviors, [NotNullWhen(true)] out Transaction? transaction)
+    private bool TryGetFullTx(in ValueHash256 hash, Address sender, in UInt256 timestamp, RlpBehaviors extraBehaviors, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
@@ -71,7 +71,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     }
 
     /// <inheritdoc/>
-    public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
         GetElidedTxKey(hash, elidedKey);
@@ -81,7 +81,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         {
             if (!elidedBytes.IsNull())
             {
-                transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+                RlpReader reader = new(elidedBytes);
+                transaction = _txDecoder.Decode(ref reader);
                 if (transaction is null)
                 {
                     return false;
@@ -134,12 +135,12 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
     }
 
-    public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
+    public int TryGetMany(TxLookupKey[] keys, int count, MempoolTransaction?[] results)
     {
         if (count == 0) return 0;
 
         ReadOnlySpan<TxLookupKey> lookups = keys.AsSpan(0, count);
-        Span<Transaction?> transactions = results.AsSpan(0, count);
+        Span<MempoolTransaction?> transactions = results.AsSpan(0, count);
         using ArrayPoolSpan<byte> dbKeys = new(checked(count * FullTxKeyLength));
         Span<byte> keyBuffer = dbKeys;
         for (int i = 0; i < count; i++)
@@ -148,13 +149,13 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                 keyBuffer.Slice(i * FullTxKeyLength, FullTxKeyLength));
         }
 
-        _fullBlobTxsDb.GetMany<Transaction?, FullTransactionDecoder>(keyBuffer, FullTxKeyLength,
+        _fullBlobTxsDb.GetMany<MempoolTransaction?, FullTransactionDecoder>(keyBuffer, FullTxKeyLength,
             transactions, default);
 
         int found = 0;
         for (int i = 0; i < count; i++)
         {
-            if (transactions[i] is not { } transaction) continue;
+            if (transactions[i] is not { Transaction: { } transaction }) continue;
             transaction.SenderAddress = lookups[i].Sender;
             transaction.Timestamp = lookups[i].Timestamp;
             found++;
@@ -168,7 +169,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     /// startup. Both counts and the first failure are reported once when enumeration ends, so that losing one record
     /// and losing every record — which a layout change does — stay distinguishable without logging per record.
     /// </remarks>
-    public IEnumerable<LightTransaction> GetAll()
+    public IEnumerable<MempoolTransaction> GetAll()
     {
         int skipped = 0;
         int restored = 0;
@@ -178,7 +179,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         {
             foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
             {
-                LightTransaction transaction;
+                MempoolTransaction transaction;
                 try
                 {
                     transaction = LightTxDecoder.Decode(txBytes);
@@ -205,33 +206,32 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
     }
 
-    public void Add(Transaction transaction)
+    public void Add(MempoolTransaction transaction)
         => Replace(transaction, []);
 
-    void IAtomicBlobTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+    void IAtomicBlobTxStorage.Replace(MempoolTransaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
         => Replace(transaction, obsoleteTimestamps);
 
-    private void Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+    private void Replace(MempoolTransaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
     {
-        if (transaction?.Hash is null)
+        if (transaction?.Transaction?.Hash is not { } transactionHash)
         {
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        ValueHash256 hash = transaction.Hash.ValueHash256;
+        ValueHash256 hash = transactionHash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
             using ArrayPoolSpan<byte> fullRlp = _txDecoder.EncodeToArrayPoolSpan(
                 transaction,
-                RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+                RlpBehaviors.Storage);
             byte[] lightRlp = LightTxDecoder.Encode(transaction);
 
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
             if (ShouldWriteElided(transaction, elidedKey))
             {
                 using ArrayPoolSpan<byte> elidedRlp = _txDecoder.EncodeToArrayPoolSpan(
-                    BlobTransactionPayload.Elide(transaction),
-                    RlpBehaviors.InMempoolForm);
+                    BlobTransactionPayload.Elide(transaction));
                 WriteTransaction(transaction, obsoleteTimestamps, fullRlp, lightRlp, elidedKey, elidedRlp);
             }
             else
@@ -242,14 +242,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     }
 
     /// <inheritdoc/>
-    public void AddWithoutBlobs(Transaction transaction)
+    public void AddWithoutBlobs(MempoolTransaction transaction)
     {
-        if (transaction?.Hash is null)
+        if (transaction.Transaction?.Hash is not { } transactionHash)
         {
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        ValueHash256 hash = transaction.Hash.ValueHash256;
+        ValueHash256 hash = transactionHash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
             Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
@@ -263,7 +263,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
     }
 
-    private void SaveWithoutBlobsIfMissing(Transaction transaction)
+    private void SaveWithoutBlobsIfMissing(MempoolTransaction transaction)
     {
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
         if (!ShouldWriteElided(transaction, elidedKey))
@@ -271,7 +271,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             return;
         }
 
-        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(BlobTransactionPayload.Elide(transaction), RlpBehaviors.InMempoolForm);
+        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(BlobTransactionPayload.Elide(transaction));
         _fullBlobTxsDb.PutSpan(elidedKey, rlp);
     }
 
@@ -305,7 +305,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         DeleteMany(keys);
 
     private void WriteTransaction(
-        Transaction transaction,
+        MempoolTransaction transaction,
         scoped ReadOnlySpan<UInt256> obsoleteTimestamps,
         scoped ReadOnlySpan<byte> fullRlp,
         byte[] lightRlp,
@@ -428,7 +428,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     }
 
     [SkipLocalsInit]
-    public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+    public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<MempoolTransaction> blockBlobTransactions)
     {
         if (blockBlobTransactions.Count == 0)
         {
@@ -462,7 +462,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     }
 
     [SkipLocalsInit]
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out MempoolTransaction[]? blockBlobTransactions)
     {
         using Lock.Scope locked = _processedTransactionsLock.EnterScope();
         using MemoryManager<byte>? bytes = _processedBlobTxsDb.GetOwnedMemory(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
@@ -478,7 +478,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             if (encoded[0] != 0)
             {
                 RlpReader ctx = new(encoded);
-                blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
+                blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
                 return true;
             }
 
@@ -487,7 +487,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                 blockBlobTransactions = null;
                 return false;
             }
-            Transaction[] transactions = new Transaction[count];
+            MempoolTransaction[] transactions = new MempoolTransaction[count];
             Unsafe.SkipInit(out Vector128<byte> keyStorage);
             Span<byte> key = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keyStorage, 1))[..ProcessedTransactionKeyLength];
             BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
@@ -514,9 +514,9 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     /// <inheritdoc/>
     [SkipLocalsInit]
-    bool IProcessedBlobTxStorage.TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out Transaction? transaction)
+    bool IProcessedBlobTxStorage.TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
-        transaction = null;
+        transaction = default;
 
         Span<byte> key = stackalloc byte[ProcessedTransactionKeyLength];
         WriteProcessedTransactionKey(key, blockNumber, position);
@@ -527,7 +527,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     /// <inheritdoc/>
     /// <remarks>Reads row by row: the multi-get indexer needs exact-size arrays and copies every payload.</remarks>
     [SkipLocalsInit]
-    int IProcessedBlobTxStorage.TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<Transaction?> results)
+    int IProcessedBlobTxStorage.TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<MempoolTransaction?> results)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(results.Length, keys.Length);
 
@@ -535,7 +535,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         int found = 0;
         for (int i = 0; i < keys.Length; i++)
         {
-            results[i] = null;
+            results[i] = default;
             WriteProcessedTransactionKey(key, keys[i].BlockNumber, keys[i].Position);
             using MemoryManager<byte>? payload = _processedBlobTxsDb.GetOwnedMemory(key);
             if (payload is not null && TryDecodeProcessedTransaction(payload.GetSpan(), out results[i]))
@@ -588,14 +588,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         BinaryPrimitives.WriteInt32BigEndian(key[sizeof(ulong)..], position);
     }
 
-    private static Transaction? DecodeProcessedTransaction(ReadOnlySpan<byte> payload)
+    private static MempoolTransaction? DecodeProcessedTransaction(ReadOnlySpan<byte> payload)
     {
         RlpReader reader = new(payload);
-        return _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
+        return _txDecoder.Decode(ref reader, RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
     }
 
     // A row that fails to decode as RLP reads as a miss, so a lock-free reader does not throw on it. Other failures still propagate.
-    private static bool TryDecodeProcessedTransaction(ReadOnlySpan<byte> payload, [NotNullWhen(true)] out Transaction? transaction)
+    private static bool TryDecodeProcessedTransaction(ReadOnlySpan<byte> payload, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         try
         {
@@ -603,7 +603,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
         catch (RlpReaderException)
         {
-            transaction = null;
+            transaction = default;
         }
 
         return transaction is not null;
@@ -626,11 +626,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
     }
 
-    private static void SaveProcessedTransactions(IWriteBatch batch, Span<byte> key, ReadOnlySpan<Transaction> transactions)
+    private static void SaveProcessedTransactions(IWriteBatch batch, Span<byte> key, ReadOnlySpan<MempoolTransaction> transactions)
     {
-        const RlpBehaviors behaviors = RlpBehaviors.InMempoolForm | RlpBehaviors.Storage;
+        const RlpBehaviors behaviors = RlpBehaviors.Storage;
         int maxLength = 0;
-        foreach (Transaction transaction in transactions)
+        foreach (MempoolTransaction transaction in transactions)
         {
             maxLength = Math.Max(maxLength, _txDecoder.GetLength(transaction, behaviors));
         }
@@ -639,11 +639,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Span<byte> buffer = rented;
         Span<byte> transactionIndex = key.Slice(sizeof(ulong), sizeof(int));
         int index = 0;
-        foreach (Transaction transaction in transactions)
+        foreach (MempoolTransaction transaction in transactions)
         {
             BinaryPrimitives.WriteInt32BigEndian(transactionIndex, index++);
             RlpWriter writer = RlpWriter.ContentWriter(buffer);
-            _txDecoder.EncodeTx(ref writer, transaction, behaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+            _txDecoder.Encode(ref writer, transaction, behaviors);
             batch.PutSpan(key, buffer[..writer.Length]);
         }
     }
@@ -653,11 +653,12 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Address sender,
         in UInt256 timestamp,
         RlpBehaviors extraBehaviors,
-        [NotNullWhen(true)] out Transaction? transaction)
+        [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         if (!txBytes.IsNull())
         {
-            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput | extraBehaviors);
+            RlpReader reader = new(txBytes);
+            transaction = _txDecoder.Decode(ref reader, RlpBehaviors.Storage | RlpBehaviors.TrustedInput | extraBehaviors);
             if (transaction is null)
             {
                 return false;
@@ -672,12 +673,12 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         return false;
     }
 
-    private readonly struct FullTransactionDecoder : IValueDecoder<Transaction?>
+    private readonly struct FullTransactionDecoder : IValueDecoder<MempoolTransaction?>
     {
-        public Transaction? Decode(ReadOnlySpan<byte> buffer)
+        public MempoolTransaction? Decode(ReadOnlySpan<byte> buffer)
         {
             RlpReader reader = new(buffer);
-            return Rlp.Decode<Transaction>(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
+            return _txDecoder.Decode(ref reader, RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
         }
     }
 
@@ -687,9 +688,9 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         hash.Bytes.CopyTo(elidedKey[1..]);
     }
 
-    private bool ShouldWriteElided(Transaction transaction, scoped Span<byte> elidedKey)
+    private bool ShouldWriteElided(MempoolTransaction transaction, scoped Span<byte> elidedKey)
     {
-        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper)
+        if (transaction.NetworkWrapper is null)
         {
             return false;
         }

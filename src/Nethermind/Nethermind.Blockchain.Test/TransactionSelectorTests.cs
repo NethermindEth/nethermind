@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -31,6 +32,8 @@ namespace Nethermind.Blockchain.Test
     [Parallelizable(ParallelScope.All)]
     public class TransactionSelectorTests
     {
+        private static readonly ConditionalWeakTable<Transaction, ShardBlobNetworkWrapper> BlobSidecars = [];
+
         public static IEnumerable ProperTransactionsSelectedTestCases
         {
             get
@@ -226,15 +229,19 @@ namespace Nethermind.Blockchain.Test
             => CreateBlobTransaction(address, key, maxFee, blobCount, nonce: 1);
 
         private static Transaction CreateBlobTransaction(
-            Address address, PrivateKey key, UInt256 maxFee, int blobCount, ulong nonce, uint priority = 1) =>
-            Build.A.Transaction
+            Address address, PrivateKey key, UInt256 maxFee, int blobCount, ulong nonce, uint priority = 1)
+        {
+            MempoolTransaction blobTx = Build.A.Transaction
                 .WithSenderAddress(address)
                 .WithShardBlobTxTypeAndFields(blobCount)
                 .WithNonce(nonce)
                 .WithMaxFeePerGas(maxFee)
                 .WithMaxPriorityFeePerGas(priority)
                 .WithGasLimit(100_000)
-                .SignedAndResolved(key).TestObject;
+                .SignedAndResolved(key).MempoolTestObject;
+            BlobSidecars.Add(blobTx.Transaction, blobTx.NetworkWrapper!);
+            return blobTx.Transaction;
+        }
 
         public static IEnumerable BlobTransactionOrderingTestCases
         {
@@ -532,30 +539,35 @@ namespace Nethermind.Blockchain.Test
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);
-            IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
-            IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
+            IComparer<MempoolTransaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
+            IComparer<MempoolTransaction> comparer = CompareTxByNonce.Instance.ForMempool().ThenBy(defaultComparer);
 
-            Dictionary<AddressAsKey, Transaction[]> GroupTransactions(bool supportBlobs) =>
+            Dictionary<AddressAsKey, MempoolTransaction[]> GroupTransactions(bool supportBlobs) =>
                 testCase.Transactions
                     .Where(t => t.SenderAddress is not null)
                     .Where(t => t.SupportsBlobs == supportBlobs)
                     .GroupBy(t => t.SenderAddress)
                     .ToDictionary(
                         g => new AddressAsKey(g.Key!),
-                        g => g.OrderBy(t => t, comparer).ToArray());
+                        g => g.Select(static t => (MempoolTransaction)t).OrderBy(t => t, comparer).ToArray());
 
-            Dictionary<AddressAsKey, Transaction[]> transactions = GroupTransactions(false);
-            Dictionary<AddressAsKey, Transaction[]> blobTransactions = GroupTransactions(true);
+            Dictionary<AddressAsKey, MempoolTransaction[]> transactions = GroupTransactions(false);
+            Dictionary<AddressAsKey, MempoolTransaction[]> blobTransactions = GroupTransactions(true);
             transactionPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
                 .Returns(new PendingTransactionsView(transactions, blobTransactions, isRevalidated: true));
-            foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
+            foreach (MempoolTransaction[] senderBlobTxs in blobTransactions.Values)
             {
-                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
-                    out Arg.Any<Transaction?>()).Returns(x =>
+                for (int i = 0; i < senderBlobTxs.Length; i++)
                 {
-                    x[1] = blobTx;
-                    return true;
-                });
+                    MempoolTransaction blobTx = new(senderBlobTxs[i].Transaction, BlobSidecars.TryGetValue(senderBlobTxs[i].Transaction, out ShardBlobNetworkWrapper? sidecar) ? sidecar : null);
+                    senderBlobTxs[i] = new LightTransaction(blobTx);
+                    transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
+                        out Arg.Any<MempoolTransaction?>()).Returns(x =>
+                    {
+                        x[1] = blobTx;
+                        return true;
+                    });
+                }
             }
 
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
@@ -578,7 +590,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockHeader parent = parentHeader.TestObject;
             BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
-            return poolTxSource.GetTransactions(parent, targetBlock, testCase.GasLimit).ToArray();
+            return poolTxSource.GetTransactions(parent, targetBlock, testCase.GasLimit).Select(static tx => tx.Transaction).ToArray();
         }
 
         public class ProperTransactionsSelectedTestCase

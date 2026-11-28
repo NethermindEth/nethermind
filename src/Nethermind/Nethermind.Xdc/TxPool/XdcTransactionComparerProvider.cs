@@ -36,23 +36,23 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
 {
     private readonly ITransactionComparerProvider defaultComparerProvider = new TransactionComparerProvider(specProvider, blockFinder);
 
-    public IComparer<Transaction> GetDefaultComparer()
+    public IComparer<MempoolTransaction> GetDefaultComparer()
     {
-        IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultComparer();
+        IComparer<MempoolTransaction> defaultComparer = defaultComparerProvider.GetDefaultComparer();
 
         IXdcReleaseSpec finalSpec = specProvider.GetXdcSpec(ulong.MaxValue - 1);
         CompareTxBySender signerFilter = new(finalSpec);
 
-        return signerFilter.ThenBy(defaultComparer);
+        return signerFilter.ForMempool().ThenBy(defaultComparer);
     }
 
-    public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
+    public IComparer<MempoolTransaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
     {
-        IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
+        IComparer<MempoolTransaction> defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(blockPreparationContext.BlockNumber);
         CompareTxBySender signerFilter = new(currentSpec);
 
-        return signerFilter.ThenBy(defaultComparer);
+        return signerFilter.ForMempool().ThenBy(defaultComparer);
     }
 }

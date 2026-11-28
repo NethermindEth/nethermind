@@ -291,7 +291,7 @@ public class SendPolicyTxSenderTests
         ulong nextNonce = 0;
         inner.SendTransaction(default!, default).ReturnsForAnyArgs(call =>
         {
-            call.Arg<Transaction>().Nonce = nextNonce++;
+            call.Arg<MempoolTransaction>().Transaction.Nonce = nextNonce++;
             return new ValueTask<(Hash256, AcceptTxResult?)>((Keccak.Zero, AcceptTxResult.Accepted));
         });
         SendPolicyTxSender sender = CreateSender(inner, RulesFile(rules));
@@ -423,8 +423,8 @@ public class SendPolicyTxSenderTests
     private static ITxSender AcceptingSender()
     {
         ITxSender sender = Substitute.For<ITxSender>();
-        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(ci => new ValueTask<(Hash256, AcceptTxResult?)>((ci.Arg<Transaction>().Hash!, AcceptTxResult.Accepted)));
+        sender.SendTransaction(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(ci => new ValueTask<(Hash256, AcceptTxResult?)>((ci.Arg<MempoolTransaction>().Hash!, AcceptTxResult.Accepted)));
         return sender;
     }
 

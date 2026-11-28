@@ -819,7 +819,7 @@ public class PrewarmerReadAheadTests
     private static Block BuildBlock(ulong gasLimit, params Transaction[] transactions) =>
         Build.A.Block.WithNumber(1).WithGasLimit(gasLimit).WithTransactions(transactions).TestObject;
 
-    private static Block AsProduced(Block block) => new BlockToProduce(block.Header, block.Transactions, block.Uncles, block.Withdrawals);
+    private static Block AsProduced(Block block) => new BlockToProduce(block.Header, Array.ConvertAll(block.Transactions, static tx => (MempoolTransaction)tx), block.Uncles, block.Withdrawals);
 
     private static Transaction WalkerCall(PrivateKey sender, ulong nonce, UInt256 start, int count) =>
         Call(sender, nonce, ColdTailContracts.Walker, 1_000_000, ColdTailContracts.Words(start, (ulong)count));

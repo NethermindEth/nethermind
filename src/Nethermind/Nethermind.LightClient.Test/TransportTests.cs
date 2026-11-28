@@ -5377,30 +5377,30 @@ public class TransportTests
             MaxFeePerBlobGas = 2,
             To = Address.Zero,
             BlobVersionedHashes = proofs.ComputeHashes(wrapper),
-            NetworkWrapper = wrapper,
         };
         using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
         new EthereumEcdsa(1).Sign(key, transaction);
         transaction.Hash = transaction.CalculateHash();
         using BoundedTransactionRelay relay = new();
-        Transaction source = recycleSource
-            ? Rlp.Decode<Transaction>(Rlp.Encode(transaction, RlpBehaviors.InMempoolForm), RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers)!
-            : transaction;
-        ShardBlobNetworkWrapper sourceWrapper = (ShardBlobNetworkWrapper)source.NetworkWrapper!;
+        MempoolTransaction mempoolTransaction = new(transaction, wrapper);
+        MempoolTransaction source = recycleSource
+            ? MempoolTxDecoder.Instance.DecodeCompleteNotNull(MempoolTxDecoder.Instance.Encode(mempoolTransaction), RlpBehaviors.PoolBlobBuffers)
+            : mempoolTransaction;
+        ShardBlobNetworkWrapper sourceWrapper = source.NetworkWrapper!;
         relay.AddVerified(source);
-        if (recycleSource) new Transaction.PoolPolicy().Return(source);
+        if (recycleSource) new Transaction.PoolPolicy().Return(source.Transaction);
         ITxPool pool = relay;
-        bool foundTransaction = pool.TryGetPendingTransaction(transaction.Hash, out Transaction? served);
-        bool foundMetadata = pool.TryGetPendingTransactionWithoutBlobs(transaction.Hash, out Transaction? metadata);
+        bool foundTransaction = pool.TryGetPendingTransaction(transaction.Hash, out MempoolTransaction? served);
+        bool foundMetadata = pool.TryGetPendingTransactionWithoutBlobs(transaction.Hash, out MempoolTransaction? metadata);
         Assert.That((foundTransaction, foundMetadata), Is.EqualTo((true, true)));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pool.SupportsBlobs, Is.True);
             Assert.That(pool.IsKnown(transaction.Hash), Is.True);
             Assert.That(served!.Hash, Is.EqualTo(transaction.Hash));
-            Assert.That(Rlp.Encode(served), Is.EqualTo(Rlp.Encode(transaction)));
+            Assert.That(Rlp.Encode(served.Transaction), Is.EqualTo(Rlp.Encode(transaction)));
             Assert.That(served.NetworkWrapper, Is.SameAs(sourceWrapper));
-            Assert.That(((ShardBlobNetworkWrapper)metadata!.NetworkWrapper!).Blobs, Is.Empty);
+            Assert.That(metadata!.NetworkWrapper!.Blobs, Is.Empty);
             Assert.That(pool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(pool.GetPendingTransactionsCount(), Is.Zero);
         }

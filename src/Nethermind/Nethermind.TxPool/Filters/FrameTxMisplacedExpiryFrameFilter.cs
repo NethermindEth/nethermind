@@ -10,9 +10,9 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>The pool reads the deadline from the leading frame alone, so a misplaced frame would outlive the expiry sweep.</remarks>
 internal sealed class FrameTxMisplacedExpiryFrameFilter(ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.SupportsFrames || !FrameTxValidation.HasMisplacedExpiryFrame(tx))
+        if (!tx.Transaction.SupportsFrames || !FrameTxValidation.HasMisplacedExpiryFrame(tx.Transaction))
         {
             return AcceptTxResult.Accepted;
         }

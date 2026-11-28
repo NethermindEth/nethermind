@@ -204,7 +204,7 @@ public abstract partial class BaseTxDecoder(TxType txType, Func<Transaction>? tr
     }
 
     /// <summary>Writes the EIP-2718 prefix of a typed transaction whose encoding after the type byte is <paramref name="bodyLength"/> long.</summary>
-    protected static void StartTypedTransaction(ref RlpWriter writer, TxType txType, int bodyLength, RlpBehaviors rlpBehaviors)
+    protected internal static void StartTypedTransaction(ref RlpWriter writer, TxType txType, int bodyLength, RlpBehaviors rlpBehaviors)
     {
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
         {
@@ -215,7 +215,7 @@ public abstract partial class BaseTxDecoder(TxType txType, Func<Transaction>? tr
     }
 
     /// <summary>The length of a typed transaction whose encoding after the type byte is <paramref name="bodyLength"/> long.</summary>
-    protected static int GetTypedTransactionLength(int bodyLength, RlpBehaviors rlpBehaviors) =>
+    protected internal static int GetTypedTransactionLength(int bodyLength, RlpBehaviors rlpBehaviors) =>
         (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0
             ? 1 + bodyLength
             : Rlp.LengthOfSequence(1 + bodyLength);

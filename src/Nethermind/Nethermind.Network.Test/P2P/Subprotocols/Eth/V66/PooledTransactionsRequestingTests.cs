@@ -45,7 +45,7 @@ public class PooledTransactionsRequestingTests
     private ISession _session = null!;
     private ISession _session2 = null!;
     private Eth66ProtocolHandler _handler = null!;
-    private ArrayPoolList<Transaction> _txs = null!;
+    private ArrayPoolList<MempoolTransaction> _txs = null!;
     private IMessageSerializationService _svc = null!;
     private Block _genesisBlock = null!;
     private CompositeDisposable _disposables = null!;
@@ -101,10 +101,10 @@ public class PooledTransactionsRequestingTests
         syncManager.AddTo(_disposables);
         _handler.Init();
 
-        Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).WithMaxPriorityFeePerGas(1).WithGasLimit(100)
-            .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
+        MempoolTransaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).WithMaxPriorityFeePerGas(1).WithGasLimit(100)
+            .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).MempoolTestObject;
 
-        Hash256 _txHash = tx.CalculateHash();
+        Hash256 _txHash = tx.Transaction.CalculateHash();
         _txs = new(1) { tx };
         _txs.AddTo(_disposables);
 

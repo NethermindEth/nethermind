@@ -262,21 +262,21 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// <remarks>The optional scratch dictionary is owned by one speculative session and cleared between passes.</remarks>
     /// <returns>The delta, or <see langword="null"/> when <paramref name="token"/> ends the pass before selection completes;
     /// nothing is then recorded as warmed.</returns>
-    internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
+    internal static Transaction[]? SelectDelta(IEnumerable<MempoolTransaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
         Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default, ulong gasBudget = ulong.MaxValue)
     {
         ulong sessionGasRemaining = ulong.MaxValue;
         return SelectDelta(orderedTxs, warmedPerSender, ref sessionGasRemaining, bySender, token, gasBudget);
     }
 
-    internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
+    internal static Transaction[]? SelectDelta(IEnumerable<MempoolTransaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
         ref ulong sessionGasRemaining, Dictionary<AddressAsKey, SenderSelection>? bySender, CancellationToken token, ulong gasBudget)
     {
         ulong newGas = 0;
         bySender ??= [];
         bySender.Clear();
-        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<Transaction> collection ? collection.Count : 0);
-        foreach (Transaction tx in orderedTxs)
+        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<MempoolTransaction> collection ? collection.Count : 0);
+        foreach (MempoolTransaction mempoolTx in orderedTxs)
         {
             // Each pull runs the producer's ordering and filters; a block arriving must not wait for the whole selection.
             if (token.IsCancellationRequested)
@@ -285,6 +285,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 return null;
             }
 
+            Transaction tx = mempoolTx.Transaction;
             if (tx.SenderAddress is not Address sender) continue;
             ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
             if (!exists) warmedPerSender.TryGetValue(sender, out group.Warmed);

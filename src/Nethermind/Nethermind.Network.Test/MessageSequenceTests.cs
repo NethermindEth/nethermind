@@ -80,7 +80,7 @@ public class MessageSequenceTests
 
         yield return new TestCaseData((Action)(static () =>
         {
-            using TransactionsMessage transactions = new(new ArrayPoolList<Transaction>(1) { Build.A.Transaction.Signed().TestObject });
+            using TransactionsMessage transactions = new(new ArrayPoolList<MempoolTransaction>(1) { Build.A.Transaction.Signed().TestObject });
             SerializeIntoLongerDestination(new TransactionsMessageSerializer(), transactions);
         })).SetName("Transactions");
 

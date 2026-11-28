@@ -16,7 +16,7 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
     private readonly IChainHeadSpecProvider _specProvider = specProvider;
     private readonly ILogger _logger = logger;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (tx.Type == TxType.DepositTx)
         {
@@ -50,12 +50,15 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
         // EIP-8141: as for type-3, the mempool form is the sidecar wrapper. The RLP decoder enforces this off the
         // wire, but a transaction built field-by-field over eth_sendTransaction never passes through it.
-        if (tx.SupportsFrames && tx.CarriesBlobs && !tx.IsInMempoolForm())
+        if (tx.Transaction.SupportsFrames && tx.Transaction.CarriesBlobs && state.NetworkWrapper is null)
         {
             Metrics.PendingTransactionsFrameTxMissingSidecar++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transaction has no blob sidecar.");
             return AcceptTxResult.FrameTxMissingSidecar;
         }
+
+        // A type-3 without a sidecar is not rejected here: the in-memory blob pool accepts it, while persistent
+        // blob storage cannot encode it and SubmitTx throws.
 
         return AcceptTxResult.Accepted;
     }

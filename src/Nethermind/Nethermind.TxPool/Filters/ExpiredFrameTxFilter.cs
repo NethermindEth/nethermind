@@ -10,10 +10,10 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>The predeploy reverts only once <c>block.timestamp &gt; deadline</c>, so the comparison is strict here too.</remarks>
 internal sealed class ExpiredFrameTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (tx.SupportsFrames
-            && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+            && FrameTxValidation.TryGetExpiryDeadline(tx.Transaction, out ulong deadline)
             && chainHeadInfoProvider.HeadTimestamp > deadline)
         {
             Metrics.PendingTransactionsFrameTxExpired++;

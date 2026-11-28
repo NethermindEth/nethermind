@@ -27,20 +27,20 @@ namespace Nethermind.TxPool
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
         public long PendingTransactionsAdded => 0;
-        public Transaction[] GetPendingTransactions() => [];
+        public MempoolTransaction[] GetPendingTransactions() => [];
 
-        public Transaction[] GetPendingTransactionsBySender(Address address) => [];
+        public MempoolTransaction[] GetPendingTransactionsBySender(Address address) => [];
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
-            => new Dictionary<AddressAsKey, Transaction[]>();
+        public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
+            => new Dictionary<AddressAsKey, MempoolTransaction[]>();
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
-            => new Dictionary<AddressAsKey, Transaction[]>();
+        public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender()
+            => new Dictionary<AddressAsKey, MempoolTransaction[]>();
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default)
-            => new Dictionary<AddressAsKey, Transaction[]>();
+        public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default)
+            => new Dictionary<AddressAsKey, MempoolTransaction[]>();
 
-        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
+        public MempoolTransaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
 
         public void AddPeer(ITxPoolPeer peer) { }
 
@@ -52,9 +52,9 @@ namespace Nethermind.TxPool
 
         public long GetRemovalGeneration(Address sender) => 0;
 
-        public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
+        public AcceptTxResult SubmitTx(MempoolTransaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
-        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
+        public AcceptTxResult ValidateTxForBlobSampling(MempoolTransaction tx) => AcceptTxResult.Invalid;
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) { }
 
@@ -62,25 +62,25 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
-        public bool EvictTransaction(Transaction tx) => false;
+        public bool EvictTransaction(MempoolTransaction tx) => false;
 
-        public Transaction? GetBestTx() => null;
+        public MempoolTransaction? GetBestTx() => null;
 
-        public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();
+        public IEnumerable<MempoolTransaction> GetBestTxOfEachSender() => Array.Empty<MempoolTransaction>();
 
         public bool IsKnown(Hash256 hash) => false;
 
         public bool IsKnown(in ValueHash256 hash) => false;
 
-        public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? transaction)
         {
-            transaction = null;
+            transaction = default;
             return false;
         }
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTransaction)
         {
-            blobTransaction = null;
+            blobTransaction = default;
             return false;
         }
 

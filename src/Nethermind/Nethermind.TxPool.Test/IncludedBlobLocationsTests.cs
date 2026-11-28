@@ -259,9 +259,9 @@ public class IncludedBlobLocationsTests
     {
         const int hashCount = 16;
         const int steps = 20_000;
-        (ulong Height, Transaction[] Txs)[] schedule = CreateSchedule(steps, hashCount);
+        (ulong Height, MempoolTransaction[] Txs)[] schedule = CreateSchedule(steps, hashCount);
         ConcurrentDictionary<(int Seed, IncludedBlobLocation Location), bool> recorded = new();
-        foreach ((ulong height, Transaction[] txs) in schedule)
+        foreach ((ulong height, MempoolTransaction[] txs) in schedule)
         {
             for (int position = 0; position < txs.Length; position++)
             {
@@ -301,7 +301,7 @@ public class IncludedBlobLocationsTests
         {
             try
             {
-                foreach ((ulong height, Transaction[] txs) in schedule)
+                foreach ((ulong height, MempoolTransaction[] txs) in schedule)
                 {
                     _locations.Record(height, null, txs);
                     if (height % 7 == 0)
@@ -337,15 +337,15 @@ public class IncludedBlobLocationsTests
         }
     }
 
-    private static (ulong Height, Transaction[] Txs)[] CreateSchedule(int steps, int hashCount)
+    private static (ulong Height, MempoolTransaction[] Txs)[] CreateSchedule(int steps, int hashCount)
     {
         Random random = new(7);
-        (ulong, Transaction[])[] schedule = new (ulong, Transaction[])[steps];
+        (ulong, MempoolTransaction[])[] schedule = new (ulong, MempoolTransaction[])[steps];
         ulong head = 1;
         for (int step = 0; step < steps; step++)
         {
             head = random.Next(6) == 0 ? head.SaturatingSub((ulong)random.Next(3)) : head + 1;
-            Transaction[] txs = new Transaction[random.Next(4)];
+            MempoolTransaction[] txs = new MempoolTransaction[random.Next(4)];
             for (int position = 0; position < txs.Length; position++)
             {
                 // Few distinct hashes, so the same hash is recorded by many blocks and positions.
@@ -358,10 +358,10 @@ public class IncludedBlobLocationsTests
         return schedule;
     }
 
-    private static Transaction[] CreateBlock(int maxEntriesPerBlock, ref int hashSeed, Random random)
+    private static MempoolTransaction[] CreateBlock(int maxEntriesPerBlock, ref int hashSeed, Random random)
     {
         int remaining = random.Next(maxEntriesPerBlock + 1);
-        List<Transaction> txs = [];
+        List<MempoolTransaction> txs = [];
         while (remaining > 0)
         {
             int blobCount = Math.Min(remaining, random.Next(1, 4));

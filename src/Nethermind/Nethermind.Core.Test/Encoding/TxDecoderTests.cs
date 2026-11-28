@@ -442,7 +442,7 @@ namespace Nethermind.Core.Test.Encoding
             void Decode()
             {
                 RlpReader ctx = new(malformedWrapped);
-                _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm);
+                _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.None);
             }
 
             Assert.That(Decode, Throws.InstanceOf<RlpReaderException>());

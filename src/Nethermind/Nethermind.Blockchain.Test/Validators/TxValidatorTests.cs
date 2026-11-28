@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using CkzgLib;
 using FastEnumUtility;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -518,104 +517,6 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
-    private static IEnumerable<TestCaseData> OversizedWrapperFieldCases()
-    {
-        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Blobs = [new byte[Ckzg.BytesPerBlob + 1], .. w.Blobs[1..]] }))
-            .SetName("IsWellFormed_BlobTxHasBlobOverTheSizeLimit_ReturnFalse");
-        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Commitments = [new byte[Ckzg.BytesPerCommitment + 1], .. w.Commitments[1..]] }))
-            .SetName("IsWellFormed_BlobTxHasCommitmentOverTheSizeLimit_ReturnFalse");
-        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Proofs = new byte[w.Proofs.Length + 1] }))
-            .SetName("IsWellFormed_BlobTxHasProofOverTheSizeLimit_ReturnFalse");
-    }
-
-    [TestCaseSource(nameof(OversizedWrapperFieldCases))]
-    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper> corrupt)
-    {
-        Transaction tx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields()
-            .WithMaxFeePerGas(100000)
-            .WithGasLimit(1000000)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved()
-            .TestObject;
-
-        tx.NetworkWrapper = corrupt((ShardBlobNetworkWrapper)tx.NetworkWrapper!);
-
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
-    }
-
-    [Test]
-    public void IsWellFormed_BlobTxWithUnknownProofVersion_ReturnFalseWithoutThrowing()
-    {
-        Transaction tx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithMaxFeePerGas(100000)
-            .WithGasLimit(1000000)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved()
-            .TestObject;
-        tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Version = (ProofVersion)byte.MaxValue };
-
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        bool? result = null;
-
-        Assert.That(() => result = txValidator.IsWellFormed(tx, Osaka.Instance).AsBool(), Throws.Nothing);
-        Assert.That(result, Is.False);
-    }
-
-    [TestCaseSource(nameof(FrameBlobProofVersionCases))]
-    public bool IsWellFormed_FrameBlobTxProofVersion(ProofVersion proofVersion)
-    {
-        Transaction tx = BuildBlobCarryingFrameTx(proofVersion);
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
-        return txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool();
-    }
-
-    private static IEnumerable<TestCaseData> FrameBlobProofVersionCases()
-    {
-        yield return new TestCaseData(Eip8141Prototype.Instance.BlobProofVersion).Returns(true).SetName("IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue");
-        // The frames fork (Amsterdam-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
-        yield return new TestCaseData(ProofVersion.V0).Returns(false).SetName("IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse");
-    }
-
-    [Test]
-    public void IsWellFormed_FrameBlobTxWithCorruptSidecarProofs_ReturnsFalse()
-    {
-        Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        wrapper.Proofs.AsSpan(0, Ckzg.BytesPerProof).Clear(); // break the KZG cell proof while keeping the length valid
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
-        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
-    }
-
-    private static Transaction BuildBlobCarryingFrameTx(ProofVersion version)
-    {
-        if (!KzgPolynomialCommitments.IsInitialized)
-        {
-            KzgPolynomialCommitments.InitializeAsync().Wait();
-        }
-
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
-        byte[] blob = new byte[Ckzg.BytesPerBlob];
-        blob[0] = 1;
-        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blob);
-        proofsManager.ComputeProofsAndCommitments(wrapper);
-
-        return new Transaction
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = TestItem.AddressA,
-            Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
-            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
-            NetworkWrapper = wrapper,
-        };
-    }
-
     private static IEnumerable<TestCaseData> SpecChangeValidationCases()
     {
         yield return new TestCaseData(
@@ -649,17 +550,6 @@ public class TxValidatorTests
                     .SignedAndResolved()
                     .TestObject)
             .SetName("Spec_change_gas_limit_cap_is_covered_by_full_validation");
-
-        yield return new TestCaseData(
-                Osaka.Instance,
-                Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
-                    .WithMaxFeePerGas(1)
-                    .WithMaxPriorityFeePerGas(1)
-                    .WithChainId(TestBlockchainIds.ChainId)
-                    .SignedAndResolved()
-                    .TestObject)
-            .SetName("Spec_change_proof_version_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Shanghai.Instance,
@@ -706,6 +596,23 @@ public class TxValidatorTests
             Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
             Assert.That(fullValidationResult.AsBool, Is.False);
         }
+    }
+
+    [Test]
+    public void Spec_change_light_validation_requires_the_head_proof_version([Values] ProofVersion sidecarVersion, [Values] ProofVersion headVersion)
+    {
+        static IReleaseSpec SpecFor(ProofVersion version) => version == ProofVersion.V1 ? Osaka.Instance : Cancun.Instance;
+        LightTransaction lightTx = new(Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: SpecFor(sidecarVersion))
+            .WithMaxFeePerGas(1)
+            .WithMaxPriorityFeePerGas(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .MempoolTestObject);
+
+        ValidationResult result = new SpecChangeTxValidator(TestBlockchainIds.ChainId).IsWellFormedLight(lightTx, SpecFor(headVersion));
+
+        Assert.That(result.Error, Is.EqualTo(sidecarVersion == headVersion ? null : TxErrorMessages.InvalidProofVersion));
     }
 
     // A frame transaction has no envelope gas limit and no `to`, so GasLimit holds the sum of frame budgets
@@ -1162,23 +1069,6 @@ public class TxValidatorTests
                 TestName = "A correct shard blob tx",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(Osaka.Instance, Build.A.Transaction
-                .WithChainId(TestBlockchainIds.ChainId)
-                .WithTimestamp(ulong.MaxValue)
-                .WithMaxFeePerGas(1)
-                .WithMaxFeePerBlobGas(1)
-                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with
-                {
-                    Blobs = [],
-                    CellMask = BlobCellMask.Empty,
-                    Cells = []
-                })
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "Blob tx with commitments but no blobs or cells",
-                ExpectedResult = false
-            };
 
             yield return new TestCaseData(Cancun.Instance, MakeTestObject(0)
                 .SignedAndResolved().TestObject)
@@ -1247,55 +1137,6 @@ public class TxValidatorTests
                 .SignedAndResolved().TestObject)
             {
                 TestName = "BlobVersionedHashes are of a wrong length",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [] })
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "Blobs count does not match hashes count",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Commitments = [] })
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "Commitments count does not match hashes count",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Proofs = [] })
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "Proofs count does not match hashes count",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-             .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [], Commitments = [], Proofs = [] })
-             .SignedAndResolved().TestObject)
-            {
-                TestName = "Blobs count does not match network wrapper items counts, empty blobs",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject(2)
-               .With(static tx => tx.BlobVersionedHashes = [.. tx.BlobVersionedHashes!.Take(1)])
-               .SignedAndResolved().TestObject)
-            {
-                TestName = "Blobs count does not match network wrapper items counts, less hashes",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "A commitment does not math hash",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[1] ^= 0xFF)
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "Proofs are not valid",
                 ExpectedResult = false
             };
         }

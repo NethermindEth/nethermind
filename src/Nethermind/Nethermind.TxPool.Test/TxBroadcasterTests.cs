@@ -45,7 +45,7 @@ public class TxBroadcasterTests
     private ILogManager _logManager;
     private ISpecProvider _specProvider;
     private IBlockTree _blockTree;
-    private IComparer<Transaction> _comparer;
+    private IComparer<MempoolTransaction> _comparer;
     private TxBroadcaster _broadcaster;
     private EthereumEcdsa _ethereumEcdsa;
     private TxPoolConfig _txPoolConfig;
@@ -225,10 +225,10 @@ public class TxBroadcasterTests
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
+            Assert.That(_broadcaster.GetSnapshot().FirstOrDefault()?.Transaction, Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
 
-            Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
-            Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
+            Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out MempoolTransaction returnedTx), Is.EqualTo(!isBlob));
+            Assert.That(returnedTx?.Transaction, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
         }
     }
 
@@ -237,9 +237,9 @@ public class TxBroadcasterTests
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        Transaction tx = Build.A.Transaction
+        MempoolTransaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
-            .SignedAndResolved().TestObject;
+            .SignedAndResolved().MempoolTestObject;
 
         Transaction lightTx = new LightTransaction(tx);
 
@@ -247,19 +247,19 @@ public class TxBroadcasterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(size, Is.EqualTo(131320));
-            Assert.That(lightTx.GetLength(), Is.EqualTo(size));
+            Assert.That(lightTx.GetNetworkLength(), Is.EqualTo(size));
         }
 
-        _broadcaster.Broadcast(tx, true);
+        _broadcaster.Broadcast(lightTx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
-        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(lightTx).UsingTransactionComparer());
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault()?.Transaction, Is.EqualTo(lightTx).UsingTransactionComparer());
 
         RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
 
         _broadcaster.AddPeer(peer);
         _broadcaster.BroadcastPersistentTxs();
 
-        Assert.That(peer.Batches.Count(batch => !batch.SendFullTx && batch.Txs[0].GetLength(true) == size), Is.EqualTo(1));
+        Assert.That(peer.Batches.Count(batch => !batch.SendFullTx && batch.Txs[0].GetNetworkLength() == size), Is.EqualTo(1));
     }
 
     [Test]
@@ -271,11 +271,11 @@ public class TxBroadcasterTests
         RecordingTxPoolPeer secondPeer = new(TestItem.PublicKeyB);
         _broadcaster.AddPeer(firstPeer);
         _broadcaster.AddPeer(secondPeer);
-        Transaction tx = Build.A.Transaction
+        MempoolTransaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
             .SignedAndResolved()
-            .TestObject;
-        Transaction input = isPrecomputed ? new LightTransaction(tx) : tx;
+            .MempoolTestObject;
+        MempoolTransaction input = isPrecomputed ? new LightTransaction(tx) : tx;
 
         _broadcaster.Broadcast(input, isPersistent: true);
 
@@ -285,7 +285,12 @@ public class TxBroadcasterTests
         {
             Assert.That(firstAnnouncement, Is.TypeOf<LightTransaction>());
             Assert.That(secondAnnouncement, Is.SameAs(firstAnnouncement));
-            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input) : Is.Not.SameAs(input));
+            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input.Transaction) : Is.Not.SameAs(input.Transaction));
+
+            LightTransaction announced = (LightTransaction)firstAnnouncement;
+            Assert.That(announced.NetworkLength, Is.EqualTo(tx.GetLength()));
+            Assert.That(announced.BlobCellMask, Is.EqualTo(tx.NetworkWrapper!.GetAvailableCellMask()));
+            Assert.That(announced.ProofVersion, Is.EqualTo(tx.NetworkWrapper.Version));
         }
     }
 
@@ -598,7 +603,7 @@ public class TxBroadcasterTests
 
         _broadcaster.EnsureStopBroadcastUpToNonce(includeKeyed ? keyOne : accountDomain);
 
-        Assert.That(_broadcaster.GetSnapshot(),
+        Assert.That(_broadcaster.GetSnapshot().Select(static tx => tx.Transaction),
             Is.EquivalentTo(includeKeyed ? new[] { keyTwo, accountDomain } : new[] { keyOne, keyTwo }));
     }
 
@@ -618,7 +623,7 @@ public class TxBroadcasterTests
 
         _broadcaster.EnsureStopBroadcastUpToNonce(included);
 
-        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { later }));
+        Assert.That(_broadcaster.GetSnapshot().Select(static tx => tx.Transaction), Is.EquivalentTo(new[] { later }));
     }
 
     /// <remarks>Inclusion consumes every key the transaction names, so a persistent entry that shares one is
@@ -636,7 +641,7 @@ public class TxBroadcasterTests
 
         _broadcaster.EnsureStopBroadcastUpToNonce(PersistentTx(TestItem.KeccakC, 5, [(UInt256)1, (UInt256)2]));
 
-        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { disjoint }));
+        Assert.That(_broadcaster.GetSnapshot().Select(static tx => tx.Transaction), Is.EquivalentTo(new[] { disjoint }));
     }
 
     /// <summary>A locally submitted transaction of one sender, distinguished from its siblings by hash and by
@@ -904,10 +909,10 @@ public class TxBroadcasterTests
 
         SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
 
-        Transaction blobTransaction = Build.A.Transaction
+        MempoolTransaction blobTransaction = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: spec)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-            .TestObject;
+            .MempoolTestObject;
 
         LightTransaction lightTransaction = new(blobTransaction);
 
@@ -933,10 +938,10 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
         };
+        LightTransaction pooledFrameBlobTx = new(new MempoolTransaction(frameBlobTx, new ShardBlobNetworkWrapper([], [], [], wrapperVersion)));
 
-        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
+        Assert.That(gossipPolicy.ShouldGossipTransaction(pooledFrameBlobTx), Is.EqualTo(versionMatches));
     }
 
     [Test]

@@ -142,9 +142,7 @@ public partial class EngineModuleTests
         Assert.That(transactionsInBlock, Is.EqualTo(transactions).UsingTransactionComparer(
             nameof(Transaction.ChainId),
             nameof(Transaction.SenderAddress),
-            nameof(Transaction.Timestamp),
-            nameof(Transaction.PoolIndex),
-            nameof(Transaction.GasBottleneck)));
+            nameof(Transaction.Timestamp)));
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -206,18 +204,18 @@ public partial class EngineModuleTests
 
         public bool SupportsBlobs { get; }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<MempoolTransaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             Hash256 startingHead = blockTree.HeadHash!;
             uint count = 50;
             int value = 10;
             Address recipient = TestItem.AddressF;
             PrivateKey sender = TestItem.PrivateKeyB;
-            Transaction[] transactions = BuildTransactions(blockTree, specProvider, stateReader, timestamper, startingHead, sender, recipient, count, value, out _, out _);
+            MempoolTransaction[] transactions = BuildMempoolTransactions(blockTree, specProvider, stateReader, timestamper, startingHead, sender, recipient, count, value, out _, out _);
 
             getTransactionsCalled.TrySetResult();
 
-            foreach (Transaction item in transactions)
+            foreach (MempoolTransaction item in transactions)
             {
                 Interlocked.Increment(ref _pulls);
                 bool cancelled = false;
@@ -922,10 +920,10 @@ public partial class EngineModuleTests
     public async Task Lightweight_transaction_validation_is_applied_on_new_head(TransactionBuilder<Transaction> txBuilder, int blobCount, IReleaseSpec? blobSpec, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
     {
         // allocate blobs outside testcase to avoid excessive allocation
-        Transaction tx = txBuilder
+        MempoolTransaction tx = txBuilder
             .WithShardBlobTxTypeAndFields(blobCount, spec: blobSpec)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
+            .MempoolTestObject;
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .WithGenesisPostProcessor((genesis, state) =>

@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
     {
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
-        Transaction[] GetPendingTransactions();
+        MempoolTransaction[] GetPendingTransactions();
 
         public event EventHandler<Block>? TxPoolHeadChanged;
 
@@ -37,7 +37,7 @@ namespace Nethermind.TxPool
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
+        IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
 
         /// <summary>
         /// Non-blob txs grouped by sender address, limited to senders holding a non-frame transaction the next
@@ -49,24 +49,24 @@ namespace Nethermind.TxPool
         /// nothing such a caller can use.
         /// <para>The default body only approximates that: it falls back to the full readiness filter, so an
         /// implementation that does not override it pays those reads and may return frame-only senders.</para></remarks>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee) =>
+        IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee) =>
             GetPendingTransactionsBySender(filterToReadyTx: true, baseFee);
 
         /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender();
+        IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender();
 
         /// <summary>
         /// Blob txs light equivalences grouped by sender, optionally limited to executable sender heads.
         /// </summary>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(
+        IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender(
             bool filterToReadyTx,
             UInt256 baseFee = default) => GetPendingLightBlobTransactionsBySender();
 
-        Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) =>
-            GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
+        MempoolTransaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) =>
+            GetPendingLightBlobTransactionsBySender().TryGetValue(address, out MempoolTransaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
 
@@ -74,12 +74,12 @@ namespace Nethermind.TxPool
         void RemovePeer(ITxPoolPeer peer);
 
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
-        AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
+        AcceptTxResult SubmitTx(MempoolTransaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
         /// Validates a sparse blob transaction before sampler cell retrieval without inserting it
         /// or performing KZG cell-proof verification.
         /// </summary>
-        AcceptTxResult ValidateTxForBlobSampling(Transaction tx);
+        AcceptTxResult ValidateTxForBlobSampling(MempoolTransaction tx);
         /// <summary>
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
@@ -121,21 +121,21 @@ namespace Nethermind.TxPool
         /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
         /// pooled one rather than a re-decoded copy sharing its hash.</param>
         /// <returns><see langword="true"/> if this call removed the transaction from the pool.</returns>
-        bool EvictTransaction(Transaction tx);
-        Transaction? GetBestTx();
-        IEnumerable<Transaction> GetBestTxOfEachSender();
+        bool EvictTransaction(MempoolTransaction tx);
+        MempoolTransaction? GetBestTx();
+        IEnumerable<MempoolTransaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
         /// <summary>Checks whether a transaction hash is already known.</summary>
         bool IsKnown(in ValueHash256 hash);
-        bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction);
+        bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? transaction);
 
         /// <summary>
         /// Gets a pending transaction for metadata-only consumers. Blob and cell payloads are
         /// elided from returned blob transactions while commitments and proofs are preserved.
         /// </summary>
-        bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? transaction)
         {
-            if (TryGetPendingTransaction(hash, out transaction) && transaction is not null)
+            if (TryGetPendingTransaction(hash, out transaction))
             {
                 transaction = BlobTransactionPayload.Elide(transaction);
                 return true;
@@ -164,7 +164,7 @@ namespace Nethermind.TxPool
             return TryGetPendingBlobCellMask(hash, out availableMask);
         }
 
-        bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
+        bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTransaction);
 
         /// <summary>
         /// Takes the pending transactions to build <paramref name="targetBlock"/> from, together with whether

@@ -89,7 +89,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.Validator.OnBlockProcessingEnd(childBlock, []);
 
             context.TxSender.Received(isPosDao ? Math.Min(ReportingContractBasedValidator.MaxQueuedReports, validatorsToReport) : 0)
-                .SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+                .SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
 
         }
 
@@ -119,7 +119,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChange().Returns(initChangeTransaction);
 
             BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
-            Transaction[] transactions = context.Validator.GetTransactions(parent, targetBlock, 3000000).ToArray();
+            Transaction[] transactions = context.Validator.GetTransactions(parent, targetBlock, 3000000).Select(static tx => tx.Transaction).ToArray();
             ulong gap = parentBlockNumber.SaturatingSub(startReportBlockNumber);
             int addedMaliciousTransactions = (int)Math.Min((ulong)validatorsToReport, gap);
             Assert.That(transactions.Length, Is.EqualTo(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) + (initChangeTransactionAdded ? 1 : 0)));
@@ -141,7 +141,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressC, (UInt256)header.Number);
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressD, (UInt256)header.Number);
             context.ReportingValidatorContract.Received(0).ReportBenign(NodeAddress, (UInt256)header.Number);
-            context.TxSender.Received(3).SendTransaction(Arg.Is<Transaction>(static t => t is GeneratedTransaction), TxHandlingOptions.ManagedNonce);
+            context.TxSender.Received(3).SendTransaction(Arg.Is<MempoolTransaction>(static t => t.Transaction is GeneratedTransaction), TxHandlingOptions.ManagedNonce);
         }
 
         [Test]
@@ -167,7 +167,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //ignored
 
-            context.TxSender.Received(4).SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            context.TxSender.Received(4).SendTransaction(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         public class TestContext

@@ -100,9 +100,10 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         }
     }
 
-    internal async Task ValidateFrameAdmissionAsync(VerifiedHead head, Transaction transaction, BlockHeader contextHeader,
+    internal async Task ValidateFrameAdmissionAsync(VerifiedHead head, MempoolTransaction mempoolTransaction, BlockHeader contextHeader,
         IReleaseSpec spec, CancellationToken cancellationToken, bool requireReady = false)
     {
+        Transaction transaction = mempoolTransaction.Transaction;
         if (FrameTxValidation.ValidationWorkGas(transaction) > TxPoolConfig.DefaultFrameTxMaxVerifyGas
             || FrameTxValidation.ValidationWorkStateGas(transaction) > 500_000)
             throw new RpcException(-32003, "Frame validation prefix exceeds the bounded public-mempool work limit.");
@@ -168,7 +169,7 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
                             }
                             if (!result || tracer.Violated || tracer.Payer is null)
                                 throw new RpcException(-32003, tracer.ViolationReason ?? result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
-                            transaction.PayerAddress = tracer.Payer;
+                            mempoolTransaction.PayerAddress = tracer.Payer;
                             completed = true;
                             returned = true;
                             return;

@@ -20,7 +20,7 @@ namespace Nethermind.TxPool.Filters
         private readonly bool _thereIsPriorityContract = thereIsPriorityContract;
         private readonly ILogger _logger = logger;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             if (isLocal)
@@ -29,9 +29,9 @@ namespace Nethermind.TxPool.Filters
             }
 
             bool isEip1559Enabled = state.HeadSpec.IsEip1559Enabled;
-            UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
+            UInt256 affordableGasPrice = tx.Transaction.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
             // Don't accept zero fee txns even if pool is empty as will never run
-            if (isEip1559Enabled && !_thereIsPriorityContract && !tx.IsFree() && affordableGasPrice.IsZero)
+            if (isEip1559Enabled && !_thereIsPriorityContract && !tx.Transaction.IsFree() && affordableGasPrice.IsZero)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Filters
             }
 
             TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTxs : _txs);
-            if (relevantPool.IsFull() && relevantPool.TryGetLast(out Transaction? lastTx)
+            if (relevantPool.IsFull() && relevantPool.TryGetLast(out MempoolTransaction? lastTx)
                 && affordableGasPrice <= lastTx?.GasBottleneck)
             {
                 Metrics.PendingTransactionsTooLowFee++;

@@ -13,9 +13,9 @@ namespace Nethermind.Consensus.Transactions
 
         public bool SupportsBlobs => _txSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<MempoolTransaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
-            foreach (Transaction transaction in _txSource.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource))
+            foreach (MempoolTransaction transaction in _txSource.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
                 break;

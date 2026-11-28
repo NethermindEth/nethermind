@@ -66,24 +66,25 @@ public class EvmExecutorTests
             "verify-state-over" => 500_001,
             _ => 200_000,
         };
-        Transaction transaction = CreateFrameSubmission(executionGas, stateGas);
+        MempoolTransaction mempoolTransaction = CreateFrameSubmission(executionGas, stateGas);
+        Transaction transaction = mempoolTransaction.Transaction;
         transaction.Nonce = scenario == "nonce" ? 41UL : 42UL;
         if (scenario == "signature")
             transaction.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, Contract, default,
                 new byte[TxFrameSignature.Secp256k1SignatureLength])];
         if (scenario is "blob-valid" or "blob-fee")
         {
-            await AddFrameBlobAsync(transaction);
+            mempoolTransaction = await AddFrameBlobAsync(transaction);
             if (scenario == "blob-fee")
             {
                 Assert.That(FrameTxValidation.TryCalculateGasBudget(transaction, spec.GenesisSpec, out _, out _, out ulong maxGas), Is.True);
                 transaction.MaxFee = maxGas;
             }
         }
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = MempoolTxDecoder.Instance.Encode(mempoolTransaction, RlpBehaviors.SkipTypedWrapping);
         RlpReader reader = new(encoded);
-        Transaction submitted = TxDecoder.Instance.DecodeCompleteNotNull(ref reader,
-            RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        Transaction submitted = MempoolTxDecoder.Instance.DecodeCompleteNotNull(ref reader,
+            RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping).Transaction;
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(submitted, spec.GenesisSpec,
             out ulong executionReservation, out ulong stateReservation), Is.True);
         source.BlockGasLimit = scenario switch
@@ -167,13 +168,13 @@ public class EvmExecutorTests
         SingleReleaseSpecProvider spec = new(Eip8141Prototype.Instance, 1, 1);
         using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
         using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         JsonElement submission = JsonSerializer.SerializeToElement(new[] { "0x" + Convert.ToHexString(encoded) });
         object result = await rpc.InvokeAsync("eth_sendRawTransaction", submission, CancellationToken.None);
         object pending = await rpc.InvokeAsync("eth_getTransactionCount", JsonSerializer.SerializeToElement(new[] { Contract.ToString(), "pending" }), CancellationToken.None);
 
         Hash256 hash = transaction.CalculateHash();
-        bool retained = relay.TryGetPendingTransaction(hash, out Transaction? admitted);
+        bool retained = relay.TryGetPendingTransaction(hash, out MempoolTransaction? admitted);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(hash.ToString()));
@@ -193,14 +194,14 @@ public class EvmExecutorTests
         transaction.Nonce = 1;
         transaction.NonceKeys = null;
         transaction.Hash = transaction.CalculateHash();
-        transaction.PayerAddress = sponsoredFirst ? sponsor : Contract;
+        MempoolTransaction mempoolTransaction = new(transaction, null) { PayerAddress = sponsoredFirst ? sponsor : Contract };
         Account sender = new(transaction.Nonce, 0);
-        relay.AddVerified(transaction);
+        relay.AddVerified(mempoolTransaction);
         relay.TryMarkAnnounced(transaction.Hash);
         ulong before = relay.GetPendingAccount(Contract, sender).Nonce;
 
-        transaction.PayerAddress = sponsoredFirst ? Contract : sponsor;
-        bool added = relay.AddVerified(transaction);
+        mempoolTransaction.PayerAddress = sponsoredFirst ? Contract : sponsor;
+        bool added = relay.AddVerified(mempoolTransaction);
         ulong after = relay.GetPendingAccount(Contract, sender).Nonce;
         bool announcedAgain = relay.TryMarkAnnounced(transaction.Hash);
 
@@ -228,7 +229,7 @@ public class EvmExecutorTests
                 sendPolicy: new SendPolicyRelay(rulesPath, 1, NullLogManager.Instance));
             Transaction transaction = CreateFrameSubmission();
             source.BlockGasLimit = 30_000_000;
-            byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+            byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
             JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { "0x" + Convert.ToHexString(encoded).ToLowerInvariant() });
             if (guarded)
             {
@@ -259,7 +260,7 @@ public class EvmExecutorTests
         FakeSource source = new([0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00], contractBalance: 1_000_000_000);
         SingleReleaseSpecProvider specs = new(new KeyedFrameSpec(), 1, 1);
         Transaction transaction = CreateFrameSubmission(data: component == "intrinsic" ? new byte[4096] : default);
-        if (component == "blob") await AddFrameBlobAsync(transaction);
+        MempoolTransaction mempoolTransaction = component == "blob" ? await AddFrameBlobAsync(transaction) : transaction;
         BlockHeader header = await source.GetHeaderAsync(source.Head, CancellationToken.None);
         IReleaseSpec spec = specs.GetSpec(header);
         UInt256 nextBaseFee = BaseFeeCalculator.Calculate(header, specs.GetSpecFor1559(header.Number + 1));
@@ -278,7 +279,7 @@ public class EvmExecutorTests
             nextBaseFee, blobFee, out UInt256 required, out _);
         Assert.That(pricedBudget, Is.True);
         transaction.MaxFee = extra < 0 ? required - UInt256.One : required + (UInt256)extra;
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        byte[] encoded = MempoolTxDecoder.Instance.Encode(mempoolTransaction, RlpBehaviors.SkipTypedWrapping);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { "0x" + Convert.ToHexString(encoded).ToLowerInvariant() });
         using EvmExecutor calls = new(source, specs, NullLogManager.Instance);
         using RpcBackend rpc = new(source, () => source.Head, 1, calls, specs, () => source.Head);
@@ -329,14 +330,14 @@ public class EvmExecutorTests
         return transaction;
     }
 
-    private static async Task AddFrameBlobAsync(Transaction transaction)
+    private static async Task<MempoolTransaction> AddFrameBlobAsync(Transaction transaction)
     {
         await KzgPolynomialCommitments.InitializeAsync(NullLogManager.Instance.GetClassLogger<EvmExecutorTests>());
         IBlobProofsManager proofs = IBlobProofsManager.For(ProofVersion.V1);
         ShardBlobNetworkWrapper wrapper = proofs.AllocateWrapper(new byte[131_072]);
         proofs.ComputeProofsAndCommitments(wrapper);
         transaction.BlobVersionedHashes = proofs.ComputeHashes(wrapper);
-        transaction.NetworkWrapper = wrapper;
+        return new(transaction, wrapper);
     }
 
     private sealed class KeyedFrameSpec() : ReleaseSpecDecorator(Eip8141Prototype.Instance)
@@ -1862,7 +1863,7 @@ public class EvmExecutorTests
         public BoundedTransactionRelay? TransactionRelay { get; init; }
         public Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) =>
             TransactionRelay?.GetPendingAccount(address, account, nonceLimit) ?? account;
-        public Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
+        public Task BroadcastTransactionAsync(MempoolTransaction transaction, CancellationToken cancellationToken)
         {
             Broadcasts++;
             if (TransactionRelay is { } relay)

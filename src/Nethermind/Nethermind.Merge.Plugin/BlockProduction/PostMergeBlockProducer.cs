@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -48,8 +49,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
             if (inclusionListTxSource is not null)
             {
-                IEnumerable<Transaction> inclusionList = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
-                blockToProduce.InclusionList = inclusionList as Transaction[] ?? [.. inclusionList];
+                IEnumerable<MempoolTransaction> inclusionList = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
+                blockToProduce.InclusionList = Array.ConvertAll(inclusionList as MempoolTransaction[] ?? [.. inclusionList], static tx => tx.Transaction);
                 if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)
                 {
                     blockToProduce.Transactions = inclusionList;

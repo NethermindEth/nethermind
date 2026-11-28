@@ -19,8 +19,9 @@ public class LightTransaction : Transaction
     private int _elidedNetworkEncodingSize;
     private StrongBox<BlobCellMask>? _blobCellMask;
 
-    public LightTransaction(Transaction fullTx)
+    public LightTransaction(MempoolTransaction mempoolTx)
     {
+        Transaction fullTx = mempoolTx.Transaction;
         // Preserve the real type, or the delivered tx fails the announced-type check on the peer.
         Type = fullTx.Type;
         Hash = fullTx.Hash;
@@ -33,22 +34,18 @@ public class LightTransaction : Transaction
         MaxFeePerBlobGas = fullTx.MaxFeePerBlobGas;
         MaxFee = fullTx.MaxFee;
         BlobVersionedHashes = fullTx.BlobVersionedHashes;
-        GasBottleneck = fullTx.GasBottleneck;
         Timestamp = fullTx.Timestamp;
-        PoolIndex = fullTx.PoolIndex;
-        ProofVersion = fullTx.GetProofVersion();
-        // The pool holds this record, not the full tx, so its Removed event is what releases the payer's reservation.
-        PayerAddress = fullTx.PayerAddress;
-        PayerExposure = fullTx.PayerExposure;
+        ProofVersion = mempoolTx.NetworkWrapper?.Version;
         // Without the keys the pool reads Nonce as an account nonce, and EIP-8250 nonce_seq is not one.
         NonceKeys = fullTx.NonceKeys;
         PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
         // Derived here or the cap never counts a blob-carrying frame tx: the pool holds this frameless
         // record, so the paymaster is no longer recoverable from the frame list once the full tx is gone.
         PersistedPaymaster = PendingPaymasterCache.KeyFor(fullTx);
-        BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
-        _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);
-        _size = fullTx.GetLength();
+        BlobCellMask = mempoolTx.NetworkWrapper?.GetAvailableCellMask() ?? default;
+        _consensusEncodingSize = fullTx.GetLength();
+        _size = _consensusEncodingSize;
+        NetworkLength = mempoolTx.GetLength();
     }
 
     /// <summary>Pre-EIP-8141 signature, kept so an out-of-tree <see cref="IBlobTxStorage"/> still binds.</summary>
@@ -63,11 +60,10 @@ public class LightTransaction : Transaction
         UInt256 maxFeePerGas,
         UInt256 maxFeePerBlobGas,
         byte[][] blobVersionHashes,
-        ulong poolIndex,
         int size,
         ProofVersion proofVersion)
         : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
-            blobVersionHashes, poolIndex, size, proofVersion, default, 0, TxType.Blob)
+            blobVersionHashes, size, proofVersion, default, 0, TxType.Blob)
     {
     }
 
@@ -83,7 +79,6 @@ public class LightTransaction : Transaction
         UInt256 maxFeePerGas,
         UInt256 maxFeePerBlobGas,
         byte[][] blobVersionHashes,
-        ulong poolIndex,
         int size,
         ProofVersion proofVersion,
         BlobCellMask blobCellMask,
@@ -91,13 +86,11 @@ public class LightTransaction : Transaction
         TxType type,
         ulong? expiryDeadline = null,
         UInt256[]? nonceKeys = null,
-        Address? payerAddress = null,
-        UInt256? payerExposure = null,
         Address? paymaster = null,
         UInt256 maxFee = default)
         : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
-            blobVersionHashes, poolIndex, size, proofVersion, blobCellMask, sparseBlobNetworkSize, 0,
-            type, expiryDeadline, nonceKeys, payerAddress, payerExposure, paymaster, maxFee)
+            blobVersionHashes, size, proofVersion, blobCellMask, sparseBlobNetworkSize, 0,
+            type, expiryDeadline, nonceKeys, paymaster, maxFee)
     {
     }
 
@@ -112,7 +105,6 @@ public class LightTransaction : Transaction
         UInt256 maxFeePerGas,
         UInt256 maxFeePerBlobGas,
         byte[][] blobVersionHashes,
-        ulong poolIndex,
         int size,
         ProofVersion proofVersion,
         BlobCellMask blobCellMask,
@@ -121,8 +113,6 @@ public class LightTransaction : Transaction
         TxType type,
         ulong? expiryDeadline,
         UInt256[]? nonceKeys,
-        Address? payerAddress,
-        UInt256? payerExposure,
         Address? paymaster,
         UInt256 maxFee)
     {
@@ -139,23 +129,25 @@ public class LightTransaction : Transaction
         MaxFee = maxFee;
         BlobVersionedHashes = blobVersionHashes;
         Timestamp = timestamp;
-        PoolIndex = poolIndex;
         ProofVersion = proofVersion;
         BlobCellMask = blobCellMask;
         _consensusEncodingSize = consensusEncodingSize;
         _elidedNetworkEncodingSize = elidedNetworkEncodingSize;
         PersistedExpiryDeadline = expiryDeadline;
         NonceKeys = nonceKeys;
-        // The reservation this record already holds in the pool's ledger, so its removal releases what
-        // admission took rather than nothing.
-        PayerAddress = payerAddress;
-        PayerExposure = payerExposure;
         // The slot this record already holds against its sponsor, so the cap keeps counting it after a reload.
         PersistedPaymaster = paymaster;
-        _size = size;
+        NetworkLength = size;
+        if (consensusEncodingSize > 0) _size = consensusEncodingSize;
     }
 
     public ProofVersion? ProofVersion { get; set; }
+
+    /// <summary>Size in bytes of the full transaction's mempool (network) encoding, sidecar included.</summary>
+    public int NetworkLength { get; private set; }
+
+    /// <summary>The full transaction the blob pool stores when it inserts this record; the pool clears it on insert.</summary>
+    internal MempoolTransaction? PendingInsert { get; set; }
 
     /// <inheritdoc/>
     public override ulong? PersistedExpiryDeadline { get; }
@@ -177,18 +169,16 @@ public class LightTransaction : Transaction
         private set => Volatile.Write(ref _blobCellMask, new StrongBox<BlobCellMask>(value));
     }
 
-    internal void UpdateBlobPoolMetadata(Transaction blobTx)
+    internal void UpdateBlobPoolMetadata(MempoolTransaction blobTx)
     {
-        _size = blobTx.GetLength();
+        NetworkLength = blobTx.GetLength();
         if (Volatile.Read(ref _elidedNetworkEncodingSize) == 0)
         {
             Volatile.Write(ref _elidedNetworkEncodingSize, blobTx.GetElidedNetworkEncodingSize());
         }
 
-        BlobCellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
+        BlobCellMask = blobTx.NetworkWrapper?.GetAvailableCellMask() ?? default;
     }
-
-    public override ProofVersion? GetProofVersion() => ProofVersion;
 
     public int GetConsensusEncodingSize() => _consensusEncodingSize;
 

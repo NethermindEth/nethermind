@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
         private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handlePooledTransactionsSlow;
 
-        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
+        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<MempoolTransaction> Transactions, int StartIndex);
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -325,9 +325,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             TryScheduleTransactions(msg, _handleSlow);
         }
 
-        private static bool ContainsBlobTransaction(ReadOnlySpan<Transaction> transactions)
+        private static bool ContainsBlobTransaction(ReadOnlySpan<MempoolTransaction> transactions)
         {
-            foreach (Transaction tx in transactions)
+            foreach (MempoolTransaction tx in transactions)
             {
                 if (tx.CarriesBlobs) return true;
             }
@@ -345,7 +345,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler)
         {
-            IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
+            IOwnedReadOnlyList<MempoolTransaction> iList = msg.Transactions;
             if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
             {
                 ReturnUnsubmittedTransactions(iList.AsSpan());
@@ -364,8 +364,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected virtual ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
-            ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+            IOwnedReadOnlyList<MempoolTransaction> transactions = request.Transactions;
+            ReadOnlySpan<MempoolTransaction> transactionsSpan = transactions.AsSpan();
 
             int currentIdx = request.StartIndex;
             bool isTrace = Logger.IsTrace;
@@ -414,18 +414,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
-        protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<Transaction> transactions)
+        protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<MempoolTransaction> transactions)
         {
-            foreach (Transaction tx in transactions)
+            foreach (MempoolTransaction tx in transactions)
             {
+                tx.NetworkWrapper?.ReturnPooledBuffers();
                 tx.ClearPreHash();
-                TxDecoder.TxObjectPool.Return(tx);
+                TxDecoder.TxObjectPool.Return(tx.Transaction);
             }
         }
 
         /// <summary>Submits an inbound transaction, transferring ownership to the pool or recycling it.</summary>
         /// <remarks>The caller must not access the transaction after submission.</remarks>
-        protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+        protected void PrepareAndSubmitTransaction(MempoolTransaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
@@ -447,8 +448,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 ? recyclablePool.SubmitOwnedTx(tx, this, out canRecycle)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
-            if (isTrace) Log(tx, accepted);
-            if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+            if (isTrace) Log(tx.Transaction, accepted);
+            if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<MempoolTransaction>(in tx));
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node?.ToString("c"):hide} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }

@@ -150,7 +150,7 @@ public class FrameTxPeerFloodMeasurement
         int submitted = 0;
         int processed = 0;
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+        txPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
         {
             AcceptTxResult verdict = Verdict(shape, submitted++);
             if (verdict != AcceptTxResult.FrameSimulationDeferred) processed++;
@@ -239,7 +239,7 @@ public class FrameTxPeerFloodMeasurement
     /// <remarks>Its content does not matter: the controller sees only the verdict the substitute pool returns.</remarks>
     private static byte[] SerializeTransactions(int count)
     {
-        ArrayPoolList<Transaction> transactions = [with(count)];
+        ArrayPoolList<MempoolTransaction> transactions = [with(count)];
         for (int i = 0; i < count; i++)
         {
             transactions.Add(Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject);

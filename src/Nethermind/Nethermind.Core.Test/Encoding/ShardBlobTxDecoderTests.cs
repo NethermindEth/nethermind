@@ -12,16 +12,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
 [TestFixture]
-public partial class ShardBlobTxDecoderTests
+public class ShardBlobTxDecoderTests
 {
     private const int BlobCountLimit = 128;
-    private const int BlobCellProofsCountLimit = BlobCountLimit * Ckzg.CellsPerExtBlob;
 
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -52,53 +50,6 @@ public partial class ShardBlobTxDecoderTests
         wrapper = wrapper with { Proofs = wrapper.Proofs[..^1] };
 
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
-    }
-
-    [Test]
-    public void Proofs_encode_as_a_list_of_proof_strings_and_round_trip([Values] ProofVersion version, [Values] bool storage)
-    {
-        Transaction tx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(2, spec: version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved()
-            .TestObject;
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        RlpBehaviors behaviors = RlpBehaviors.InMempoolForm | (storage ? RlpBehaviors.Storage : RlpBehaviors.None);
-
-        byte[] encoded = _txDecoder.Encode(tx, behaviors);
-        RlpReader reader = new(encoded);
-        Transaction decoded = _txDecoder.Decode(ref reader, behaviors)!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(encoded.AsSpan().IndexOf(EncodeSequence([.. wrapper.SplitProofs().Select(static proof => Rlp.Encode(proof))])), Is.GreaterThan(0));
-            Assert.That(((ShardBlobNetworkWrapper)decoded.NetworkWrapper!).Proofs, Is.EqualTo(wrapper.Proofs));
-            Assert.That(_txDecoder.Encode(decoded, behaviors), Is.EqualTo(encoded));
-            Assert.That(_txDecoder.GetLength(tx, behaviors), Is.EqualTo(encoded.Length));
-        }
-    }
-
-    [Test]
-    public void Decode_rejects_a_proof_that_is_not_48_bytes([Values(0, 47, 49)] int proofLength)
-    {
-        Transaction tx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(1, spec: Cancun.Instance)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved()
-            .TestObject;
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        byte[] payload = _txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping);
-        byte[] tampered = Bytes.Concat((byte)TxType.Blob, EncodeSequence(
-            payload[1..],
-            EncodeSequence([.. wrapper.Blobs.Select(static blob => Rlp.Encode(blob))]),
-            EncodeSequence([.. wrapper.Commitments.Select(static commitment => Rlp.Encode(commitment))]),
-            EncodeSequence(Rlp.Encode(new byte[proofLength]))));
-
-        Assert.That(() =>
-        {
-            RlpReader reader = new(tampered);
-            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -228,41 +179,29 @@ public partial class ShardBlobTxDecoderTests
         Assert.That(tryDecode, Throws.TypeOf<RlpReaderException>());
     }
 
-    [TestCaseSource(nameof(OverLimitCollectionDecodeCases))]
-    public void Decode_rejects_more_than_blob_count_limit_for_decoding(Transaction tx, RlpBehaviors rlpBehaviors)
+    [Test]
+    public void Decode_rejects_more_than_blob_count_limit_for_decoding()
     {
-        byte[] encoded = _txDecoder.Encode(tx, rlpBehaviors);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, false)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithBlobVersionedHashes(BlobCountLimit + 1)
+            .SignedAndResolved()
+            .TestObject;
+        byte[] encoded = _txDecoder.Encode(tx);
 
         void DecodeByRlpReader()
         {
             RlpReader decoderContext = new(encoded);
-            _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+            _txDecoder.Decode(ref decoderContext);
         }
 
         Assert.That(DecodeByRlpReader, Throws.InstanceOf<RlpReaderException>());
     }
 
-    [Test]
-    public void Decode_allows_v1_wrapper_proofs_up_to_cell_proof_limit()
-    {
-        Transaction tx = BuildMempoolTransactionWithWrapperCounts(
-            BlobCountLimit,
-            BlobCountLimit,
-            BlobCellProofsCountLimit,
-            ProofVersion.V1);
-        byte[] encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
-
-        RlpReader decoderContext = new(encoded);
-        Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
-
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)decoded!.NetworkWrapper!;
-        Assert.That(wrapper.ProofCount, Is.EqualTo(BlobCellProofsCountLimit));
-    }
-
-    [TestCase(nameof(Transaction.MaxFeePerBlobGas), RlpBehaviors.None)]
-    [TestCase(nameof(Transaction.BlobVersionedHashes), RlpBehaviors.None)]
-    [TestCase(nameof(Transaction.NetworkWrapper), RlpBehaviors.InMempoolForm)]
-    public void Encode_rejects_blob_transaction_missing_required_payload(string missingField, RlpBehaviors rlpBehaviors)
+    [TestCase(nameof(Transaction.MaxFeePerBlobGas))]
+    [TestCase(nameof(Transaction.BlobVersionedHashes))]
+    public void Encode_rejects_blob_transaction_missing_required_payload(string missingField)
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(blobCount: 1, isMempoolTx: true)
@@ -277,13 +216,10 @@ public partial class ShardBlobTxDecoderTests
             case nameof(Transaction.BlobVersionedHashes):
                 tx.BlobVersionedHashes = null;
                 break;
-            case nameof(Transaction.NetworkWrapper):
-                tx.NetworkWrapper = null;
-                break;
         }
 
         Assert.That(
-            () => _txDecoder.Encode(tx, rlpBehaviors),
+            () => _txDecoder.Encode(tx),
             Throws.TypeOf<RlpReaderException>().With.Message.Contains(missingField));
     }
 
@@ -302,29 +238,6 @@ public partial class ShardBlobTxDecoderTests
         Assert.That(
             () => _txDecoder.Encode(tx),
             Throws.TypeOf<RlpReaderException>().With.Message.Contains(nameof(Transaction.BlobVersionedHashes)));
-    }
-
-    [Test]
-    public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
-    {
-        Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
-        byte[] encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
-
-        RlpReader outer = new(encoded);
-        ReadOnlySpan<byte> envelope = outer.ReadBytes();
-        Assert.That(envelope[0], Is.EqualTo((byte)TxType.Blob));
-        RlpReader wireReader = new RlpReader(envelope[1..]).EnterSequence(out _);
-        wireReader.SkipItem();
-        if (version is ProofVersion.V1)
-        {
-            Assert.That(wireReader.ReadRaw(1)[0], Is.EqualTo((byte)ProofVersion.V1));
-        }
-
-        Assert.That(wireReader.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
-
-        RlpReader decoderContext = new(encoded);
-        Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
-        Assert.That(((ShardBlobNetworkWrapper)decoded!.NetworkWrapper!).Blobs, Is.Empty);
     }
 
     // Other clients validate each blob length
@@ -354,113 +267,19 @@ public partial class ShardBlobTxDecoderTests
         }, Throws.InstanceOf<RlpReaderException>());
     }
 
-    [TestCaseSource(nameof(ShardBlobTxTests))]
-    public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
+    [Test]
+    public void Execution_payload_form_is_decoded_correctly()
     {
-        byte[] incomingTxRlp = Bytes.FromHexString(rlp);
+        byte[] incomingTxRlp = Bytes.FromHexString(
+            "0x03f901012a018207d0843b9aca008252089409f2099b5a5153dd6f62bc888795d652472969a28203e880f873d6947e5f4552091a69125d5dfcb7b8c2659029395bdfc0d6942b5ad5c4795c026514f8317c7a215e218dccd6cfc0d6946813eb9362372eef6200f3b1dbc3f819671cba69c0d6941eff47bc3a10a45d4b230b5d10e37751fe6aa718c0d694e1ab8145f7e55dc933d51a18c793f901a3a0b276c001e1a0010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c44401480a08f62dba675e8383932d1bed59ded809fe8226aebb0a802e40f7eaed3904a9a06a01962e718af18d089775ed2cb162c53403c88d63091cdcdb9c7504e2b12426716");
         RlpReader ctx = new(incomingTxRlp);
-        RlpReader decoderContext = new(incomingTxRlp);
 
-        Transaction? decoded = _txDecoder.Decode(ref ctx, rlpBehaviors);
-        Transaction? decodedByRlpReader = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+        Transaction decoded = _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping)!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
-            Assert.That(decodedByRlpReader!.Hash, Is.EqualTo(signedHash));
+            Assert.That(decoded.Hash, Is.EqualTo(new Hash256("0x8dc1d45834ec7d1480feba0d28699198fb88a890603ba603dd9921b0a8571229")));
+            Assert.That(_txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(incomingTxRlp));
         }
-
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
-        {
-            byte[] epEncoded = _txDecoder.Encode(decoded!, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
-            RlpReader epCtx = new(epEncoded);
-            Transaction? epDecoded = _txDecoder.Decode(ref epCtx, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
-            Assert.That(epDecoded!.Hash, Is.EqualTo(signedHash));
-        }
-
-        if (decoded is { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
-        {
-            Assert.That(IBlobProofsManager.For(wrapper.Version).ValidateProofs(wrapper));
-        }
-
-        byte[] encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
-        byte[] encodedWithDecodedByRlpReader =
-            _txDecoder.Encode(decodedByRlpReader!, rlpBehaviors);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(encoded, Is.EqualTo(incomingTxRlp));
-            Assert.That(encodedWithDecodedByRlpReader, Is.EqualTo(incomingTxRlp));
-        }
-    }
-
-    private static IEnumerable<TestCaseData> OverLimitCollectionDecodeCases()
-    {
-        static Transaction BuildTransactionWithBlobVersionedHashCount(int count) =>
-            Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(1, false)
-                .WithChainId(TestBlockchainIds.ChainId)
-                .WithBlobVersionedHashes(count)
-                .SignedAndResolved()
-                .TestObject;
-
-        yield return new TestCaseData(BuildTransactionWithBlobVersionedHashCount(BlobCountLimit + 1), RlpBehaviors.None)
-        {
-            TestName = "Decode rejects more than 128 blob versioned hashes"
-        };
-        yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(BlobCountLimit + 1, 1, 1), RlpBehaviors.InMempoolForm)
-        {
-            TestName = "Decode rejects more than 128 wrapper blobs"
-        };
-        yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(1, BlobCountLimit + 1, 1), RlpBehaviors.InMempoolForm)
-        {
-            TestName = "Decode rejects more than 128 wrapper commitments"
-        };
-        yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(1, 1, BlobCountLimit + 1), RlpBehaviors.InMempoolForm)
-        {
-            TestName = "Decode rejects more than 128 V0 wrapper proofs"
-        };
-        yield return new TestCaseData(
-            BuildMempoolTransactionWithWrapperCounts(1, 1, BlobCellProofsCountLimit + 1, ProofVersion.V1),
-            RlpBehaviors.InMempoolForm)
-        {
-            TestName = "Decode rejects more than 16384 V1 wrapper proofs"
-        };
-    }
-
-    private static Transaction BuildMempoolTransactionWithWrapperCounts(
-        int blobsCount,
-        int commitmentsCount,
-        int proofsCount,
-        ProofVersion version = ProofVersion.V0)
-    {
-        byte[][] blobs = CreateEmptyByteArrays(blobsCount);
-        byte[][] commitments = CreateEmptyByteArrays(commitmentsCount);
-        byte[] proofs = new byte[proofsCount * Ckzg.BytesPerProof];
-        return Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(1, false)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .With(tx => tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version))
-            .SignedAndResolved()
-            .TestObject;
-    }
-
-    private static byte[] EncodeSequence(params byte[][] encodedItems)
-    {
-        byte[] content = Bytes.Concat(encodedItems);
-        byte[] sequence = new byte[Rlp.LengthOfSequence(content.Length)];
-        int position = Rlp.StartSequence(sequence, 0, content.Length);
-        content.CopyTo(sequence, position);
-        return sequence;
-    }
-
-    private static byte[][] CreateEmptyByteArrays(int count)
-    {
-        byte[][] arrays = new byte[count][];
-        for (int i = 0; i < count; i++)
-        {
-            arrays[i] = [];
-        }
-
-        return arrays;
     }
 }

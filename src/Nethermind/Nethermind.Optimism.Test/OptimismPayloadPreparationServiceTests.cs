@@ -72,7 +72,7 @@ public class OptimismPayloadPreparationServiceTests
         processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(ci =>
         {
             BlockToProduce block = ci.Arg<BlockToProduce>();
-            Transaction[] transactions = block.Transactions.ToArray();
+            Transaction[] transactions = block.Transactions.Select(static tx => tx.Transaction).ToArray();
             block.Header.GasUsed = GasCostOf.Transaction * (ulong)transactions.Length;
             block.Header.Hash = block.Header.CalculateHash();
             return new Block(block.Header, transactions, block.Uncles, block.Withdrawals);

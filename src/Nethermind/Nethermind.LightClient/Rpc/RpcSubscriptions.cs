@@ -78,7 +78,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         return ResultWrapper<bool>.Success(client.Unsubscribe(id));
     }
 
-    internal void PublishPendingTransaction(Transaction transaction)
+    internal void PublishPendingTransaction(MempoolTransaction transaction)
     {
         _rpc.Filters.PublishPending(transaction.Hash!);
         PendingDelivery delivery = new(Interlocked.Increment(ref _pendingSequence), transaction);
@@ -338,7 +338,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
     private abstract record PublicationDelivery(long Sequence);
     private sealed record Delivery(long Sequence, IReadOnlyList<Snapshot> Removed, IReadOnlyList<Snapshot> Added,
         Snapshot? Tip, IReadOnlySet<Hash256> Canonical) : PublicationDelivery(Sequence);
-    private sealed record PendingDelivery(long Sequence, Transaction Transaction) : PublicationDelivery(Sequence);
+    private sealed record PendingDelivery(long Sequence, MempoolTransaction Transaction) : PublicationDelivery(Sequence);
     private readonly record struct LogData(JsonElement Json, Address Address, Hash256[] Topics);
     private static bool Matches(Address address, Hash256[] topics, Subscription subscription)
     {

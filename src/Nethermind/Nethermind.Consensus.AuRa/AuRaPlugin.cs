@@ -175,7 +175,7 @@ namespace Nethermind.Consensus.AuRa
                 stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
         }
 
-        private static IComparer<Transaction> CreateTxPoolTxComparer(IComponentContext ctx, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        private static IComparer<MempoolTransaction> CreateTxPoolTxComparer(IComponentContext ctx, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
         {
             if (txPriorityContract is not null || localDataSource is not null)
             {
@@ -204,12 +204,12 @@ namespace Nethermind.Consensus.AuRa
                 disposeStack.Push(whitelistContractDataStore);
                 disposeStack.Push(prioritiesContractDataStore);
                 IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, blockTree);
-                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(blockTree, ctx.Resolve<ISpecProvider>()), txByPriorityComparer);
+                IComparer<MempoolTransaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(blockTree, ctx.Resolve<ISpecProvider>()), txByPriorityComparer.ForMempool());
 
                 return sameSenderNonceComparer
-                    .ThenBy(CompareTxByTimestamp.Instance)
+                    .ThenBy(CompareTxByTimestamp.Instance.ForMempool())
                     .ThenBy(CompareTxByPoolIndex.Instance)
-                    .ThenBy(CompareTxByGasLimit.Instance);
+                    .ThenBy(CompareTxByGasLimit.Instance.ForMempool());
             }
 
             return ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer();

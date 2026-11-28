@@ -167,13 +167,14 @@ public partial class EngineModuleTests
     [TestCase(true, PayloadStatus.Invalid)]
     public virtual async Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
     {
-        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule rpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
 
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors)).ToArray();
+        payload.Transactions = transactions.Select(tx => inMempoolForm
+            ? MempoolTxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping)
+            : TxDecoder.Instance.Encode(tx.Transaction, RlpBehaviors.SkipTypedWrapping)).ToArray();
         Hash256[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).Select(h => new Hash256(h!)).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
@@ -189,7 +190,7 @@ public partial class EngineModuleTests
     [TestCase(true, PayloadStatus.Invalid)]
     public virtual async Task NewPayloadV3_should_decline_incorrect_blobgasused(bool isBlobGasUsedBroken, string expectedPayloadStatus)
     {
-        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule prevRpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
@@ -216,7 +217,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithCorrectErrorMessage()
     {
-        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule prevRpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
@@ -243,7 +244,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_WrongStateRoot_CorrectErrorIsReturnedAfterProcessing()
     {
-        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule prevRpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
@@ -260,7 +261,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_UnsupportedTxType_BlockIsRejectedWithCorrectErrorMessage()
     {
-        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule prevRpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
@@ -279,7 +280,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid()
     {
-        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule prevRpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
@@ -726,7 +727,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdated_should_return_invalid_params_but_change_latest_block()
     {
-        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
+        (IEngineRpcModule rpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) =
             await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
@@ -754,7 +755,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdated_should_return_unsupported_fork_but_change_latest_block()
     {
-        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
+        (IEngineRpcModule rpcModule, string? payloadId, MempoolTransaction[] transactions, MergeTestBlockchain chain) =
                 await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
@@ -1004,12 +1005,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1052,12 +1053,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1407,14 +1408,14 @@ public partial class EngineModuleTests
         return payload.ExecutionPayload;
     }
 
-    private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
+    private async Task<(IEngineRpcModule, string?, MempoolTransaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
         IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true, ISpecProvider? specProvider = null)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, configurer: specProvider is null
             ? null
             : builder => builder.AddSingleton<ISpecProvider>(specProvider));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        Transaction[] txs = [];
+        MempoolTransaction[] txs = [];
 
         Task blockImprovementWait = transactionCount != 0
             ? chain.WaitForImprovedBlock()
@@ -1424,8 +1425,8 @@ public partial class EngineModuleTests
 
         if (transactionCount is not 0)
         {
-            txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, oneBlobPerTx ? (uint)transactionCount : 1, 0, out _, out _, oneBlobPerTx ? 1 : transactionCount, spec);
-            chain.AddTransactions(txs);
+            txs = BuildMempoolTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, oneBlobPerTx ? (uint)transactionCount : 1, 0, out _, out _, oneBlobPerTx ? 1 : transactionCount, spec);
+            foreach (MempoolTransaction tx in txs) chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
         }
 
         PayloadAttributes payloadAttributes = new()

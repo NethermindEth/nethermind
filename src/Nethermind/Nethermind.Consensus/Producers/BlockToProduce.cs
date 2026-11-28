@@ -17,17 +17,21 @@ namespace Nethermind.Consensus.Producers
     [DebuggerDisplay("{Hash} ({Number})")]
     public class BlockToProduce : Block
     {
-        private IEnumerable<Transaction>? _transactions;
+        private IEnumerable<MempoolTransaction>? _transactions;
 
-        public new IEnumerable<Transaction> Transactions
+        /// <summary>
+        /// The candidate transactions before processing and the included ones after it, each with the blob sidecar it
+        /// travels with, so a produced payload can be served with its blobs bundle.
+        /// </summary>
+        public new IEnumerable<MempoolTransaction> Transactions
         {
-            get => _transactions ?? base.Transactions;
+            get => _transactions ?? Array.ConvertAll(base.Transactions, static tx => (MempoolTransaction)tx);
             set
             {
                 _transactions = value;
-                if (_transactions is Transaction[] transactionsArray)
+                if (_transactions is MempoolTransaction[] transactionsArray)
                 {
-                    base.Transactions = transactionsArray;
+                    base.Transactions = Array.ConvertAll(transactionsArray, static tx => tx.Transaction);
                 }
             }
         }
@@ -42,7 +46,7 @@ namespace Nethermind.Consensus.Producers
         { }
 
         public BlockToProduce(BlockHeader blockHeader,
-            IEnumerable<Transaction> transactions,
+            IEnumerable<MempoolTransaction> transactions,
             IEnumerable<BlockHeader> uncles,
             IEnumerable<Withdrawal>? withdrawals = null)
             : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals) => Transactions = transactions;

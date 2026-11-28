@@ -25,13 +25,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
             RlpWriter writer = RlpWriter.ContentWriter(destination);
             RlpSequence sequence = writer.StartSequence(GetContentLength(message, encodedTransactions));
-            ReadOnlySpan<Transaction> transactions = message.Transactions.AsSpan();
+            ReadOnlySpan<MempoolTransaction> transactions = message.Transactions.AsSpan();
             int written = 0;
             foreach (EncodedTransaction encodedTransaction in encodedTransactions.AsSpan())
             {
                 for (; written < encodedTransaction.TransactionIndex; written++)
                 {
-                    TransactionDecoder.Instance.Encode(ref writer, transactions[written], RlpBehaviors.InMempoolForm);
+                    MempoolTxDecoder.Instance.Encode(ref writer, transactions[written]);
                 }
 
                 ReadOnlySpan<byte> encoding = encodedTransaction.Encoding.AsSpan();
@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
             for (; written < transactions.Length; written++)
             {
-                TransactionDecoder.Instance.Encode(ref writer, transactions[written], RlpBehaviors.InMempoolForm);
+                MempoolTxDecoder.Instance.Encode(ref writer, transactions[written]);
             }
 
             writer.EndSequence(sequence);

@@ -31,7 +31,7 @@ public class CensorshipDetectorTests
     private IBranchProcessor _branchProcessor;
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private IComparer<Transaction> _comparer;
+    private IComparer<MempoolTransaction> _comparer;
     private ITransactionComparerProvider _transactionComparerProvider;
     private IMainProcessingContext _mainProcessingContext;
     private TxPool.TxPool _txPool;

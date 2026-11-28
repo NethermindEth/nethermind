@@ -336,8 +336,8 @@ public class DebugBridge : IDebugBridge
 
     public TxReceipt[] GetReceiptsForBlock(Block block) => _receiptFinder.Get(block);
 
-    public Transaction? GetTransactionFromHash(Hash256 txHash) =>
-        GetMinedTransaction(txHash) ?? (_txPool.TryGetPendingTransaction(txHash, out Transaction? pending) ? pending : null);
+    public MempoolTransaction? GetTransactionFromHash(Hash256 txHash) =>
+        GetMinedTransaction(txHash) is { } mined ? mined : _txPool.TryGetPendingTransaction(txHash, out MempoolTransaction? pending) ? pending : null;
 
     private Transaction? GetMinedTransaction(Hash256 txHash)
     {

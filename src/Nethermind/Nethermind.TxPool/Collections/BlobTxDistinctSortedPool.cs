@@ -18,12 +18,15 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.TxPool.Collections;
 
-public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
+public class BlobTxDistinctSortedPool(int capacity, IComparer<MempoolTransaction> comparer, ILogManager logManager)
     : TxDistinctSortedPool(capacity, comparer, logManager)
 {
     protected override string ShortPoolName => "BlobPool";
 
     internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = [with(Bytes.EqualityComparer)];
+
+    // The sorted pool holds light records; the full transactions they stand for are kept here.
+    private readonly Dictionary<ValueHash256, MempoolTransaction> _mempoolTransactions = [];
 
     /// <summary>
     /// Attempts to flush retained deletes before publishing a spec-change validation marker.
@@ -31,7 +34,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     /// <returns><see langword="false"/> when a retained delete cannot yet be flushed and the marker must remain unpublished.</returns>
     internal virtual bool TryFlushPendingRevalidationDeletes() => true;
 
-    protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
+    protected override IComparer<MempoolTransaction> GetReplacementComparer(IComparer<MempoolTransaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
     public bool TryGetBlobAndProofV0(
@@ -45,7 +48,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
-                if (TryGetValueNonLocked(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
+                if (TryGetMempoolTransactionNonLocked(hash, out MempoolTransaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
                 {
                     for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
                     {
@@ -86,14 +89,14 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
-                if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
-                    || blobTx.BlobVersionedHashes is not { Length: > 0 })
+                if (!TryGetMempoolTransactionNonLocked(hash, out MempoolTransaction? blobTx)
+                    || blobTx.Transaction.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes)
                     continue;
 
                 bool matched = false;
-                for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+                for (int indexOfBlob = 0; indexOfBlob < blobVersionedHashes.Length; indexOfBlob++)
                 {
-                    if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
+                    if (Bytes.AreEqual(blobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                         && blobTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
                     {
                         if (!wrapper.HasFullBlobs())
@@ -114,16 +117,36 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return found;
     }
 
-    protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
+    protected override bool InsertCore(ValueHash256 key, MempoolTransaction value, AddressAsKey groupKey)
     {
         if (base.InsertCore(key, value, groupKey))
         {
-            AddToBlobIndex(value);
+            AddToBlobIndex(value.Transaction);
+            if (value.Transaction is LightTransaction { PendingInsert: { } blobTx } lightTx)
+            {
+                lightTx.PendingInsert = null;
+                _mempoolTransactions[key] = blobTx;
+            }
+
             return true;
         }
 
         return false;
     }
+
+    /// <summary>
+    /// Gets the full pooled blob transaction, sidecar included.
+    /// </summary>
+    /// <returns><c>true</c> when the transaction is present in the blob pool and its body is available.</returns>
+    public bool TryGetMempoolTransaction(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        return TryGetMempoolTransactionNonLocked(hash, out blobTx);
+    }
+
+    /// <remarks>Must be called under the pool lock.</remarks>
+    protected virtual bool TryGetMempoolTransactionNonLocked(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
+        => _mempoolTransactions.TryGetValue(hash, out blobTx);
 
     private void AddToBlobIndex(Transaction blobTx)
     {
@@ -141,14 +164,15 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         }
     }
 
-    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
+    protected override bool Remove(ValueHash256 hash, out MempoolTransaction? tx)
     {
         if (base.Remove(hash, out tx))
         {
             if (tx is not null)
             {
-                RemoveFromBlobIndex(tx);
+                RemoveFromBlobIndex(tx.Transaction);
             }
+            _mempoolTransactions.Remove(hash);
             return true;
         }
 
@@ -160,10 +184,10 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     /// elided while preserving commitments and proofs.
     /// </summary>
     /// <returns><c>true</c> when the transaction is present in the blob pool.</returns>
-    internal virtual bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    internal virtual bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
-        if (TryGetValueNonLocked(hash, out blobTx))
+        if (TryGetMempoolTransactionNonLocked(hash, out blobTx))
         {
             blobTx = BlobTransactionPayload.Elide(blobTx);
             return true;
@@ -202,7 +226,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         out int materializationWork)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
-        if (!base.TryGetValueNonLocked(hash, out Transaction? blobTx))
+        if (!base.TryGetValueNonLocked(hash, out MempoolTransaction? blobTx))
         {
             availableMask = default;
             blobCount = 0;
@@ -212,29 +236,19 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
         availableMask = GetAvailableCellMask(blobTx);
         blobCount = blobTx.BlobVersionedHashes?.Length ?? 0;
-        int materializedCellsPerBlob = blobTx switch
-        {
-            LightTransaction => availableMask.Count,
-            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } when wrapper.HasFullBlobs() => BlobCellMask.CellCount,
-            _ => 0
-        };
-        materializationWork = checked(blobCount * materializedCellsPerBlob);
+        materializationWork = checked(blobCount * availableMask.Count);
         return true;
     }
 
-    private protected static BlobCellMask GetAvailableCellMask(Transaction blobTx) => blobTx switch
-    {
-        LightTransaction lightTx => lightTx.BlobCellMask,
-        { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.GetAvailableCellMask(),
-        _ => default
-    };
+    private protected static BlobCellMask GetAvailableCellMask(MempoolTransaction blobTx) =>
+        (blobTx.Transaction as LightTransaction)?.BlobCellMask ?? default;
 
     public virtual bool TryGetCells(ValueHash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, out byte[][]? cells)
     {
         ShardBlobNetworkWrapper? wrapper = null;
         using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            if (TryGetValueNonLocked(hash, out Transaction? blobTx)
+            if (TryGetMempoolTransactionNonLocked(hash, out MempoolTransaction? blobTx)
                 && blobTx.NetworkWrapper is ShardBlobNetworkWrapper currentWrapper)
             {
                 wrapper = currentWrapper;
@@ -271,9 +285,9 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                 BlobCellMask capturedMask = BlobCellMask.Empty;
                 foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
                 {
-                    if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
+                    if (!TryGetMempoolTransactionNonLocked(hash, out MempoolTransaction? blobTx)
                         || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } currentWrapper
-                        || !TryFindBlobIndex(blobTx, requestedBlobVersionedHash, out int blobIndex))
+                        || !TryFindBlobIndex(blobTx.Transaction, requestedBlobVersionedHash, out int blobIndex))
                     {
                         continue;
                     }
@@ -299,7 +313,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     public BlobCellMergeResult MergeCells(ValueHash256 hash, BlobCellMask cellMask, byte[][] cells)
     {
-        if (!TryGetValueForCellMerge(hash, out Transaction? blobTx)
+        if (!TryGetValueForCellMerge(hash, out MempoolTransaction? blobTx)
             || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
             || wrapper.Version is not ProofVersion.V1)
         {
@@ -390,8 +404,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                     continue;
                 }
 
-                blobTx.NetworkWrapper = mergedWrapper;
-                blobTx.ClearLengthCache();
+                blobTx = blobTx with { NetworkWrapper = mergedWrapper };
                 OnBlobTransactionUpdatedNonLocked(blobTx);
                 timestamp = blobTx.Timestamp;
             }
@@ -421,16 +434,32 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return true;
     }
 
-    protected virtual bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    protected virtual bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
         return TryGetValueForCellMergeNonLocked(hash, out blobTx);
     }
 
-    protected virtual bool TryGetValueForCellMergeNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
-        => TryGetValueNonLocked(hash, out blobTx);
+    protected virtual bool TryGetValueForCellMergeNonLocked(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
+        => TryGetMempoolTransactionNonLocked(hash, out blobTx);
 
-    protected virtual void OnBlobTransactionUpdatedNonLocked(Transaction blobTx) { }
+    /// <summary>Stores <paramref name="blobTx"/> in place of the pooled transaction it updates.</summary>
+    /// <remarks>Must be called under the pool lock.</remarks>
+    protected virtual void OnBlobTransactionUpdatedNonLocked(MempoolTransaction blobTx)
+    {
+        ValueHash256 hash = blobTx.Hash!.ValueHash256;
+        _mempoolTransactions[hash] = blobTx;
+        UpdateLightMetadataNonLocked(hash, blobTx);
+    }
+
+    /// <summary>Keeps the light record's metadata in sync, so announcements reflect merged cells.</summary>
+    protected void UpdateLightMetadataNonLocked(ValueHash256 hash, MempoolTransaction blobTx)
+    {
+        if (base.TryGetValueNonLocked(hash, out MempoolTransaction? lightTx) && lightTx.Transaction is LightTransaction light)
+        {
+            light.UpdateBlobPoolMetadata(blobTx);
+        }
+    }
 
     protected virtual void OnBlobTransactionUpdated(ValueHash256 hash, in UInt256 timestamp) { }
 
@@ -459,7 +488,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     /// Gets the in-memory (light) pool entry without touching the blob cache or persistent storage.
     /// </summary>
     /// <remarks>Must be called under the pool lock.</remarks>
-    internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? lightBlobTx)
+    internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out MempoolTransaction? lightBlobTx)
         => base.TryGetValueNonLocked(hash, out lightBlobTx);
 
     protected static bool TryFindBlobIndex(Transaction blobTx, byte[] requestedBlobVersionedHash, out int blobIndex)

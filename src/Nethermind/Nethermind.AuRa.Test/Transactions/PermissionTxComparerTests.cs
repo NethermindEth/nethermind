@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -263,21 +264,21 @@ namespace Nethermind.AuRa.Test.Transactions
             ReleaseSpec spec = new() { IsEip1559Enabled = false };
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
-            IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
-            IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
+            IComparer<MempoolTransaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
+            IComparer<MempoolTransaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader).ForMempool()
                 .ThenBy(defaultComparer);
 
 
-            Dictionary<AddressAsKey, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
+            Dictionary<AddressAsKey, MempoolTransaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => (AddressAsKey)g.Key,
-                    g => g.OrderBy(t => t,
+                    g => g.Select(static t => (MempoolTransaction)t).OrderBy(t => t,
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
 
             const int DefaultGasLimit = 36_000_000;
 
-            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit, spec).ToArray();
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit, spec).Select(static tx => tx.Transaction).ToArray();
             Assert.That(orderedTransactions, Is.EqualTo(expectation).UsingTransactionComparer());
         }
 

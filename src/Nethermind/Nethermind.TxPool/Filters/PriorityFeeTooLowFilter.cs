@@ -13,7 +13,7 @@ public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvide
     private readonly UInt256 _minBlobsPriorityFee = txPoolConfig.MinBlobTxPriorityFee;
     private readonly bool _currentBlobBaseFeeRequired = txPoolConfig.CurrentBlobBaseFeeRequired;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
         if (!tx.CarriesBlobs)
         {
@@ -29,7 +29,7 @@ public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvide
                 : AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {_minBlobsPriorityFee}, is {tx.MaxPriorityFeePerGas}.");
         }
 
-        if (_currentBlobBaseFeeRequired && tx.IsBelowBlobBaseFee(chainHeadInfoProvider.CurrentFeePerBlobGas))
+        if (_currentBlobBaseFeeRequired && tx.Transaction.IsBelowBlobBaseFee(chainHeadInfoProvider.CurrentFeePerBlobGas))
         {
             Metrics.PendingTransactionsTooLowFeePerBlobGas++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low blob fee per gas with options {handlingOptions} from {new StackTrace()}");

@@ -15,7 +15,7 @@ namespace Nethermind.TxPool.Filters
         private readonly bool _thereIsPriorityContract = thereIsPriorityContract;
         private readonly ILogger _logger = logger;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             // EIP-8141: the payer is not resolved yet, so a frame transaction's fee cannot be charged to any
             // account here; FrameTxPayerExposureFilter gates it once it is.
@@ -28,7 +28,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
 
             bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
-            if (!_thereIsPriorityContract && !tx.IsFree() && balance.IsZero)
+            if (!_thereIsPriorityContract && !tx.Transaction.IsFree() && balance.IsZero)
             {
                 Metrics.PendingTransactionsZeroBalance++;
                 return isNotLocal ?
@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
             }
 
-            if (tx.IsOverflowInTxCostAndValue(out UInt256 txCostAndValue))
+            if (tx.Transaction.IsOverflowInTxCostAndValue(out UInt256 txCostAndValue))
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 if (_logger.IsTrace)

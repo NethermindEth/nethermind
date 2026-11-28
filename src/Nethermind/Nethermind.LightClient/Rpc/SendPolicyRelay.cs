@@ -32,7 +32,7 @@ internal sealed class SendPolicyRelay
         _logManager = logManager;
     }
 
-    internal async Task RelayAsync(Transaction transaction, IReleaseSpec spec, Func<Transaction, Task> relay)
+    internal async Task RelayAsync(MempoolTransaction transaction, IReleaseSpec spec, Func<MempoolTransaction, Task> relay)
     {
         SendPolicyTxSender sender = new(new RelayTxSender(relay), _ruleFile, _journal, _config, _ecdsa,
             new RelaySpecProvider(spec, _chainId), _logManager);
@@ -46,9 +46,9 @@ internal sealed class SendPolicyRelay
         public IReleaseSpec GetCurrentHeadSpec() => GenesisSpec;
     }
 
-    private sealed class RelayTxSender(Func<Transaction, Task> relay) : ITxSender
+    private sealed class RelayTxSender(Func<MempoolTransaction, Task> relay) : ITxSender
     {
-        public async ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public async ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)> SendTransaction(MempoolTransaction tx, TxHandlingOptions txHandlingOptions)
         {
             await relay(tx);
             return (tx.Hash!, AcceptTxResult.Accepted);

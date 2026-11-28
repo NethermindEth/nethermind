@@ -13,7 +13,7 @@ namespace Nethermind.TxPool.Comparison
     /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain.
     /// </summary>
     /// <remarks>EIP-8250 replaces the account nonce with keyed sequences, so a keyed transaction's slot is <c>(sender, nonce_keys, nonce_seq)</c>.</remarks>
-    public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>
+    public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>, IEqualityComparer<MempoolTransaction?>
     {
         public static readonly CompetingTransactionEqualityComparer Instance = new();
 
@@ -45,6 +45,10 @@ namespace Nethermind.TxPool.Comparison
 
             return hash.ToHashCode();
         }
+
+        public bool Equals(MempoolTransaction? newTx, MempoolTransaction? oldTx) => Equals(newTx?.Transaction, oldTx?.Transaction);
+
+        public int GetHashCode(MempoolTransaction? obj) => GetHashCode(obj?.Transaction);
 
         /// <summary>Whether two of a sender's transactions consume the same nonce domain, so their sequences
         /// order against each other.</summary>

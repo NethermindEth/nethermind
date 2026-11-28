@@ -621,11 +621,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
-            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).Select(static tx => (MempoolTransaction)tx).ToPooledList(3));
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
-            _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+            _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None);
         }
 
         // The flood controller requests the disconnect on the first invalid transaction; a real session is closing from
@@ -635,9 +635,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             _session.When(static s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
                 .Do(_ => _session.IsClosing.Returns(true));
-            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None)
+            _transactionPool.SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None)
                 .Returns(AcceptTxResult.Invalid, AcceptTxResult.Accepted, AcceptTxResult.Accepted);
-            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).Select(static tx => (MempoolTransaction)tx).ToPooledList(3));
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
@@ -645,7 +645,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             using (Assert.EnterMultipleScope())
             {
                 _session.Received(1).InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
-                _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+                _transactionPool.Received(1).SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None);
             }
         }
 
@@ -676,7 +676,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(packet, Eth62MessageCode.Transactions);
 
             Assert.That(_handler.IsFloodDowngraded, Is.EqualTo(expectDowngraded), $"{skipCount} skips should {(expectDowngraded ? "have" : "not have")} crossed the downgrade threshold");
-            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         [Test]
@@ -685,7 +685,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             RecordingBackgroundTaskScheduler taskScheduler = new();
             RecreateHandler(scheduler: taskScheduler);
 
-            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).Select(static tx => (MempoolTransaction)tx).ToPooledList(3));
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
@@ -778,12 +778,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             public TransactionsMessage Deserialize(ReadOnlySpan<byte> data)
             {
                 TransactionsMessage message = _serializer.Deserialize(data);
-                IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
+                IOwnedReadOnlyList<MempoolTransaction> transactions = message.Transactions;
                 for (int i = 0; i < transactions.Count; i++)
                 {
                     // Releases the decoder's pre-hash buffer, which the witness then replaces.
                     transactions[i].ClearPreHash();
-                    Witnesses.Add(new RecycledTransactionWitness(transactions[i], (byte)(i + 1)));
+                    Witnesses.Add(new RecycledTransactionWitness(transactions[i].Transaction, (byte)(i + 1)));
                 }
 
                 return message;
@@ -794,7 +794,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Dropped_transaction_batch_is_returned_without_rescheduling([Values] bool reject)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
-            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).Select(static tx => (MempoolTransaction)tx).ToPooledList(3));
             WitnessingTransactionsMessageSerializer serializer = new();
             _svc = Build.A.SerializationService().WithEth().With(serializer).TestObject;
 
@@ -810,7 +810,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(serializer.Witnesses, Has.Count.EqualTo(3));
                 Assert.That(serializer.Witnesses, Has.All.Property(nameof(RecycledTransactionWitness.WasRecycled)).True);
             }
-            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         [Test, NonParallelizable]
@@ -825,15 +825,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             txs[0].SetPreHashNoLock([1]);
             RecycledTransactionWitness tailWitness = new(txs[1], 2);
 
-            ArrayPoolList<Transaction> list = new(txs.Length, txs);
+            ArrayPoolList<MempoolTransaction> list = new(txs.Length, txs.Select(static tx => (MempoolTransaction)tx));
 
             using CancellationTokenSource cts = new();
             bool triedToReschedule = false;
 
             // process first transaction and reschedule
-            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(ctx =>
+            _transactionPool.SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None).Returns(ctx =>
             {
-                Transaction tx = ctx.Arg<Transaction>();
+                Transaction tx = ctx.Arg<MempoolTransaction>().Transaction;
                 _ = tx.Hash;
                 cts.Cancel();
                 return AcceptTxResult.Accepted;
@@ -881,11 +881,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Transaction second = Build.A.Transaction.WithNonce(18).SignedAndResolved().TestObject;
             Hash256 firstHash = first.Hash!;
             RecycledTransactionWitness tailWitness = new(second, 2);
-            ArrayPoolList<Transaction> list = new(2) { first, second };
+            ArrayPoolList<MempoolTransaction> list = new(2) { first, second };
             Transaction? published = null;
-            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+            _transactionPool.SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None).Returns(call =>
             {
-                published = call.Arg<Transaction>();
+                published = call.Arg<MempoolTransaction>().Transaction;
                 throw new InvalidOperationException("Subscriber failed after retaining the transaction");
             });
             using TestEth62ProtocolHandler handler = new(
@@ -904,7 +904,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(tailWitness.WasRecycled, Is.True);
                 Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
             }
-            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+            _transactionPool.Received(1).SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None);
         }
 
         [Test]
@@ -913,16 +913,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Transaction tx = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
             Hash256 hash = tx.Hash!;
             Transaction? retained = null;
-            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+            _transactionPool.SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None).Returns(call =>
             {
-                retained = call.Arg<Transaction>();
+                retained = call.Arg<MempoolTransaction>().Transaction;
                 return AcceptTxResult.AlreadyKnown;
             });
             using TestEth62ProtocolHandler handler = new(
                 _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
                 _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
                 LimboLogs.Instance, _txGossipPolicy);
-            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+            handler.HandleSlowPublic(new ArrayPoolList<MempoolTransaction>(1) { tx }, CancellationToken.None);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(retained, Is.SameAs(tx));
@@ -935,31 +935,31 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission([Values] bool frameTx)
         {
-            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            MempoolTransaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().MempoolTestObject;
             if (frameTx)
             {
                 tx.Type = TxType.FrameTx;
                 tx.Frames = [];
-                tx.FrameSignatures = [];
-                tx.Hash = tx.CalculateHash();
+                tx.Transaction.FrameSignatures = [];
+                tx.Hash = tx.Transaction.CalculateHash();
             }
 
             Hash256 hash = tx.Hash!;
             _transactionPool.ForgetInvalidBlobProofs(hash).Returns(true);
-            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+            _transactionPool.SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
             using TestEth62ProtocolHandler handler = new(
                 _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
                 _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
                 LimboLogs.Instance, _txGossipPolicy);
 
-            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+            handler.HandleSlowPublic(new ArrayPoolList<MempoolTransaction>(1) { tx }, CancellationToken.None);
 
             Received.InOrder(() =>
             {
                 _transactionPool.ForgetInvalidBlobProofs(hash);
                 _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
             });
-            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+            _transactionPool.Received(1).SubmitTx(Arg.Any<MempoolTransaction>(), TxHandlingOptions.None);
         }
 
         private sealed class TestEth62ProtocolHandler(
@@ -974,7 +974,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : Eth62ProtocolHandler(session, serializer, statsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            public void HandleSlowPublic(IOwnedReadOnlyList<Transaction> transactions, CancellationToken cancellationToken) =>
+            public void HandleSlowPublic(IOwnedReadOnlyList<MempoolTransaction> transactions, CancellationToken cancellationToken) =>
                 HandleSlow(new TransactionsRequest(transactions, 0), cancellationToken).GetAwaiter().GetResult();
         }
 
@@ -987,7 +987,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_transactions_without_filtering()
         {
-            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).Select(static tx => (MempoolTransaction)tx).ToPooledList(3));
 
             _handler.DisableTxFiltering();
             HandleIncomingStatusMessage();

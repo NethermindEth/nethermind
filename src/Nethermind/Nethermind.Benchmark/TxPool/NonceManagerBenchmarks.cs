@@ -188,10 +188,10 @@ public class NonceManagerBenchmarks
             }
         }
 
-        public Transaction[] GetPendingTransactionsBySender(Address address)
+        public MempoolTransaction[] GetPendingTransactionsBySender(Address address)
         {
             using McsLock.Disposable handle = _lock.Acquire();
-            List<Transaction> pending = [];
+            List<MempoolTransaction> pending = [];
             foreach (Transaction transaction in _transactions.Values)
             {
                 if (transaction.SenderAddress == address)
@@ -203,7 +203,7 @@ public class NonceManagerBenchmarks
             return [.. pending];
         }
 
-        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
+        public MempoolTransaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
 
         public bool ContainsTx(Hash256 hash, TxType txType)
         {

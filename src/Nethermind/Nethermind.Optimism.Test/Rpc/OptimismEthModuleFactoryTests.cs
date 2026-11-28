@@ -56,7 +56,7 @@ public class OptimismEthModuleFactoryTests
         }
 
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ => Hold());
+        txSender.SendTransaction(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ => Hold());
         IWallet wallet = Substitute.For<IWallet>();
         wallet.TrySignTransaction(Arg.Any<Transaction>(), Arg.Any<ulong>()).Returns(true);
         ChainSpec chainSpec = new()

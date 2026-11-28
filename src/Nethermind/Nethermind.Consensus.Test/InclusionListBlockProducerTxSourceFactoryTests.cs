@@ -55,7 +55,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, targetBlock, 30_000_000UL, payloadAttributes)];
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, targetBlock, 30_000_000UL, payloadAttributes).Select(static tx => tx.Transaction)];
 
         using (Assert.EnterMultipleScope())
         {
@@ -91,7 +91,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, targetBlock, 30_000_000UL)];
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, targetBlock, 30_000_000UL).Select(static tx => tx.Transaction)];
 
         using (Assert.EnterMultipleScope())
         {

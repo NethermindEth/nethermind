@@ -19,7 +19,7 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     private readonly MemoryCache _transactions = new(new MemoryCacheOptions { SizeLimit = 32 * 1024 * 1024 });
     private readonly Lock _admission = new();
 
-    internal bool AddVerified(Transaction transaction)
+    internal bool AddVerified(MempoolTransaction transaction)
     {
         Hash256 hash = transaction.Hash!;
         lock (_admission)
@@ -28,8 +28,9 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
             bool added = !_transactions.TryGetValue(hash, out Entry? entry);
             if (entry is null || entry.Transaction.PayerAddress != transaction.PayerAddress)
             {
-                Transaction retained = new();
-                transaction.CopyTo(retained, copyHash: true);
+                Transaction retainedTransaction = new();
+                transaction.Transaction.CopyTo(retainedTransaction, copyHash: true);
+                MempoolTransaction retained = transaction with { Transaction = retainedTransaction };
                 if (entry is null) entry = new(retained);
                 else entry.UpdateTransaction(retained);
             }
@@ -69,60 +70,60 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     }
 
     public bool SupportsBlobs => true;
-    public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Invalid;
+    public AcceptTxResult SubmitTx(MempoolTransaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Invalid;
     public bool IsKnown(Hash256 hash) => _transactions.TryGetValue(hash, out _);
     public bool IsKnown(in ValueHash256 hash) => IsKnown(hash.ToCommitment());
-    public bool ContainsTx(Hash256 hash, TxType txType) => TryGetPendingTransaction(hash, out Transaction? transaction) && transaction.Type == txType;
-    public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
+    public bool ContainsTx(Hash256 hash, TxType txType) => TryGetPendingTransaction(hash, out MempoolTransaction? transaction) && transaction.Type == txType;
+    public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? transaction) =>
         TryGetTransaction(hash.ToCommitment(), out transaction);
 
-    private bool TryGetTransaction(object hash, [NotNullWhen(true)] out Transaction? transaction)
+    private bool TryGetTransaction(object hash, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         transaction = _transactions.TryGetValue(hash, out Entry? entry) ? entry!.Transaction : null;
         return transaction is not null;
     }
-    public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+    public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTransaction)
     {
         if (TryGetPendingTransaction(hash, out blobTransaction) && blobTransaction.CarriesBlobs) return true;
         blobTransaction = null;
         return false;
     }
 
-    public Transaction[] GetPendingTransactions()
+    public MempoolTransaction[] GetPendingTransactions()
     {
-        List<Transaction> result = [];
+        List<MempoolTransaction> result = [];
         foreach (object key in _transactions.Keys)
-            if (TryGetTransaction(key, out Transaction? tx) && !tx.CarriesBlobs) result.Add(tx);
+            if (TryGetTransaction(key, out MempoolTransaction? tx) && !tx.CarriesBlobs) result.Add(tx);
         return result.ToArray();
     }
 
     public int GetPendingTransactionsCount() => GetPendingTransactions().Length;
     public int GetPendingBlobTransactionsCount() => Math.Max(0, _transactions.Count - GetPendingTransactionsCount());
-    public Transaction[] GetPendingTransactionsBySender(Address address)
+    public MempoolTransaction[] GetPendingTransactionsBySender(Address address)
     {
-        List<Transaction> result = [];
-        foreach (Transaction tx in GetPendingTransactions())
+        List<MempoolTransaction> result = [];
+        foreach (MempoolTransaction tx in GetPendingTransactions())
             if (tx.SenderAddress == address) result.Add(tx);
         result.Sort(static (left, right) => left.Nonce.CompareTo(right.Nonce));
         return result.ToArray();
     }
 
-    public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) => Group(false);
-    public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() => Group(true);
-    public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) => Group(true);
+    public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) => Group(false);
+    public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender() => Group(true);
+    public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) => Group(true);
 
-    private IDictionary<AddressAsKey, Transaction[]> Group(bool blobs)
+    private IDictionary<AddressAsKey, MempoolTransaction[]> Group(bool blobs)
     {
-        Dictionary<AddressAsKey, List<Transaction>> groups = [];
+        Dictionary<AddressAsKey, List<MempoolTransaction>> groups = [];
         foreach (object key in _transactions.Keys)
         {
-            if (!TryGetTransaction(key, out Transaction? tx) || tx.SenderAddress is null || tx.CarriesBlobs != blobs) continue;
+            if (!TryGetTransaction(key, out MempoolTransaction? tx) || tx.SenderAddress is null || tx.CarriesBlobs != blobs) continue;
             AddressAsKey sender = tx.SenderAddress;
-            if (!groups.TryGetValue(sender, out List<Transaction>? bucket)) groups[sender] = bucket = [];
+            if (!groups.TryGetValue(sender, out List<MempoolTransaction>? bucket)) groups[sender] = bucket = [];
             bucket.Add(blobs ? WithoutBlobs(tx) : tx);
         }
-        Dictionary<AddressAsKey, Transaction[]> result = [];
-        foreach (KeyValuePair<AddressAsKey, List<Transaction>> group in groups)
+        Dictionary<AddressAsKey, MempoolTransaction[]> result = [];
+        foreach (KeyValuePair<AddressAsKey, List<MempoolTransaction>> group in groups)
         {
             group.Value.Sort(static (left, right) => left.Nonce.CompareTo(right.Nonce));
             result[group.Key] = group.Value.ToArray();
@@ -135,21 +136,21 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
         _transactions.Remove(hash);
         return true;
     }
-    public bool EvictTransaction(Transaction tx) => RemoveTransaction(tx.Hash);
+    public bool EvictTransaction(MempoolTransaction tx) => RemoveTransaction(tx.Hash);
     public void ResetTxPoolState() => _transactions.Clear();
 
     public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
     {
-        bool found = TryGetPendingBlobTransaction(hash.ToCommitment(), out Transaction? tx) && tx.NetworkWrapper is ShardBlobNetworkWrapper;
-        availableMask = found ? ((ShardBlobNetworkWrapper)tx!.NetworkWrapper!).GetAvailableCellMask() : BlobCellMask.Empty;
+        bool found = TryGetPendingBlobTransaction(hash.ToCommitment(), out MempoolTransaction? tx) && tx.NetworkWrapper is not null;
+        availableMask = found ? tx!.NetworkWrapper!.GetAvailableCellMask() : BlobCellMask.Empty;
         return found;
     }
 
     public bool TryGetPendingBlobCellMetadata(Hash256 hash, out BlobCellMask availableMask, out int blobCount, out int materializationWork)
     {
-        bool found = TryGetPendingBlobTransaction(hash, out Transaction? tx) && tx.NetworkWrapper is ShardBlobNetworkWrapper;
-        blobCount = found ? tx!.GetBlobCount() : 0;
-        availableMask = found ? ((ShardBlobNetworkWrapper)tx!.NetworkWrapper!).GetAvailableCellMask() : BlobCellMask.Empty;
+        bool found = TryGetPendingBlobTransaction(hash, out MempoolTransaction? tx) && tx.NetworkWrapper is not null;
+        blobCount = found ? tx!.Transaction.GetBlobCount() : 0;
+        availableMask = found ? tx!.NetworkWrapper!.GetAvailableCellMask() : BlobCellMask.Empty;
         materializationWork = found ? checked(blobCount * BlobCellMask.CellCount) : 0;
         return found;
     }
@@ -158,27 +159,24 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     {
         cells = null;
         availableMask = BlobCellMask.Empty;
-        if (!TryGetPendingBlobTransaction(hash, out Transaction? tx) || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
+        if (!TryGetPendingBlobTransaction(hash, out MempoolTransaction? tx) || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
             || !BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] selected)) return false;
         availableMask = wrapper.GetAvailableCellMask() & requestedMask;
         cells = selected;
         return true;
     }
 
-    public bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? transaction)
     {
         if (!TryGetPendingTransaction(hash, out transaction)) return false;
         transaction = WithoutBlobs(transaction);
         return true;
     }
 
-    private static Transaction WithoutBlobs(Transaction transaction)
+    private static MempoolTransaction WithoutBlobs(MempoolTransaction transaction)
     {
         if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper) return transaction;
-        Transaction result = new();
-        transaction.CopyTo(result, copyHash: true);
-        result.NetworkWrapper = wrapper with { Blobs = [], Cells = null, CellMask = BlobCellMask.Empty };
-        return result;
+        return transaction with { NetworkWrapper = wrapper with { Blobs = [], Cells = null, CellMask = BlobCellMask.Empty } };
     }
 
     public bool TryGetBlobAndProofV0(byte[] blobVersionedHash, [NotNullWhen(true)] out byte[]? blob, [NotNullWhen(true)] out byte[]? proof)
@@ -234,7 +232,7 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     {
         foreach (object key in _transactions.Keys)
         {
-            if (!TryGetTransaction(key, out Transaction? tx) || tx.NetworkWrapper is not ShardBlobNetworkWrapper candidate
+            if (!TryGetTransaction(key, out MempoolTransaction? tx) || tx.NetworkWrapper is not ShardBlobNetworkWrapper candidate
                 || candidate.Version != version || tx.BlobVersionedHashes is not { } hashes) continue;
             for (int i = 0; i < hashes.Length; i++)
                 if (hash.AsSpan().SequenceEqual(hashes[i])) { wrapper = candidate; index = i; return true; }
@@ -250,16 +248,16 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     void ITxPool.RemovePeer(PublicKey nodeId) { }
     AnnounceResult ITxPool.NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
         AnnounceResult.RequestRequired;
-    AcceptTxResult ITxPool.ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
+    AcceptTxResult ITxPool.ValidateTxForBlobSampling(MempoolTransaction tx) => AcceptTxResult.Invalid;
     void ITxPool.ForgetRejectedBlobTransaction(Hash256 hash) { }
     bool ITxPool.ForgetInvalidBlobProofs(Hash256 hash) => false;
     BlobCellMergeResult ITxPool.MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
         BlobCellMergeResult.TransactionUnavailable;
-    Transaction? ITxPool.GetBestTx() => null;
-    IEnumerable<Transaction> ITxPool.GetBestTxOfEachSender() => [];
+    MempoolTransaction? ITxPool.GetBestTx() => null;
+    IEnumerable<MempoolTransaction> ITxPool.GetBestTxOfEachSender() => [];
     ulong ITxPool.GetLatestPendingNonce(Address address) => 0;
     long ITxPool.PendingTransactionsAdded => 0;
-    Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) => [];
+    MempoolTransaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) => [];
     long IPendingTxsBySender.GetRemovalGeneration(Address sender) => 0;
 
     event EventHandler<Block>? ITxPool.TxPoolHeadChanged { add { } remove { } }
@@ -269,12 +267,12 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
 
     public void Dispose() => _transactions.Dispose();
 
-    private sealed class Entry(Transaction transaction)
+    private sealed class Entry(MempoolTransaction transaction)
     {
         private int _announced;
-        private Transaction _transaction = transaction;
-        internal Transaction Transaction => Volatile.Read(ref _transaction);
-        internal void UpdateTransaction(Transaction updated) => Volatile.Write(ref _transaction, updated);
+        private MempoolTransaction _transaction = transaction;
+        internal MempoolTransaction Transaction => Volatile.Read(ref _transaction);
+        internal void UpdateTransaction(MempoolTransaction updated) => Volatile.Write(ref _transaction, updated);
         internal bool IsAnnounced => Volatile.Read(ref _announced) != 0;
         internal bool TryMarkAnnounced() => Interlocked.Exchange(ref _announced, 1) == 0;
     }

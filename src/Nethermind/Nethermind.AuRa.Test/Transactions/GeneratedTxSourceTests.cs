@@ -29,7 +29,7 @@ namespace Nethermind.AuRa.Test.Transactions
             ulong gasLimit = ulong.MaxValue;
             Transaction poolTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
-            innerSource.GetTransactions(parent, targetBlock, gasLimit).Returns(new[] { poolTx, generatedTx });
+            innerSource.GetTransactions(parent, targetBlock, gasLimit).Returns(new MempoolTransaction[] { poolTx, generatedTx });
 
             GeneratedTxSource txSource = new(innerSource, txSealer, stateReader, LimboLogs.Instance);
 

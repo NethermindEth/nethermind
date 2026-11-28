@@ -22,7 +22,7 @@ namespace Nethermind.TxPool.Filters;
 /// </remarks>
 internal sealed class FrameTxCalldataStatsFilter : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (!tx.SupportsFrames)
         {
@@ -31,7 +31,7 @@ internal sealed class FrameTxCalldataStatsFilter : IIncomingTxFilter
 
         if (tx.NonceKeys is { Length: <= Eip8250Constants.MaxNonceKeys })
         {
-            tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
+            tx.Transaction.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx.Transaction);
         }
 
         return AcceptTxResult.Accepted;

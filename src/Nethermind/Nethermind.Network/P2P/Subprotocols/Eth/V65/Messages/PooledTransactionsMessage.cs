@@ -7,7 +7,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
-    public class PooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions)
+    public class PooledTransactionsMessage(IOwnedReadOnlyList<MempoolTransaction> transactions)
         : TransactionsMessage(transactions)
     {
         public override int PacketType => Eth65MessageCode.PooledTransactions;

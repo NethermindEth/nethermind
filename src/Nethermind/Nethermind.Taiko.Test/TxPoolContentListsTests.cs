@@ -32,7 +32,7 @@ public class TxPoolContentListsTests
 {
     [TestCaseSource(nameof(FinalizingTests))]
     public int[][] Test_TxLists_AreConstructed(
-        Dictionary<AddressAsKey, Transaction[]> transactions,
+        Dictionary<AddressAsKey, MempoolTransaction[]> transactions,
         Address[]? localAccounts,
         ulong blockGasLimit,
         ulong maxBytesPerTxList,
@@ -98,7 +98,7 @@ public class TxPoolContentListsTests
                     txs.ToDictionary(
                         static kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
                         static kv => kv.Value.Select(static txId =>
-                            Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(7).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
+                            (MempoolTransaction)Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(7).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
                         ).ToArray()),
                     localAccounts.Select(static a => Build.An.Address.FromNumber(a).TestObject).ToArray(),
                     blockGasLimit,
@@ -148,7 +148,7 @@ public class TxPoolContentListsTests
             .TestObject;
 
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, MempoolTransaction[]>
         {
             { tx.SenderAddress!, [tx] }
         });
@@ -199,7 +199,7 @@ public class TxPoolContentListsTests
             .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender().ReturnsForAnyArgs(new Dictionary<AddressAsKey, Transaction[]>
+        txPool.GetPendingTransactionsBySender().ReturnsForAnyArgs(new Dictionary<AddressAsKey, MempoolTransaction[]>
         {
             { tx1.SenderAddress!, [tx1] },
             { tx2.SenderAddress!, [tx2] },

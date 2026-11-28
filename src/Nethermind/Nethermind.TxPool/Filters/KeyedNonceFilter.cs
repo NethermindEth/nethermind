@@ -16,7 +16,7 @@ internal sealed class KeyedNonceFilter(
     TxDistinctSortedPool standardPool,
     TxDistinctSortedPool blobPool) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
         if (tx.NonceKeys is not { } nonceKeys || !KeyedNonceManager.UsesKeyedDomain(nonceKeys))
         {
@@ -29,7 +29,7 @@ internal sealed class KeyedNonceFilter(
             return AcceptTxResult.KeyedNonceUnmet;
         }
 
-        if (ExceedsPerSenderLimit(tx))
+        if (ExceedsPerSenderLimit(tx.Transaction))
         {
             Metrics.PendingTransactionsNonceTooFarInFuture++;
             return AcceptTxResult.NonceTooFarInFuture.WithMessage("too many pending keyed nonce transactions for sender");

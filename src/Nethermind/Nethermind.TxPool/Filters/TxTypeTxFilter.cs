@@ -11,7 +11,7 @@ namespace Nethermind.TxPool.Filters;
 /// </summary>
 public class TxTypeTxFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         TxDistinctSortedPool otherTxTypePool = tx.CarriesBlobs ? txs : blobTxs;
         if (otherTxTypePool.ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one

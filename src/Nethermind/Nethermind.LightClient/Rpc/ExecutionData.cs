@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Consensus.Validators;
@@ -19,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.LightClient.Rpc;
 
@@ -290,26 +292,31 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         CancellationToken cancellationToken, bool requireReady = false)
     {
         if (raw.Length == 0) throw new RpcException(-32003, "Invalid transaction encoding.");
-        Transaction transaction;
+        MempoolTransaction mempoolTransaction;
         try
         {
             RlpReader reader = new(raw);
-            transaction = TxDecoder.Instance.DecodeCompleteNotNull(ref reader,
-                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+            mempoolTransaction = MempoolTxDecoder.Instance.DecodeCompleteNotNull(ref reader,
+                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
         }
         catch (Exception exception) when (exception is RlpReaderException or OverflowException or ArgumentException)
         {
             throw new RpcException(-32003, "Invalid transaction encoding.");
         }
+        Transaction transaction = mempoolTransaction.Transaction;
+        ShardBlobNetworkWrapper? sidecar = mempoolTransaction.NetworkWrapper;
         if (transaction.CarriesBlobs)
         {
-            if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper || !wrapper.HasFullBlobs())
+            if (sidecar is null || !sidecar.HasFullBlobs())
                 throw new RpcException(-32003, "Blob transaction submission requires a complete sidecar.");
             await KzgPolynomialCommitments.InitializeAsync(NullLogManager.Instance.GetClassLogger<ExecutionData>()).WaitAsync(cancellationToken);
         }
         BlockHeader header = await source.GetHeaderAsync(head, cancellationToken);
         IReleaseSpec spec = specProvider.GetSpec(header);
         ValidationResult validation = new TxValidator(chainId).IsWellFormed(transaction, spec, header.GasLimit);
+        if (validation) validation = MempoolBlobTxValidator.IsWellFormed(transaction, sidecar, spec);
+        if (validation && sidecar is not null && !IBlobProofsManager.For(sidecar.Version).ValidateProofs(sidecar))
+            validation = TxErrorMessages.InvalidBlobProofs;
         if (!validation) throw new RpcException(-32003, validation.Error!);
         if (transaction.SupportsFrames)
         {
@@ -336,9 +343,9 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             if (!FrameTxValidation.CoversRequiredMaxFee(transaction, spec, nextBaseFee, nextBlobBaseFee))
                 throw Unready("Frame transaction max fee is below the next block's required fee budget.");
             if (frameVerifier is null) throw new RpcException(-32601, "Verified frame admission is unavailable.");
-            await frameVerifier.ValidateFrameAdmissionAsync(head, transaction, header, spec, cancellationToken, requireReady);
+            await frameVerifier.ValidateFrameAdmissionAsync(head, mempoolTransaction, header, spec, cancellationToken, requireReady);
             transaction.Hash ??= transaction.CalculateHash();
-            await RelayAsync(transaction, spec, cancellationToken);
+            await RelayAsync(mempoolTransaction, spec, cancellationToken);
             return transaction.Hash!;
         }
         try { RecoverSender(transaction); }
@@ -347,7 +354,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         // A ready submission may follow the sender's announced local transactions, as eth_getTransactionCount("pending") reports.
         Account expected = requireReady ? source.GetPendingAccount(transaction.SenderAddress!, sender, transaction.Nonce) : sender;
         ValidateRelayNonce(transaction.Nonce, expected.Nonce, requireReady);
-        if (!TryGetSenderCost(transaction, out UInt256 cost) || cost > expected.Balance)
+        if (!TryGetSenderCost(mempoolTransaction, out UInt256 cost) || cost > expected.Balance)
             throw Unready("Transaction exceeds the sender's authenticated balance.");
         if (sender.HasCode)
         {
@@ -356,7 +363,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                 throw new RpcException(-32003, "Transaction sender has deployed code.");
         }
         transaction.Hash ??= transaction.CalculateHash();
-        await RelayAsync(transaction, spec, cancellationToken);
+        await RelayAsync(mempoolTransaction, spec, cancellationToken);
         return transaction.Hash!;
 
         RpcException Unready(string message) => requireReady
@@ -364,7 +371,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             : new(-32003, message);
     }
 
-    private Task RelayAsync(Transaction transaction, IReleaseSpec spec, CancellationToken cancellationToken) => sendPolicy is null
+    private Task RelayAsync(MempoolTransaction transaction, IReleaseSpec spec, CancellationToken cancellationToken) => sendPolicy is null
         ? source.BroadcastTransactionAsync(transaction, cancellationToken)
         : sendPolicy.RelayAsync(transaction, spec, relayed => source.BroadcastTransactionAsync(relayed, cancellationToken));
 
@@ -375,12 +382,13 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             throw new RpcException(6, "Transaction nonce has a gap from authenticated state.", RpcBackend.Quantity(expected));
     }
 
-    internal static bool TryGetSenderCost(Transaction transaction, out UInt256 cost)
+    internal static bool TryGetSenderCost(MempoolTransaction mempoolTransaction, out UInt256 cost)
     {
+        Transaction transaction = mempoolTransaction.Transaction;
         cost = default;
         if (transaction.SupportsFrames)
         {
-            cost = transaction.PayerAddress is { } payer && payer != transaction.SenderAddress
+            cost = mempoolTransaction.PayerAddress is { } payer && payer != transaction.SenderAddress
                 ? UInt256.Zero : transaction.MaxFee;
             return true;
         }

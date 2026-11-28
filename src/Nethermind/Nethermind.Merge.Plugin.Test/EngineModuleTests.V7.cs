@@ -1261,7 +1261,7 @@ public partial class EngineModuleTests
 
     private sealed class GatedInclusionListTxSource(IInclusionListTxSource inner, ManualResetEventSlim release) : IInclusionListTxSource
     {
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<MempoolTransaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             release.Wait();
             return inner.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource);

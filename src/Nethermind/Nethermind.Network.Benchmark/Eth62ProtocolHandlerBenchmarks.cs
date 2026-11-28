@@ -84,7 +84,7 @@ namespace Nethermind.Network.Benchmarks
             _handler.HandleMessage(_zeroPacket);
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            _txMsg = new TransactionsMessage(new[] { tx }.ToPooledList());
+            _txMsg = new TransactionsMessage(new MempoolTransaction[] { tx }.ToPooledList());
         }
 
         [GlobalCleanup]

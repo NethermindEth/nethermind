@@ -607,7 +607,7 @@ public class FrameTxProducerRetryMeasurement
             .AddSingleton<IBlockTree>(_poolHeadTree)
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-            .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(comparers => comparers.GetDefaultComparer())
+            .AddScoped<IComparer<MempoolTransaction>, ITransactionComparerProvider>(comparers => comparers.GetDefaultComparer())
             // The registered provider reads state through an IStateReader at the chain's state root; this pool's
             // state lives at a head of its own, so the provider is built on that state instead.
             .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider>(spec => new ChainHeadInfoProvider(spec, _poolHeadTree, poolState, new())

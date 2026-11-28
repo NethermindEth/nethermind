@@ -238,12 +238,12 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
             }
             return executor.Success(result);
 
-            void Add(Transaction[] candidates)
+            void Add(MempoolTransaction[] candidates)
             {
-                foreach (Transaction candidate in candidates)
+                foreach (MempoolTransaction candidate in candidates)
                 {
                     token.ThrowIfCancellationRequested();
-                    all[candidate.Nonce] = candidate;
+                    all[candidate.Transaction.Nonce] = candidate.Transaction;
                 }
             }
         }, cancellationToken);
