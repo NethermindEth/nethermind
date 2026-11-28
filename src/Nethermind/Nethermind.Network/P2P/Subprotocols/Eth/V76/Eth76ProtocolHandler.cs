@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V74;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
@@ -47,7 +48,7 @@ public class Eth76ProtocolHandler(
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth74ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
         logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, blockFinder, proofStore, transactionsGossipPolicy),
-    IProofWrapperPeer
+    IStaticProtocolInfo, IProofWrapperPeer
 {
     private static readonly Func<ProofWrappersMessage, int, ProofWrappersMessage> SelectWrappers = static (message, _) => message;
     private static readonly Func<ProofWrapperManifestsMessage, int, ProofWrapperManifestsMessage> SelectManifests = static (message, _) => message;

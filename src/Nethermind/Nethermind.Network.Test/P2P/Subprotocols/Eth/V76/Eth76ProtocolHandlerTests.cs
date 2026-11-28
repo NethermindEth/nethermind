@@ -21,6 +21,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76;
@@ -105,6 +106,19 @@ public class Eth76ProtocolHandlerTests
             Assert.That(new[] { Eth76MessageCode.NewProofWrapperHashes, Eth76MessageCode.GetProofWrappers, Eth76MessageCode.ProofWrappers,
                 Eth76MessageCode.GetProofWrapperManifests, Eth76MessageCode.ProofWrapperManifests }, Is.EqualTo(new[] { 0x18, 0x19, 0x1a, 0x1b, 0x1c }));
         }
+    }
+
+    /// <summary>The handler factory registers each handler under its static version, so eth/76 must not take over eth/74.</summary>
+    [Test]
+    public void Registers_under_its_own_version()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StaticVersion<Eth76ProtocolHandler>(), Is.EqualTo(76));
+            Assert.That(StaticVersion<Nethermind.Network.P2P.Subprotocols.Eth.V74.Eth74ProtocolHandler>(), Is.EqualTo(74));
+        }
+
+        static byte StaticVersion<T>() where T : IStaticProtocolInfo => T.Version;
     }
 
     [Test]
