@@ -173,7 +173,7 @@ public partial class PatriciaTree
                     ref childPath,
                     child,
                     flipCount,
-                    flags & ~Flags.DoNotParallelize); // A nested level with enough entries under a full branch parallelizes too.
+                    flags & ~Flags.DoNotParallelize); // A nested level with enough entries under a branch with at least two children parallelizes too.
 
                 jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 

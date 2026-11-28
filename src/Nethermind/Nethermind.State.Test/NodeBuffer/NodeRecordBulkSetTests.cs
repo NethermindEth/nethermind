@@ -80,7 +80,7 @@ internal class NodeRecordBulkSetTests
             .. Enumerable.Range(0, 144).Select(i => (Key((byte)((i / 9) << 4 | i % 9), 0), ExistingValue)),
             (Key(0, 1), ExistingValue),
         ];
-        List<(Hash256 key, byte[] value)> missingNibble = [.. PatriciaTreeBulkSetterTests.GenRandomOfLength(8192, seed: 4).Where(item => LacksNibbleFAtTopLevels(item.key))];
+        List<(Hash256 key, byte[] value)> missingNibble = [.. PatriciaTreeBulkSetterTests.GenRandomOfLength(8192, seed: 4).Where(item => LacksNibble7AtTopLevels(item.key))];
         List<(Hash256 key, byte[] value)> missingNibbleExisting = missingNibble[..(missingNibble.Count / 2)];
         List<(Hash256 key, byte[] value)> missingNibbleChanges =
         [
@@ -92,7 +92,7 @@ internal class NodeRecordBulkSetTests
         List<(Hash256 key, byte[] value)> embeddedExtension = [.. embeddedBranch, (DivergingAt60Key, ExistingValue)];
         IEnumerable<TestCaseData> cases = PatriciaTreeBulkSetterTests.BulkSetTestGen()
             .Append(new TestCaseData(existing, changes).SetName("10k inserts then 2.5k updates, 2.5k deletes and 5k inserts"))
-            .Append(new TestCaseData(missingNibbleExisting, missingNibbleChanges).SetName("Keys missing nibble f at depths 0 to 2, then updates, deletes and inserts"))
+            .Append(new TestCaseData(missingNibbleExisting, missingNibbleChanges).SetName("Keys missing nibble 7 at depths 0 to 2, then updates, deletes and inserts"))
             .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..])).SetName("Full root then deletes of all but one leaf"))
             .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..^1])).SetName("Full root then deletes of all but an extension"))
             .Append(new TestCaseData(embeddedBranch, Items((EmbeddedBranchKeyC, OneByteValue))).SetName("Extension over an embedded branch, then a set into the branch"))
@@ -219,7 +219,7 @@ internal class NodeRecordBulkSetTests
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 
-        List<(Hash256 key, byte[] value)> items = [.. PatriciaTreeBulkSetterTests.GenRandomOfLength(8192, seed: 3).Where(item => LacksNibbleFAtTopLevels(item.key))];
+        List<(Hash256 key, byte[] value)> items = [.. PatriciaTreeBulkSetterTests.GenRandomOfLength(8192, seed: 3).Where(item => LacksNibble7AtTopLevels(item.key))];
         (Hash256 expectedRoot, _) = BuildExpectedTrie(items.ToDictionary(item => item.key, item => item.value));
 
         (ValueHash256 serialRoot, int serialBatches) = BulkSetCountingBatches(canParallelize: false);
@@ -837,8 +837,8 @@ internal class NodeRecordBulkSetTests
         return (new DictionaryNodeSource(persisted, warmed, null), warmed, persisted, (root.Hash, 0));
     }
 
-    /// <summary>Whether <paramref name="key"/> has no nibble f at depths 0 to 2, so a trie of such keys has no full branch at these depths.</summary>
-    private static bool LacksNibbleFAtTopLevels(Hash256 key) => key.Bytes[0] < 0xf0 && (key.Bytes[0] & 0xf) != 0xf && key.Bytes[1] < 0xf0;
+    /// <summary>Whether <paramref name="key"/> has no nibble 7 at depths 0 to 2, so a trie of such keys has no full branch at these depths.</summary>
+    private static bool LacksNibble7AtTopLevels(Hash256 key) => key.Bytes[0] >> 4 != 7 && (key.Bytes[0] & 0xf) != 7 && key.Bytes[1] >> 4 != 7;
 
     private static (ValueHash256 Hash, ulong Pointer) BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, (ValueHash256 Hash, ulong Pointer) root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
