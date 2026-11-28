@@ -260,6 +260,14 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
+    public void Genesis_commits_to_the_empty_dependency_proof_when_eip8141_is_active([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithTransition("eip8141TransitionTimestamp", transitionTimestamp);
+
+        Assert.That(chainSpec.Genesis!.Header.DependencyProofHash, Is.EqualTo(transitionTimestamp == 0 ? Keccak.OfAnEmptyString : null));
+    }
+
+    [Test]
     public void Eip8116_activates_at_its_transition_timestamp()
     {
         const ulong transitionTimestamp = 0x10;
