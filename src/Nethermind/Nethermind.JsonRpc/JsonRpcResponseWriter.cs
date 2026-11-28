@@ -556,7 +556,7 @@ internal sealed class StagingPipeWriter : CountingWriter
 
     public override Memory<byte> GetMemory(int sizeHint = 0)
     {
-        if (sizeHint < 0) throw new ArgumentOutOfRangeException(nameof(sizeHint));
+        ArgumentOutOfRangeException.ThrowIfNegative(sizeHint);
         if (_buffer is { } buffer)
         {
             int remaining = Limit - _buffered;

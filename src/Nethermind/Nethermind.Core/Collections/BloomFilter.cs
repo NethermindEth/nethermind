@@ -54,7 +54,7 @@ public sealed unsafe partial class BloomFilter : IDisposable
 
     public BloomFilter(long capacity, double bitsPerKey, long initialCount = 0)
     {
-        if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
         if (bitsPerKey <= 0.0 || double.IsNaN(bitsPerKey) || double.IsInfinity(bitsPerKey))
             throw new ArgumentOutOfRangeException(nameof(bitsPerKey), "BitsPerKey must be a finite value > 0.");
 

@@ -123,10 +123,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ArgumentNullException.ThrowIfNull(backgroundTaskScheduler);
         ArgumentNullException.ThrowIfNull(logManager);
 
-        if (maxAdmissionDelay < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxAdmissionDelay));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAdmissionDelay, TimeSpan.Zero);
 
         if (cellRequestTimeout < TimeSpan.Zero)
         {

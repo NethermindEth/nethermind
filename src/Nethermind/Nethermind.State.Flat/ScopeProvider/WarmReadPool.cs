@@ -40,7 +40,7 @@ public sealed class WarmReadPool : IDisposable
 
     public WarmReadPool(int maxConcurrency)
     {
-        if (maxConcurrency < 1) throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxConcurrency, 1);
 
         MaxConcurrency = maxConcurrency;
         _threads = new Thread[maxConcurrency];

@@ -102,7 +102,7 @@ public sealed class HistoryWalkVerifier
 
     internal HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int workers, ulong checkpointBlocks, Action<int, ulong>? onCheckpoint, CancellationToken token, Action<int>? onItemDone = null, int checkpointGroups = HistoryWalkRun.DefaultCheckpointGroups, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot, Action? onStorageChild = null)
     {
-        if (workers < 1) throw new ArgumentOutOfRangeException(nameof(workers));
+        ArgumentOutOfRangeException.ThrowIfLessThan(workers, 1);
         if (fromInclusive > toInclusive)
             throw new ArgumentException($"Range start {fromInclusive} is above its end {toInclusive}.", nameof(fromInclusive));
 
