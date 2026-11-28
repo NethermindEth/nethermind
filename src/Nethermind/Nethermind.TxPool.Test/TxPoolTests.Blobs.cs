@@ -6910,7 +6910,7 @@ namespace Nethermind.TxPool.Test
             Transaction SignedBlobFrameTx(ulong? deadline)
             {
                 Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
-                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                SignFrame(tx, FrameSignatureDefect.None);
                 tx.Hash = tx.CalculateHash();
                 return tx;
             }
@@ -7031,7 +7031,7 @@ namespace Nethermind.TxPool.Test
             Transaction SignedBlobFrameTx(ulong deadline)
             {
                 Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
-                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                SignFrame(tx, FrameSignatureDefect.None);
                 tx.Hash = tx.CalculateHash();
                 return tx;
             }
@@ -7339,7 +7339,7 @@ namespace Nethermind.TxPool.Test
                 MaxFee = maxFee ?? (UInt256)(1_000_000 + Eip4844Constants.GasPerBlob * (ulong)blobCount) * 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
                 Frames = [.. frames],
-                FrameSignatures = [],
+                FrameClaims = [],
                 BlobVersionedHashes = versionedHashes,
                 NetworkWrapper = wrapper,
                 NonceKeys = nonceKeys,

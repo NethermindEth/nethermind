@@ -61,10 +61,10 @@ internal class FrameTxVerifyGasFilterTest
     }
 
     [Test]
-    public void Accept_IncludesSignatureVerificationInTheConfiguredBudget(
+    public void Accept_IncludesClaimVerificationInTheConfiguredBudget(
         [Values(300_000UL, 500_000UL)] ulong budget, [Values(0UL, 1UL)] ulong excessGas)
     {
-        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)],
+        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Claim(TestItem.AddressA)],
             SelfVerify(budget - Eip8141Constants.Secp256k1VerificationGasCost + excessGas));
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = budget }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
@@ -111,43 +111,37 @@ internal class FrameTxVerifyGasFilterTest
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
 
-    private static TxFrameSignature[] Signatures(int count, byte scheme)
+    private static TxFrameClaim[] Claims(int count, Address verifier)
     {
-        TxFrameSignature[] signatures = new TxFrameSignature[count];
+        TxFrameClaim[] claims = new TxFrameClaim[count];
         for (int i = 0; i < count; i++)
         {
-            signatures[i] = scheme switch
-            {
-                TxFrameSignature.SchemeSecp256k1 => Secp256k1Signature(TestItem.AddressA),
-                TxFrameSignature.SchemeP256 => new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressA, default, new byte[TxFrameSignature.P256SignatureLength]),
-                _ => new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, default),
-            };
+            claims[i] = new TxFrameClaim(verifier, TestItem.AddressA.Bytes.ToArray(), default, 0, 0);
         }
 
-        return signatures;
+        return claims;
     }
 
-    private static readonly int Secp256k1AtCeiling = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8141Constants.Secp256k1VerificationGasCost);
+    private static readonly int LeanSphincsAtCeiling = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8141Constants.LeanSphincsVerificationGasCost);
     private static readonly int P256AtCeiling = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8141Constants.P256VerificationGasCost);
 
     private static IEnumerable<TestCaseData> LiftedCeilingCases()
     {
-        yield return new TestCaseData(Secp256k1AtCeiling, TxFrameSignature.SchemeSecp256k1, AcceptTxResult.Accepted)
-            .SetName("secp256k1 verification at the default fallback is accepted with the ceiling lifted");
-        yield return new TestCaseData(Secp256k1AtCeiling + 1, TxFrameSignature.SchemeSecp256k1, AcceptTxResult.FrameTxVerifyGasTooHigh)
-            .SetName("secp256k1 verification over the default fallback is rejected with the ceiling lifted");
-        yield return new TestCaseData(P256AtCeiling, TxFrameSignature.SchemeP256, AcceptTxResult.Accepted)
+        // MAX_CLAIMS bounds the list, so only the costlier verifiers can reach the fallback.
+        yield return new TestCaseData(LeanSphincsAtCeiling, Eip8141Constants.LeanSphincsVerifierAddress, AcceptTxResult.Accepted)
+            .SetName("leanSPHINCS verification at the default fallback is accepted with the ceiling lifted");
+        yield return new TestCaseData(LeanSphincsAtCeiling + 1, Eip8141Constants.LeanSphincsVerifierAddress, AcceptTxResult.FrameTxVerifyGasTooHigh)
+            .SetName("leanSPHINCS verification over the default fallback is rejected with the ceiling lifted");
+        yield return new TestCaseData(P256AtCeiling, Eip8141Constants.P256VerifierAddress, AcceptTxResult.Accepted)
             .SetName("P256 verification at the default fallback is accepted with the ceiling lifted");
-        yield return new TestCaseData(P256AtCeiling + 1, TxFrameSignature.SchemeP256, AcceptTxResult.FrameTxVerifyGasTooHigh)
-            .SetName("P256 verification over the default fallback is rejected with the ceiling lifted");
-        yield return new TestCaseData(1024, TxFrameSignature.SchemeArbitrary, AcceptTxResult.Accepted)
-            .SetName("the maximum decodable arbitrary signature list fits the default fallback");
+        yield return new TestCaseData(Eip8141Constants.MaxClaims, Eip8141Constants.Secp256k1VerifierAddress, AcceptTxResult.Accepted)
+            .SetName("a full list of secp256k1 claims fits the default fallback");
     }
 
     [TestCaseSource(nameof(LiftedCeilingCases))]
-    public void Accept_BoundsSignatureVerificationGasAtTheDefaultFallback_WhenVerifyGasIsLifted(int signatureCount, byte scheme, AcceptTxResult expected)
+    public void Accept_BoundsClaimVerificationGasAtTheDefaultFallback_WhenVerifyGasIsLifted(int claimCount, Address verifier, AcceptTxResult expected)
     {
-        Transaction tx = FrameTx(TestItem.AddressA, Signatures(signatureCount, scheme), Execution());
+        Transaction tx = FrameTx(TestItem.AddressA, Claims(claimCount, verifier), Execution());
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxVerifyStateGas = 0 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 

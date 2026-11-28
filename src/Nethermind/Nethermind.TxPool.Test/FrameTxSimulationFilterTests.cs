@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -29,13 +30,35 @@ public class FrameTxSimulationFilterTests
 
         // The payer filter resolves the legible prefix natively, then the simulation filter runs.
         RunPayerFilter(state, tx);
-        AcceptTxResult result = Accept(state, simulator, tx);
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified: true);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressA));
             simulator.DidNotReceiveWithAnyArgs().Simulate(default!);
+        }
+    }
+
+    /// <summary>A claim the claim filter left unverified, a custom verifier's or a leanSPHINCS one, is verified only by
+    /// the simulation, so a natively resolved payer does not skip it.</summary>
+    [Test]
+    public void Accept_NativelyResolvedPayerWithUnverifiedClaims_StillSimulates()
+    {
+        TestReadOnlyStateProvider state = new();
+        state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<System.Threading.CancellationToken>(), Arg.Any<System.Func<bool>?>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressA));
+
+        RunPayerFilter(state, tx);
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            simulator.ReceivedWithAnyArgs(1).Simulate(default!);
         }
     }
 
@@ -71,24 +94,29 @@ public class FrameTxSimulationFilterTests
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            simulator.Received(1).Simulate(tx, signaturesPreValidated: signaturesVerified);
+            simulator.Received(1).Simulate(tx, claimsPreVerified: signaturesVerified);
         }
     }
 
-    [Test]
-    public void Accept_OpaquePrefixFailsSimulation_Rejected()
+    /// <summary>A claim failing its witness rejects only that copy: the hash does not commit to the witnesses.</summary>
+    [TestCase("banned opcode", false)]
+    [TestCase(FrameTxClaimVerifier.InvalidClaim, true)]
+    public void Accept_OpaquePrefixFailsSimulation_Rejected(string reason, bool sidecarRejected)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject(reason));
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
 
-        AcceptTxResult result = Accept(state, simulator, tx);
+        AcceptTxResult result = filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
             Assert.That(tx.PayerAddress, Is.Null);
+            Assert.That(filteringState.SidecarRejected, Is.EqualTo(sidecarRejected));
         }
     }
 
@@ -140,7 +168,7 @@ public class FrameTxSimulationFilterTests
     }
 
     private static Transaction SelfVerifyTx(Address sender) =>
-        FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(PrefixFrameGas));
+        FrameTx(sender, [Secp256k1Claim(sender)], SelfVerify(PrefixFrameGas));
 
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
@@ -270,7 +298,7 @@ public class FrameTxSimulationFilterTests
         IChainHeadInfoProvider? headInfo = null)
     {
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
-        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameSignaturesVerified = signaturesVerified };
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameClaimsVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, options);
     }
 }

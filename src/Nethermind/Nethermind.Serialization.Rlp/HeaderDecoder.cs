@@ -79,6 +79,7 @@ namespace Nethermind.Serialization.Rlp
             if (fields.HasNext) blockHeader.RequestsHash = fields.DecodeKeccakOrNull();
             if (fields.HasNext) blockHeader.BlockAccessListHash = fields.DecodeKeccakOrNull();
             if (fields.HasNext) blockHeader.SlotNumber = fields.DecodeULong<TCanonicalChecks>();
+            if (fields.HasNext) blockHeader.DependencyProofHash = fields.DecodeKeccakOrNull();
 
             reader.ExitSequence(in fields, itemLength, rlpBehaviors);
             return blockHeader;
@@ -165,6 +166,7 @@ namespace Nethermind.Serialization.Rlp
             if (optionalFields > 5) writer.Encode(header.RequestsHash);
             if (optionalFields > 6) writer.Encode(header.BlockAccessListHash);
             if (optionalFields > 7) writer.Encode(header.SlotNumber.GetValueOrDefault());
+            if (optionalFields > 8) writer.Encode(header.DependencyProofHash);
             writer.EndSequence(sequence);
         }
 
@@ -198,6 +200,7 @@ namespace Nethermind.Serialization.Rlp
             if (optionalFields > 5) contentLength += Rlp.LengthOf(item.RequestsHash);
             if (optionalFields > 6) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
             if (optionalFields > 7) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
+            if (optionalFields > 8) contentLength += Rlp.LengthOf(item.DependencyProofHash);
 
             return contentLength;
         }
@@ -208,7 +211,8 @@ namespace Nethermind.Serialization.Rlp
         /// a set one takes its default value. EIP-4844: BlobGasUsed and ExcessBlobGas are always encoded as a pair.
         /// </remarks>
         private static int GetOptionalFieldCount(BlockHeader header, RlpBehaviors rlpBehaviors) =>
-            header.SlotNumber is not null ? 8
+            header.DependencyProofHash is not null ? 9
+            : header.SlotNumber is not null ? 8
             : header.BlockAccessListHash is not null ? 7
             : header.RequestsHash is not null ? 6
             : header.ParentBeaconBlockRoot is not null ? 5

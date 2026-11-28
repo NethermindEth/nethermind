@@ -145,7 +145,9 @@ namespace Nethermind.TxPool
                 ? tx.CarriesBlobs && (UInt256.MultiplyOverflow((UInt256)tx.GetBlobGas(), currentPricePerBlobGas, out UInt256 blobFee) || tx.MaxFee < blobFee)
                 : tx.MaxFeePerBlobGas < currentPricePerBlobGas;
 
-        public static bool CanBeBroadcast(this Transaction tx) => !tx.CarriesBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
+        /// <remarks>EIP-8141: like a blob transaction, a frame transaction is only announced, so its segregated
+        /// witnesses travel in the pooled wrapper a peer requests.</remarks>
+        public static bool CanBeBroadcast(this Transaction tx) => !tx.CarriesBlobs && !tx.SupportsFrames && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
         internal static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
@@ -304,6 +306,6 @@ namespace Nethermind.TxPool
         internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
 
-        public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
+        public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null || tx.ClaimWitnesses is not null;
     }
 }

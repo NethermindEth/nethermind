@@ -92,7 +92,7 @@ public class BlobsBundleTests
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
             NetworkWrapper = wrapper,
         };

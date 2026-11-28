@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 
@@ -74,7 +75,7 @@ public abstract class TransactionTestBase
     /// <remarks>
     /// <see cref="TxValidator.IsWellFormed"/> alone is not that set for EIP-8141: a frame transaction names
     /// its sender explicitly, so it never goes through the sender recovery that rejects a bad signature on
-    /// every other type, and its <c>validate_signature</c> step lives in the pool's own ingress filter and
+    /// every other type, and its claim verification lives in the pool's own ingress filter and
     /// in the processor instead. Running the same static validator those two call keeps this harness's
     /// notion of raw-transaction validity aligned with the client's, without a spec or processor context.
     /// </remarks>
@@ -86,14 +87,22 @@ public abstract class TransactionTestBase
             return error;
         }
 
+        // A canonical payload carries no witnesses, so its claims are checked only when the pooled wrapper was decoded.
+        if (tx.ClaimWitnesses is null)
+        {
+            return null;
+        }
+
         // Same availability test the pool's ingress filter makes; the processor resolves the same
         // precompile through its code-info repository instead.
-        IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
+        IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxClaimVerifier.P256VerifyPrecompileAddress)
             ? SecP256r1Precompile.Instance
             : null;
-        return FrameTxSignatureValidator.Validate(tx, _mainnetEcdsa, p256Precompile, spec, out string? signatureError)
+        return FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders: false, out string? claimError)
+               && FrameTxClaimVerifier.VerifyProtocolClaims(tx, _mainnetEcdsa, p256Precompile, UnavailableLeanSphincsVerifier.Instance, spec,
+                   preempt: null, out _, out _, out claimError)
             ? null
-            : signatureError;
+            : claimError;
     }
 
     private static bool TryDecode(string txBytesHex, out Transaction? tx, out string? error)
@@ -110,7 +119,9 @@ public abstract class TransactionTestBase
                 return false;
             }
 
-            tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
+            // A frame transaction's witnesses travel only in its pooled wrapper, whose payload opens with the body list.
+            RlpBehaviors behaviors = IsPooledFrameTx(bytes) ? RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm : RlpBehaviors.SkipTypedWrapping;
+            tx = Rlp.Decode<Transaction>(bytes, behaviors);
             return tx is not null;
         }
         catch (Exception ex)
@@ -118,6 +129,14 @@ public abstract class TransactionTestBase
             error = ex.Message;
             return false;
         }
+    }
+
+    private static bool IsPooledFrameTx(byte[] bytes)
+    {
+        if (bytes.Length < 2 || bytes[0] != (byte)TxType.FrameTx) return false;
+
+        RlpReader reader = new(bytes.AsSpan(1));
+        return reader.IsNextSequence && reader.EnterSequence(out _).IsNextSequence;
     }
 
     private static bool ExceptionMatches(string expected, string observed)

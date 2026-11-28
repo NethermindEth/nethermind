@@ -7,7 +7,7 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>Rejects an EIP-8141 frame transaction whose validation prefix is unrecognized or structurally cannot approve a payer.</summary>
-/// <remarks>The verdict needs no signatures, so it runs ahead of <see cref="FrameTxSignatureFilter"/> and its per-signature recovery.</remarks>
+/// <remarks>The verdict needs no claims, so it runs ahead of <see cref="FrameTxClaimFilter"/> and its per-claim verification.</remarks>
 internal sealed class FrameTxPayerlessFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)

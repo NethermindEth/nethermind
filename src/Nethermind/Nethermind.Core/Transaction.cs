@@ -247,10 +247,28 @@ namespace Nethermind.Core
         public TxFrame[]? Frames { get; set; }
 
         /// <summary>
-        /// List of protocol-validated signatures available to a frame transaction.
+        /// List of declarative claims of a frame transaction, every one verified before any frame executes.
         /// https://eips.ethereum.org/EIPS/eip-8141
         /// </summary>
-        public TxFrameSignature[]? FrameSignatures { get; set; }
+        public TxFrameClaim[]? FrameClaims { get; set; }
+
+        private byte[][]? _claimWitnesses;
+
+        /// <summary>
+        /// The segregated witnesses of <see cref="FrameClaims"/>, index for index; <c>null</c> when not available.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        /// <remarks>Not part of the transaction body: carried by the pooled wrapper, or assigned from the block's
+        /// dependency proof. Replacing them changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public byte[][]? ClaimWitnesses
+        {
+            get => _claimWitnesses;
+            set
+            {
+                _claimWitnesses = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c> until
@@ -414,7 +432,8 @@ namespace Nethermind.Core
                 obj._size = default;
                 obj.AuthorizationList = default;
                 obj.Frames = default;
-                obj.FrameSignatures = default;
+                obj.FrameClaims = default;
+                obj._claimWitnesses = default;
                 obj.PayerAddress = default;
                 obj.PayerExposure = default;
                 obj.NonceKeys = default;
@@ -471,7 +490,8 @@ namespace Nethermind.Core
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
             tx.Frames = Frames;
-            tx.FrameSignatures = FrameSignatures;
+            tx.FrameClaims = FrameClaims;
+            tx._claimWitnesses = _claimWitnesses;
             tx.PayerAddress = PayerAddress;
             tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;

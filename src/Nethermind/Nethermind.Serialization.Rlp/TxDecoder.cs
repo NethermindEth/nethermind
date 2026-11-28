@@ -320,7 +320,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
                 AccessListTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
             case (TxType.FrameTx, FrameTxDecoder):
-                FrameTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                FrameTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors);
                 break;
             default:
                 decoder.Encode(item, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
@@ -343,7 +343,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
             (TxType.Blob, BlobTxDecoder) => BlobTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
             (TxType.SetCode, SetCodeTxDecoder) => SetCodeTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
             (TxType.AccessList, AccessListTxDecoder) => AccessListTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            (TxType.FrameTx, FrameTxDecoder) => FrameTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.FrameTx, FrameTxDecoder) => FrameTxDecoder.GetTransactionLength(tx, rlpBehaviors),
             _ => decoder.GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId)
         };
     }

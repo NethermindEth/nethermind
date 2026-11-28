@@ -122,6 +122,12 @@ public static partial class EvmInstructions
         ref readonly UInt256 gasLimit = ref Operand(ref deepest, operands, 0);
         Address codeSource = vm.AddressCache.GetOrCreate(in Operand(ref deepest, operands, 1));
 
+        // EIP-8141 pure context: a claim verifier may call nothing but an active precompile.
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && vm.TxExecutionContext.IsPureVerification && !vm.Spec.IsPrecompile(codeSource))
+        {
+            return EvmExceptionType.BadInstruction;
+        }
+
         ExecutionEnvironment env = vm.VmState.Env;
         // Static calls cannot transfer value; delegate calls use the value from the current execution context.
         ref readonly UInt256 callValue = ref TOpCall.ExecutionType == ExecutionType.STATICCALL

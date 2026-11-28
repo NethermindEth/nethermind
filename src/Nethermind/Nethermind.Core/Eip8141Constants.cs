@@ -13,11 +13,19 @@ namespace Nethermind.Core;
 public static class Eip8141Constants
 {
     public const int MaxFrames = 64;
+    public const int MaxClaims = 64;
+    public const int MaxClaimWitnessBytes = 1_048_576;
+    public const int MaxDependencyProofBytes = 8_388_608;
+    public const byte DependencyProofVersionRaw = 0x00;
+    public const byte PooledWrapperVersion = 0;
     public const long IntrinsicGasCost = 12_000;
     public const long PerFrameGasCost = 475;
-    public const ulong ArbitraryVerificationGasCost = 100;
     public const ulong Secp256k1VerificationGasCost = 2_800;
     public const ulong P256VerificationGasCost = 6_700;
+    public const ulong LeanSphincsVerificationGasCost = 13_200;
+    public const int Secp256k1WitnessLength = 65;
+    public const int P256WitnessLength = 128;
+    public const int LeanSphincsSignatureSize = 7_740;
     public const int ExpiryDataLength = 8;
 
     // Shared validation-work floor, not the node's configurable headroom or a block-validity limit.
@@ -30,6 +38,24 @@ public static class Eip8141Constants
     public const int MaxPendingTxsUsingNonCanonicalPaymaster = 1;
 
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
+
+    // EIP8141-ISSUE: the spec leaves the three protocol verifier addresses TBD. These placeholders sit outside the
+    // active precompile range and outside the 0x0100-0x01ff range EIP-7587 reserves for RIPs.
+    public static readonly Address Secp256k1VerifierAddress = new("0x00000000000000000000000000000000000081a1");
+    public static readonly Address P256VerifierAddress = new("0x00000000000000000000000000000000000081a2");
+    public static readonly Address LeanSphincsVerifierAddress = new("0x00000000000000000000000000000000000081a3");
+
+    /// <summary>EIP-8141 <c>PROTOCOL_VERIFIERS</c>: whether <paramref name="verifier"/> is a claim-only protocol
+    /// verifier and, if so, the fixed verification gas and witness length it assigns.</summary>
+    public static bool TryGetProtocolVerifier(Address verifier, out ulong verificationGas, out ulong witnessLength)
+    {
+        (verificationGas, witnessLength) =
+            verifier == Secp256k1VerifierAddress ? (Secp256k1VerificationGasCost, (ulong)Secp256k1WitnessLength)
+            : verifier == P256VerifierAddress ? (P256VerificationGasCost, (ulong)P256WitnessLength)
+            : verifier == LeanSphincsVerifierAddress ? (LeanSphincsVerificationGasCost, (ulong)LeanSphincsSignatureSize)
+            : (0UL, 0UL);
+        return verificationGas != 0;
+    }
     public static readonly Address ExpiryVerifierAddress = new("0x81413f0cF12e9b6a49B1D0439E081c577D57FfFf");
 
     /// <summary>The expiry-verifier runtime code that the EIP-8141 deployment transaction creates at <see cref="ExpiryVerifierAddress"/>.</summary>

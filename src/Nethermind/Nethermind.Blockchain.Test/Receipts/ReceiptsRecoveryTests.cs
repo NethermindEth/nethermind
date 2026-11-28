@@ -154,7 +154,7 @@ public class ReceiptsRecoveryTests
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
         tx.Hash = tx.CalculateHash();
         return Build.A.Block.WithTransactions(tx).TestObject;

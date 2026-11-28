@@ -27,6 +27,18 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
+        Description = "Verifies the payload, including its EIP-8141 dependency proof, according to the execution environment rules and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV7(ExecutionPayloadV5 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
+
+    [JsonRpcMethod(
+        Description = "Returns the most recent version of an execution payload, with its EIP-8141 dependency proof, and fees with respect to the transaction set contained by the mempool.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<GetPayloadV7Result?>> engine_getPayloadV7(byte[] payloadId);
+
+    [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status, hash of the last valid block, and the execution witness when the payload is valid.",
         IsSharable = true,
         IsImplemented = true)]

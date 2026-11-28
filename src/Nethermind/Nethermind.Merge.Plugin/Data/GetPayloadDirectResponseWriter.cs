@@ -28,7 +28,7 @@ internal static class GetPayloadDirectResponseWriter
         byte[][]? executionRequests,
         bool shouldOverrideBuilder,
         CancellationToken cancellationToken) =>
-        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: false, cancellationToken);
+        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: false, includeDependencyProof: false, cancellationToken);
 
     public static ValueTask WriteV6Async(
         PipeWriter writer,
@@ -38,7 +38,17 @@ internal static class GetPayloadDirectResponseWriter
         byte[][]? executionRequests,
         bool shouldOverrideBuilder,
         CancellationToken cancellationToken) =>
-        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, cancellationToken);
+        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, includeDependencyProof: false, cancellationToken);
+
+    public static ValueTask WriteV7Async(
+        PipeWriter writer,
+        Block block,
+        UInt256 blockValue,
+        BlobsBundleV2 blobsBundle,
+        byte[][]? executionRequests,
+        bool shouldOverrideBuilder,
+        CancellationToken cancellationToken) =>
+        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, includeDependencyProof: true, cancellationToken);
 
     private static async ValueTask WriteAsync(
         PipeWriter writer,
@@ -48,12 +58,13 @@ internal static class GetPayloadDirectResponseWriter
         byte[][]? executionRequests,
         bool shouldOverrideBuilder,
         bool includeV6Fields,
+        bool includeDependencyProof,
         CancellationToken cancellationToken)
     {
         writer.Write("{\"blockValue\":"u8);
         HexWriter.WriteUInt256HexString(writer, blockValue);
         writer.Write(",\"executionPayload\":"u8);
-        if (await WriteExecutionPayloadAsync(writer, block, includeV6Fields, cancellationToken))
+        if (await WriteExecutionPayloadAsync(writer, block, includeV6Fields, includeDependencyProof, cancellationToken))
         {
             return;
         }
@@ -83,6 +94,7 @@ internal static class GetPayloadDirectResponseWriter
         PipeWriter writer,
         Block block,
         bool includeV6Fields,
+        bool includeDependencyProof,
         CancellationToken cancellationToken)
     {
         writer.Write("{\"parentHash\":"u8);
@@ -135,6 +147,13 @@ internal static class GetPayloadDirectResponseWriter
             WriteBlockAccessList(writer, block);
             writer.Write(",\"slotNumber\":"u8);
             WriteNullableUlongHexString(writer, block.SlotNumber);
+        }
+
+        if (includeDependencyProof)
+        {
+            byte[] dependencyProof = block.DependencyProof ?? [];
+            writer.Write(",\"dependencyProof\":"u8);
+            HexWriter.WriteHexString(writer, dependencyProof, chunked: dependencyProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
         }
 
         writer.Write("}"u8);

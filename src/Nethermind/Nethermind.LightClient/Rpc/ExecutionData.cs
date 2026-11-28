@@ -620,8 +620,10 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         long bytes = transaction.DataLength;
         if (transaction.Frames is { } frames)
             foreach (TxFrame frame in frames) bytes += frame.Data.Length;
-        if (transaction.FrameSignatures is { } signatures)
-            foreach (TxFrameSignature signature in signatures) bytes += signature.Signature.Length + signature.Msg.Length;
+        if (transaction.FrameClaims is { } claims)
+            foreach (TxFrameClaim claim in claims) bytes += claim.Key.Length + claim.Msg.Length;
+        if (transaction.ClaimWitnesses is { } witnesses)
+            foreach (byte[] witness in witnesses) bytes += witness.Length;
         return bytes;
     }
 

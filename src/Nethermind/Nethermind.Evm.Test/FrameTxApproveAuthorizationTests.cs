@@ -199,7 +199,7 @@ public class FrameTxApproveAuthorizationTests
             Nonce = 0,
             SenderAddress = Account,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };

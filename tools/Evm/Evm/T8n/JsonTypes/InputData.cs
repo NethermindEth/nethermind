@@ -96,58 +96,50 @@ public class InputData
             throw new T8nException("frame transaction requires a sender or a secretKey", T8nErrorCodes.ErrorJson);
         }
 
-        if (privateKey is null || transaction.FrameSignatures is null)
+        TxFrameClaim[]? claims = transaction.FrameClaims;
+        if (privateKey is null || claims is null)
         {
             return;
         }
 
-        bool[] fillable = new bool[transaction.FrameSignatures.Length];
-        for (int i = 0; i < fillable.Length; i++)
+        // The signature hash covers the claims but not their witnesses, so filling one leaves the others valid.
+        byte[][] witnesses = transaction.ClaimWitnesses ?? new byte[claims.Length][];
+        if (witnesses.Length != claims.Length)
         {
-            TxFrameSignature entry = transaction.FrameSignatures[i];
-            if (entry.Signature.IsEmpty && entry.Scheme == TxFrameSignature.SchemeSecp256k1 && entry.SignsCanonicalHash)
-            {
-                fillable[i] = true;
-                transaction.FrameSignatures[i] = new TxFrameSignature(entry.Scheme, entry.Signer, entry.Msg,
-                    new byte[TxFrameSignature.Secp256k1SignatureLength]);
-            }
+            throw new T8nException("frame transaction must carry one witness per claim", T8nErrorCodes.ErrorJson);
         }
 
         Ecdsa ecdsa = new();
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(transaction);
-
-        for (int i = 0; i < transaction.FrameSignatures.Length; i++)
+        ValueHash256? sigHash = null;
+        for (int i = 0; i < claims.Length; i++)
         {
-            TxFrameSignature signature = transaction.FrameSignatures[i];
-            if (!fillable[i])
+            TxFrameClaim claim = claims[i];
+            if (witnesses[i] is { Length: > 0 } || claim.ResolvedWitnessLength == 0)
             {
-                if (!signature.Signature.IsEmpty || signature.Scheme == TxFrameSignature.SchemeArbitrary)
-                {
-                    continue;
-                }
-
-                // An explicit-digest entry's bytes stay in the sigHash preimage, so filling one here would
-                // invalidate every canonical signature this loop has already produced.
-                throw new T8nException($"cannot fill frame signature {i}: only canonical-hash secp256k1 entries are fillable",
-                    T8nErrorCodes.ErrorJson);
+                witnesses[i] ??= [];
+                continue;
             }
 
-            if (signature.Signer is not null && signature.Signer != privateKey.Address)
+            if (claim.Verifier != Eip8141Constants.Secp256k1VerifierAddress)
             {
-                throw new T8nException("frame signature signer does not match secretKey", T8nErrorCodes.ErrorJson);
+                throw new T8nException($"cannot fill frame claim {i}: only secp256k1 claims are fillable", T8nErrorCodes.ErrorJson);
             }
 
-            if (signature.Signer is null && transaction.SenderAddress != privateKey.Address)
+            if (claim.ResolveKey(transaction.SenderAddress) != privateKey.Address.ToHash())
             {
-                throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
+                throw new T8nException(claim.Key.IsEmpty
+                    ? "frame transaction sender does not match secretKey"
+                    : "frame claim key does not match secretKey", T8nErrorCodes.ErrorJson);
             }
 
-            Signature ecdsaSignature = ecdsa.Sign(privateKey, in sigHash);
-            byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-            vrs[0] = ecdsaSignature.RecoveryId;
-            ecdsaSignature.Bytes.CopyTo(vrs.AsSpan(1));
-
-            transaction.FrameSignatures[i] = new TxFrameSignature(signature.Scheme, signature.Signer, signature.Msg, vrs);
+            ValueHash256 msg = claim.ResolveMsg(claim.SignsCanonicalHash ? sigHash ??= FrameTxSigHash.ComputeValue(transaction) : default);
+            Signature signature = ecdsa.Sign(privateKey, in msg);
+            byte[] vrs = new byte[Eip8141Constants.Secp256k1WitnessLength];
+            vrs[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(vrs.AsSpan(1));
+            witnesses[i] = vrs;
         }
+
+        transaction.ClaimWitnesses = witnesses;
     }
 }

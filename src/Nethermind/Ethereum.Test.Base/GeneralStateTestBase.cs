@@ -154,6 +154,8 @@ namespace Ethereum.Test.Base
                 BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(test.Transaction) : null,
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
                 BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,
+                // A state test carries no dependency proof; its transaction brings its own witnesses.
+                DependencyProofHash = spec.IsEip8141Enabled ? Keccak.OfAnEmptyString : null,
                 Bloom = spec.IsEip7668Enabled ? Bloom.ZeroLength : null,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 ReceiptsRoot = test.PostReceiptsRoot,

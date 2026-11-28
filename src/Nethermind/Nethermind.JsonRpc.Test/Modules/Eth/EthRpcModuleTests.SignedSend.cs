@@ -353,7 +353,7 @@ public partial class EthRpcModuleTests
                 new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000, StateGas = 0 },
                 new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 },
             ],
-            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+            Claims = [new FrameClaimForRpc { Verifier = Eip8141Constants.Secp256k1VerifierAddress }],
         };
         if (carriesRs)
         {

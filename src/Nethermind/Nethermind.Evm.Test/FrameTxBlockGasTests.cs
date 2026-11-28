@@ -500,7 +500,7 @@ public class FrameTxBlockGasTests
             Nonce = nonce,
             SenderAddress = Sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };

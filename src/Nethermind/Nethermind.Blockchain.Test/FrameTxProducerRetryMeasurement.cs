@@ -669,7 +669,7 @@ public class FrameTxProducerRetryMeasurement
             Nonce = 0,
             SenderAddress = Sender,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: verifyGas, UInt256.Zero, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,
             MaxFee = maxFee,

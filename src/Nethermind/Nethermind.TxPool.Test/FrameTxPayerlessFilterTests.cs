@@ -17,20 +17,20 @@ namespace Nethermind.TxPool.Test;
 
 public class FrameTxPayerlessFilterTests
 {
-    // The filter takes no ECDSA/signature validator, so a structural rejection cannot invoke signature
-    // verification even when the (invalid) signature list is large and would be expensive to recover.
+    // The filter takes no claim verifier, so a structural rejection cannot invoke claim verification even when
+    // the claim list is full and would be expensive to verify.
     [Test]
-    public void Accept_PayerlessPrefixWithLargeSignatureList_RejectedWithoutSignatureVerification()
+    public void Accept_PayerlessPrefixWithAFullClaimList_RejectedWithoutClaimVerification()
     {
         long before = Metrics.PendingTransactionsFrameTxNoPayer;
-        // A lone only_verify frame never approves a payer regardless of the signatures.
-        TxFrameSignature[] signatures = new TxFrameSignature[1024];
-        for (int i = 0; i < signatures.Length; i++)
+        // A lone only_verify frame never approves a payer regardless of the claims.
+        TxFrameClaim[] claims = new TxFrameClaim[Eip8141Constants.MaxClaims];
+        for (int i = 0; i < claims.Length; i++)
         {
-            signatures[i] = Secp256k1Signature(TestItem.AddressA);
+            claims[i] = Secp256k1Claim(TestItem.AddressA);
         }
 
-        Transaction tx = FrameTx(TestItem.AddressA, signatures, OnlyVerify(PrefixFrameGas));
+        Transaction tx = FrameTx(TestItem.AddressA, claims, OnlyVerify(PrefixFrameGas));
 
         AcceptTxResult result = Accept(tx);
 
@@ -53,7 +53,7 @@ public class FrameTxPayerlessFilterTests
     public void Accept_PayerApprovingPrefix_Accepted()
     {
         // self_verify approves a payer, so the structural filter must let it through to later filters.
-        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
+        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Claim(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
 
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
     }

@@ -431,7 +431,7 @@ public class TxPoolSourceTests
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             BlobVersionedHashes = versionedHashes,
             NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, Eip8141Prototype.Instance.BlobProofVersion),
         };
@@ -887,7 +887,7 @@ public class TxPoolSourceTests
                     Nonce = (ulong)nonce,
                     SenderAddress = TestItem.AddressA,
                     Frames = frames,
-                    FrameSignatures = [],
+                    FrameClaims = [],
                     GasLimit = FrameTxValidation.TotalGasLimit(frames),
                     GasPrice = 1,
                     DecodedMaxFeePerGas = 1,

@@ -43,6 +43,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IInclusionListComplianceEvaluator _inclusionListComplianceEvaluator = inclusionListComplianceEvaluator;
 
     private readonly IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandlerV6 = newPayloadWithWitnessHandlerV6;
+    private readonly IAsyncHandler<byte[], GetPayloadV7Result?> _getPayloadHandlerV7 = getPayloadHandlerV7;
 
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
@@ -51,6 +52,14 @@ public partial class EngineRpcModule : IEngineRpcModule
         => NewPayloadWithInclusionList(
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
             EngineApiVersions.NewPayload.V6);
+
+    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV7(ExecutionPayloadV5 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
+        => NewPayloadWithInclusionList(
+            new ExecutionPayloadParams<ExecutionPayloadV5>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
+            EngineApiVersions.NewPayload.V7);
+
+    public Task<ResultWrapper<GetPayloadV7Result?>> engine_getPayloadV7(byte[] payloadId)
+        => _getPayloadHandlerV7.HandleAsync(payloadId);
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(
         ExecutionPayloadV4 executionPayload,

@@ -263,6 +263,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
+    /// <summary>Starts reads made outside any transaction, which the block access list does not declare.</summary>
+    /// <remarks>A state backed by the block access list serves an account it does not declare from the parent state
+    /// until the returned scope is disposed, instead of rejecting the list as missing it.</remarks>
+    public IDisposable? BeginUndeclaredAccountReads() => null;
+
     // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {

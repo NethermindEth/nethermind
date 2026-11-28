@@ -306,7 +306,7 @@ public class TxBroadcasterTests
             .TestObject;
         tx.Type = TxType.FrameTx;
         tx.Frames = [];
-        tx.FrameSignatures = [];
+        tx.FrameClaims = [];
         tx.Hash = tx.CalculateHash();
 
         // Guards the discrimination this test exists for: the two predicates must disagree on this fixture,
@@ -1157,7 +1157,7 @@ public class TxBroadcasterTests
             SenderAddress = TestItem.AddressA,
             // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
             Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
-            FrameSignatures = [],
+            FrameClaims = [],
             BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
             GasLimit = 100_000,
             GasPrice = 1.GWei,

@@ -210,6 +210,11 @@ public static class BlockErrorMessages
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block header cannot have slot number.";
 
+    public const string MissingDependencyProofHash = "MissingDependencyProofHash: Must be present in block header.";
+
+    public const string DependencyProofHashNotEnabled =
+        "DependencyProofHashNotEnabled: Block header cannot have dependency proof hash.";
+
     public static string SlotNumberMismatch(ulong? expected, ulong? actual) =>
         $"SlotNumberMismatch: Slot number in header does not match calculated. Expected {expected}, got {actual}";
 }

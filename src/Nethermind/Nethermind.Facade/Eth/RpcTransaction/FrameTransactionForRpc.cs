@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -13,7 +14,7 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-/// <summary>JSON-RPC view of an EIP-8141 frame transaction: the EIP-1559 fee fields plus the frame and hoisted signature lists.</summary>
+/// <summary>JSON-RPC view of an EIP-8141 frame transaction: the EIP-1559 fee fields plus the frame and claim lists.</summary>
 [GenerateJsonWriter(RegisterWithSerializer = false)]
 [RepopulatableTransaction]
 public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<FrameTransactionForRpc>
@@ -32,11 +33,14 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     [JsonDiscriminator]
     public FrameForRpc[]? Frames { get; set; }
 
-    /// <summary>EIP-8141 <c>signatures</c>: the entries hoisted out of the frames, verified before any frame
-    /// runs and read by frame code through <c>SIGPARAM</c> by index into this list.</summary>
-    /// <remarks>RPC simulation accepts an entry with empty signature bytes as a placeholder and prices it as signed, so
-    /// supply one per entry the signed transaction will carry; entries with signature bytes are still verified.</remarks>
-    public FrameSignatureForRpc[]? Signatures { get; set; }
+    /// <summary>EIP-8141 <c>claims</c>: verified before any frame runs and read by frame code through <c>HASCLAIM</c>.</summary>
+    public FrameClaimForRpc[]? Claims { get; set; }
+
+    /// <summary>The segregated witnesses of <see cref="Claims"/>, index for index; not part of the signed payload.</summary>
+    /// <remarks>RPC simulation accepts them missing, or an empty one as a placeholder, as no signature exists yet; a
+    /// witness that is supplied is still verified. The pricing depends on the claims alone.</remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[][]? Witnesses { get; set; }
 
     /// <summary>A per-blob-gas price a call may give in place of <see cref="MaxFee"/>; not a field of the payload.</summary>
     public UInt256? MaxFeePerBlobGas { get; set; }
@@ -61,7 +65,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         base.Populate(transaction, extraData);
         NonceKeys = transaction.NonceKeys;
         Frames = FrameForRpc.FromFrames(transaction.Frames);
-        Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
+        Claims = FrameClaimForRpc.FromClaims(transaction.FrameClaims);
 
         // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
         // The per-gas cap the base reported is derived, not signed.
@@ -92,19 +96,22 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         if (!FrameForRpc.TryToFrames(Frames, out TxFrame[]? frames))
             return RpcTransactionErrors.NullEntryIn("frames");
 
-        if (!FrameSignatureForRpc.TryToSignatures(Signatures, out TxFrameSignature[]? signatures))
-            return RpcTransactionErrors.NullEntryIn("signatures");
+        if (!FrameClaimForRpc.TryToClaims(Claims, out TxFrameClaim[]? claims))
+            return RpcTransactionErrors.NullEntryIn("claims");
+
+        if (Witnesses is not null && Array.IndexOf(Witnesses, null) >= 0)
+            return RpcTransactionErrors.NullEntryIn("witnesses");
 
         // The caller's gas field is not what this type spends, so the cap the base applied to
         // Transaction.GasLimit leaves the work a frame transaction asks for unbounded.
         ulong effectiveCap = gasCap.EffectiveGasCap();
         ulong totalFrameGas = FrameTxValidation.TotalGasLimit(frames);
         // A bound on work, not the on-chain price TryCalculateGasBudget derives: the processor verifies every
-        // entry before any budget exists, so an unpriced signature list buys recoveries no frame pays for.
-        ulong signatureGas = FrameTxValidation.SignatureVerificationWorkGas(signatures);
-        ulong reservedGas = totalFrameGas > ulong.MaxValue - signatureGas ? ulong.MaxValue : totalFrameGas + signatureGas;
+        // claim before any budget exists, so an unpriced claim list buys verifications no frame pays for.
+        ulong claimGas = FrameTxValidation.ClaimVerificationGas(claims);
+        ulong reservedGas = totalFrameGas > ulong.MaxValue - claimGas ? ulong.MaxValue : totalFrameGas + claimGas;
         if (reservedGas > effectiveCap)
-            return RpcTransactionErrors.FrameGasAboveCap(totalFrameGas, signatureGas, effectiveCap);
+            return RpcTransactionErrors.FrameGasAboveCap(totalFrameGas, claimGas, effectiveCap);
 
         Transaction tx = baseResult.Data;
         // The invariant FrameTxDecoder establishes for a decoded frame tx, so GasLimit readers see the same
@@ -112,7 +119,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.GasLimit = totalFrameGas;
         tx.NonceKeys = NonceKeys;
         tx.Frames = frames;
-        tx.FrameSignatures = signatures;
+        tx.FrameClaims = claims;
+        tx.ClaimWitnesses = Witnesses;
         tx.BlobVersionedHashes = BlobVersionedHashes;
         // A call priced per gas is converted to the budget those prices buy: the per-gas cap over max_gas plus the
         // per-blob cap over the blob gas.
@@ -164,7 +172,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // Measured as the processor does before pricing, so max_gas here is the one the budget is checked against.
         if (tx.NonceKeys is not null) tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
 
-        return FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
+        return FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas)
             ? Price(tx, maxFeePerGas, maxFeePerBlobGas, maxGas)
             : UInt256.MaxValue;
     }

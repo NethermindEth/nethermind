@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -166,41 +168,54 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [Frame(gasLimit: ulong.MaxValue - 1), Frame(gasLimit: 1)],
             null);
 
-        // Signature scheme must be ARBITRARY, SECP256K1, or P256.
-        yield return Case("UnknownSignatureScheme_InvalidSignatureScheme",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(3, null, default, default)],
-            FrameTxValidation.InvalidSignatureScheme);
-        yield return Case("Secp256k1SignatureWithExplicitSigner_Valid",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, new byte[65])],
-            null);
-        yield return Case("P256SignatureWithExplicitSigner_Valid",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressB, default, new byte[128])],
-            null);
-        yield return Case("ArbitrarySignatureWithoutSigner_Valid",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[7])],
-            null);
-
-        // For ARBITRARY, signer MUST be empty.
-        yield return Case("ArbitrarySignatureNamesSigner_ArbitrarySignatureWithSigner",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, TestItem.AddressB, default, new byte[1])],
-            FrameTxValidation.ArbitrarySignatureWithSigner);
+        // A claim's key is empty, or a non-zero 20-byte or 32-byte value.
+        yield return Case("Secp256k1ClaimKeyedToTheSender_Valid",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress)], null);
+        yield return Case("Secp256k1ClaimWithAddressKey_Valid",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, key: TestItem.AddressB.Bytes.ToArray())], null);
+        yield return Case("P256ClaimWithLeftPaddedAddressKey_Valid",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.P256VerifierAddress, key: TestItem.AddressB.ToHash().ToByteArray())], null);
+        yield return Case("LeanSphincsClaimWithFullKey_Valid",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.LeanSphincsVerifierAddress, key: NonZeroDigest(0xff))], null);
+        yield return Case("CustomVerifierClaim_Valid",
+            static tx => tx.FrameClaims = [Claim(TestItem.AddressD, gasLimit: 1, witnessLength: (ulong)Eip8141Constants.MaxClaimWitnessBytes)], null);
+        yield return Case("ClaimKeySixteenBytes_InvalidClaimKey",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.LeanSphincsVerifierAddress, key: new byte[16])], FrameTxValidation.InvalidClaimKey);
+        yield return Case("ClaimKeyZeroAddress_InvalidClaimKey",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, key: new byte[20])], FrameTxValidation.InvalidClaimKey);
+        yield return Case("ClaimKeyZeroWord_InvalidClaimKey",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.LeanSphincsVerifierAddress, key: new byte[32])], FrameTxValidation.InvalidClaimKey);
+        // SECP256K1 and P256 keys are addresses, so a 32-byte key needs its upper 12 bytes zero.
+        yield return Case("Secp256k1ClaimWithFullWordKey_ClaimKeyNotAnAddress",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, key: NonZeroDigest(0xff))], FrameTxValidation.ClaimKeyNotAnAddress);
+        yield return Case("P256ClaimWithFullWordKey_ClaimKeyNotAnAddress",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.P256VerifierAddress, key: NonZeroDigest(0xff))], FrameTxValidation.ClaimKeyNotAnAddress);
 
         // msg is empty (canonical hash) or an explicit non-zero 32-byte digest.
-        yield return Case("SignatureMsgSixteenBytes_InvalidMsgLength",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, new byte[16], new byte[65])],
-            FrameTxValidation.InvalidMsgLength);
-        yield return Case("SignatureMsgThirtyOneBytes_InvalidMsgLength",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, new byte[31], new byte[65])],
-            FrameTxValidation.InvalidMsgLength);
-        yield return Case("SignatureMsgThirtyThreeBytes_InvalidMsgLength",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, new byte[33], new byte[65])],
-            FrameTxValidation.InvalidMsgLength);
-        yield return Case("SignatureMsgZeroDigest_ZeroDigestMsg",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, new byte[32], new byte[65])],
-            FrameTxValidation.ZeroDigestMsg);
-        yield return Case("SignatureMsgNonZeroDigest_Valid",
-            static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, NonZeroDigest(), new byte[65])],
-            null);
+        yield return Case("ClaimMsgSixteenBytes_InvalidMsgLength",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, msg: new byte[16])], FrameTxValidation.InvalidMsgLength);
+        yield return Case("ClaimMsgThirtyThreeBytes_InvalidMsgLength",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, msg: new byte[33])], FrameTxValidation.InvalidMsgLength);
+        yield return Case("ClaimMsgZeroDigest_ZeroDigestMsg",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, msg: new byte[32])], FrameTxValidation.ZeroDigestMsg);
+        yield return Case("ClaimMsgNonZeroDigest_Valid",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, msg: NonZeroDigest())], null);
+
+        // A protocol verifier fixes its gas and witness length; a custom one names both.
+        yield return Case("ProtocolClaimWithGasLimit_ProtocolClaimWithGasOrWitnessLength",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.P256VerifierAddress, gasLimit: 1)], FrameTxValidation.ProtocolClaimWithGasOrWitnessLength);
+        yield return Case("ProtocolClaimWithWitnessLength_ProtocolClaimWithGasOrWitnessLength",
+            static tx => tx.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress, witnessLength: 65)], FrameTxValidation.ProtocolClaimWithGasOrWitnessLength);
+        yield return Case("CustomClaimWithoutGas_CustomClaimWithoutGas",
+            static tx => tx.FrameClaims = [Claim(TestItem.AddressD)], FrameTxValidation.CustomClaimWithoutGas);
+        yield return Case("CustomClaimWitnessPastTheMaximum_ClaimWitnessTooLong",
+            static tx => tx.FrameClaims = [Claim(TestItem.AddressD, gasLimit: 1, witnessLength: (ulong)Eip8141Constants.MaxClaimWitnessBytes + 1)], FrameTxValidation.ClaimWitnessTooLong);
+        yield return Case("TotalClaimGasOverflows_ClaimGasOverflow",
+            static tx => tx.FrameClaims = [Claim(TestItem.AddressD, gasLimit: ulong.MaxValue), Claim(TestItem.AddressD, gasLimit: 1)], FrameTxValidation.ClaimGasOverflow);
+        yield return Case("TotalClaimGasAtItsMaximum_Valid",
+            static tx => tx.FrameClaims = [Claim(TestItem.AddressD, gasLimit: ulong.MaxValue - 1), Claim(TestItem.AddressD, gasLimit: 1)], null);
+        yield return Case("SixtyFiveClaims_TooManyClaims",
+            static tx => tx.FrameClaims = Enumerable.Repeat(Claim(Eip8141Constants.Secp256k1VerifierAddress), Eip8141Constants.MaxClaims + 1).ToArray(), FrameTxValidation.TooManyClaims);
 
         yield return Case("BlobHashes_Valid",
             static tx => tx.BlobVersionedHashes = [new byte[32]], null);
@@ -322,7 +337,7 @@ public class FrameTxValidationTests
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerifyFrame()],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
         mutate(tx);
         return tx;
@@ -350,19 +365,21 @@ public class FrameTxValidationTests
     private static TxFrame Frame(FrameMode mode = FrameMode.Default, FrameFlags flags = FrameFlags.None, Address? target = null, ulong gasLimit = 50_000, UInt256 value = default, byte[]? data = null) =>
         new(mode, flags, target, gasLimit, value, data ?? Array.Empty<byte>());
 
-    private static byte[] NonZeroDigest()
+    private static byte[] NonZeroDigest(byte fill = 0)
     {
         byte[] digest = new byte[32];
+        if (fill != 0) Array.Fill(digest, fill);
         digest[31] = 1;
         return digest;
     }
 
+    private static TxFrameClaim Claim(Address verifier, byte[]? key = null, byte[]? msg = null, ulong gasLimit = 0, ulong witnessLength = 0) =>
+        new(verifier, key ?? default, msg ?? default, gasLimit, witnessLength);
+
     private static IEnumerable<TestCaseData> ValidationWorkCases()
     {
-        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong expected) =>
-            new TestCaseData(frames, signatures, expected).SetName($"ValidationWorkGas_{name}");
-
-        static TxFrameSignature Signature(byte scheme) => new(scheme, null, default, Array.Empty<byte>());
+        static TestCaseData Work(string name, TxFrame[] frames, TxFrameClaim[] claims, ulong expected) =>
+            new TestCaseData(frames, claims, expected).SetName($"ValidationWorkGas_{name}");
 
         static TxFrame OnlyVerifyFrame() =>
             Frame(FrameMode.Verify, FrameFlags.ApproveExecution, gasLimit: 40_000);
@@ -391,10 +408,10 @@ public class FrameTxValidationTests
         yield return Work("DeployThenOnlyVerifyThenPay_CountsAllThree",
             [DefaultModeFrame(), OnlyVerifyFrame(), PayFrame()], [], 120_000);
 
-        yield return Work("SignatureCostsCountAgainstTheBudget",
+        yield return Work("ClaimVerificationCountsAgainstTheBudget",
             [SelfVerifyFrame()],
-            [Signature(TxFrameSignature.SchemeSecp256k1), Signature(TxFrameSignature.SchemeP256)],
-            100_000 + Eip8141Constants.Secp256k1VerificationGasCost + Eip8141Constants.P256VerificationGasCost);
+            [Claim(Eip8141Constants.Secp256k1VerifierAddress), Claim(Eip8141Constants.P256VerifierAddress), Claim(TestItem.AddressD, gasLimit: 7_000)],
+            100_000 + Eip8141Constants.Secp256k1VerificationGasCost + Eip8141Constants.P256VerificationGasCost + 7_000);
 
         yield return Work("OverflowingPrefixGas_Saturates",
             [DefaultModeFrame(), Frame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, gasLimit: ulong.MaxValue)],
@@ -491,12 +508,12 @@ public class FrameTxValidationTests
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
-    public void ValidationWorkGas_BoundsThePrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong expected)
+    public void ValidationWorkGas_BoundsThePrefixAndClaims(TxFrame[] frames, TxFrameClaim[] claims, ulong expected)
     {
         Transaction tx = CreateValidFrameTx(candidate =>
         {
             candidate.Frames = frames;
-            candidate.FrameSignatures = signatures;
+            candidate.FrameClaims = claims;
         });
 
         Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(expected));
@@ -660,55 +677,60 @@ public class FrameTxValidationTests
         }
     }
 
-    [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]
-    [TestCase(TxFrameSignature.SchemeP256, 128)]
-    public void TryCalculateGasBudget_PlaceholderPricesSignatureBytesWithoutChangingConsensus(byte scheme, int length)
+    /// <summary>EIP-8141 <c>frame_tx_intrinsic_gas</c> and <c>calldata_floor_gas</c> of the claims: the metadata as
+    /// calldata, the resolved verification gas, and the resolved witness length as non-zero calldata.</summary>
+    [TestCase(true, 65UL, Eip8141Constants.Secp256k1VerificationGasCost, TestName = "TryCalculateGasBudget_Secp256k1Claim_PricesItsFixedWitnessAndGas")]
+    [TestCase(false, 300UL, 9_000UL, TestName = "TryCalculateGasBudget_CustomClaim_PricesItsDeclaredWitnessAndGas")]
+    public void TryCalculateGasBudget_PricesClaimsFromTheBodyAlone(bool protocol, ulong witnessLength, ulong verificationGas)
     {
-        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        Transaction tx = CreateValidFrameTx(t => t.FrameSignatures = [new TxFrameSignature(scheme, null, default, default)]);
+        IReleaseSpec spec = FloorPricedSpec();
+        spec.IsEip7976Enabled.Returns(true);
+        TxFrameClaim claim = protocol
+            ? Claim(Eip8141Constants.Secp256k1VerifierAddress)
+            : Claim(TestItem.AddressD, gasLimit: verificationGas, witnessLength: witnessLength);
+        Transaction claimless = CreateValidFrameTx(static _ => { });
+        Transaction claimed = CreateValidFrameTx(t => t.FrameClaims = [claim]);
+
 #pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong original, out _, out _), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(claimless, spec, out ulong baseIntrinsic, out ulong baseFloor, out _), Is.True);
 #pragma warning restore NUnit2045
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong estimated, out ulong estimatedFloor, out ulong estimatedMax, estimateSignatureBytes: true), Is.True);
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unchanged, out _, out _), Is.True);
-        byte[] bytes = new byte[length];
-        Array.Fill(bytes, (byte)0xff);
-        Transaction signed = CreateValidFrameTx(t => t.FrameSignatures = [new TxFrameSignature(scheme, null, default, bytes)]);
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(signed, spec, out ulong actual, out ulong actualFloor, out ulong actualMax), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(claimed, spec, out ulong intrinsic, out ulong floor, out _), Is.True);
+
+        ulong nonZeroTokens = spec.GasCosts.TxDataNonZeroMultiplier;
+        int verifierZeros = claim.Verifier.Bytes.CountZeros();
+        ulong verifierTokens = (ulong)(Address.Size - verifierZeros) * nonZeroTokens + (ulong)verifierZeros;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(unchanged, Is.EqualTo(original));
-            Assert.That(estimated, Is.EqualTo(actual));
-            Assert.That(estimatedFloor, Is.EqualTo(actualFloor));
-            Assert.That(estimatedMax, Is.EqualTo(actualMax));
-            Assert.That(estimated, Is.GreaterThan(original));
+            // Witness bytes are priced as non-zero calldata, by their resolved length.
+            Assert.That(intrinsic - baseIntrinsic, Is.EqualTo(verificationGas + GasCostOf.TxDataZero * (verifierTokens + nonZeroTokens * witnessLength)));
+            // EIP-7976 floors every byte of the verifier and the witness alike.
+            Assert.That(floor - baseFloor, Is.EqualTo(verificationGas + spec.GasCosts.TotalCostFloorPerToken * nonZeroTokens * ((ulong)Address.Size + witnessLength)));
         }
     }
 
-    [TestCase(0, true)]
-    [TestCase(32, false)]
-    public void TryCalculateGasBudget_CanonicalHashSignatureBytesPricedByLengthOnly(int msgLength, bool samePrice)
+    [Test]
+    public void TryCalculateGasBudget_WitnessBytes_DoNotChangeThePrice()
     {
-        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        spec.IsEip7623Enabled.Returns(true);
-        spec.IsEip7976Enabled.Returns(true);
-        byte[] msg = new byte[msgLength];
-        byte[] ones = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        Array.Fill(ones, (byte)0xff);
-        Transaction zeros = CreateValidFrameTx(t => t.FrameSignatures =
-            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, new byte[TxFrameSignature.Secp256k1SignatureLength])]);
-        Transaction nonZeros = CreateValidFrameTx(t => t.FrameSignatures =
-            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, ones)]);
+        IReleaseSpec spec = FloorPricedSpec();
+        Transaction zeros = CreateValidFrameTx(static t =>
+        {
+            t.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress)];
+            t.ClaimWitnesses = [new byte[Eip8141Constants.Secp256k1WitnessLength]];
+        });
+        Transaction ones = CreateValidFrameTx(static t =>
+        {
+            t.FrameClaims = [Claim(Eip8141Constants.Secp256k1VerifierAddress)];
+            t.ClaimWitnesses = [Enumerable.Repeat((byte)0xff, Eip8141Constants.Secp256k1WitnessLength).ToArray()];
+        });
 
-        bool zerosBudgeted = FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _);
-        bool nonZerosBudgeted = FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _);
-
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(ones, spec, out ulong onesIntrinsic, out ulong onesFloor, out _), Is.True);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(zerosBudgeted, Is.True);
-            Assert.That(nonZerosBudgeted, Is.True);
-            Assert.That(zerosIntrinsic == nonZerosIntrinsic, Is.EqualTo(samePrice));
-            Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
+            Assert.That(onesIntrinsic, Is.EqualTo(zerosIntrinsic));
+            Assert.That(onesFloor, Is.EqualTo(zerosFloor));
         }
     }
 

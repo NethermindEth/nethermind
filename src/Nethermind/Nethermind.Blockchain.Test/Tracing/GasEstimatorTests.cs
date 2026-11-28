@@ -42,7 +42,7 @@ public class GasEstimatorTests
     public void Estimate_frame_transaction_caps_the_complete_budget(ulong gasCap, bool expectFailure)
     {
         Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(25_000), FrameTxTestFrames.Execution(15_000));
-        FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out _, out _, out ulong budget, estimateSignatureBytes: true);
+        FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out _, out _, out ulong budget);
         GasEstimation estimation = Estimate(Substitute.For<ITransactionProcessor>(), tx,
             CreateStateProvider(UInt256.Zero, false), spec: Eip8141Prototype.Instance, gasCap: gasCap);
 

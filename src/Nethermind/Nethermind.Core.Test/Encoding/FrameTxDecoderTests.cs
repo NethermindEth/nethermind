@@ -18,9 +18,8 @@ namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
 /// Round-trips of the EIP-8141 frame transaction payload
-/// <c>[chain_id, nonce, sender, frames, signatures, fees, blob_versioned_hashes]</c>, where
-/// <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>, and the
-/// <c>compute_sig_hash</c> elision rule.
+/// <c>[chain_id, nonce, sender, claims, frames, fees, blob_versioned_hashes]</c>, where
+/// <c>fees = [max_fee, max_priority_fee_per_gas]</c>, of its pooled wrapper, and of <c>compute_sig_hash</c>.
 /// The generic transaction comparer does not cover frame fields, so they are asserted explicitly.
 /// </summary>
 [TestFixture]
@@ -30,8 +29,6 @@ public class FrameTxDecoderTests
     private const int FrameDataDecodeCap = 30 * 1024 * 1024;
     // The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).
     private const int ShortSequencePrefixMax = 0xf7;
-    // What the decoder divides the available bytes by: a signature entry is a four-item sequence.
-    private const int MinSignatureRlpLength = 5;
 
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -60,13 +57,15 @@ public class FrameTxDecoderTests
         }
 
         AssertFramesEqual(decoded.Frames!, tx.Frames!);
-        AssertSignaturesEqual(decoded.FrameSignatures!, tx.FrameSignatures!);
+        AssertClaimsEqual(decoded.FrameClaims!, tx.FrameClaims!);
     }
 
     [Test]
-    public void Roundtrip_NetworkWrapperForm_PreservesWrapperAndConsensusHash([Values] ProofVersion version)
+    public void Roundtrip_NetworkWrapperForm_PreservesWrapperAndConsensusHash()
     {
-        Transaction tx = CreateBlobCarryingFrameTx(version, blobCount: 2);
+        Transaction tx = CreateBlobCarryingFrameTx(blobCount: 2);
+        tx.FrameClaims = [Secp256k1Claim()];
+        tx.ClaimWitnesses = [FilledBytes(Eip8141Constants.Secp256k1WitnessLength, 0x11)];
 
         Transaction decoded = EncodeDecode(tx, RlpBehaviors.InMempoolForm);
 
@@ -79,14 +78,17 @@ public class FrameTxDecoderTests
             Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
             Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
             Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
+            Assert.That(decoded.ClaimWitnesses, Is.EqualTo(tx.ClaimWitnesses));
             Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
         }
     }
 
     [Test]
-    public void NetworkWrapper_DoesNotChangeConsensusEncodingOrSigHash([Values] ProofVersion version)
+    public void NetworkWrapper_DoesNotChangeConsensusEncodingOrSigHash()
     {
-        Transaction withWrapper = CreateBlobCarryingFrameTx(version, blobCount: 2);
+        Transaction withWrapper = CreateBlobCarryingFrameTx(blobCount: 2);
+        withWrapper.FrameClaims = [Secp256k1Claim()];
+        withWrapper.ClaimWitnesses = [FilledBytes(Eip8141Constants.Secp256k1WitnessLength, 0x11)];
 
         Transaction withoutWrapper = EncodeDecode(withWrapper, RlpBehaviors.None);
         withoutWrapper.NetworkWrapper = null;
@@ -98,6 +100,53 @@ public class FrameTxDecoderTests
             Assert.That(consensusWithWrapper, Is.EqualTo(consensusWithoutWrapper));
             Assert.That(FrameTxSigHash.ComputeValue(withWrapper), Is.EqualTo(FrameTxSigHash.ComputeValue(withoutWrapper)));
         }
+    }
+
+    /// <summary>The pooled wrapper <c>[tx_body, wrapper_version, witnesses, blob_sidecar]</c> with an empty sidecar.</summary>
+    [Test]
+    public void Roundtrip_BloblessFrameTxWithWitnesses_InMempoolForm_CarriesTheWitnesses()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameClaims = [Secp256k1Claim(), new TxFrameClaim(TestItem.AddressD, default, default, 50_000, 3)];
+        tx.ClaimWitnesses = [FilledBytes(Eip8141Constants.Secp256k1WitnessLength, 0x11), [1, 2, 3]];
+
+        byte[] pooled = EncodeConsensusPayload(tx, RlpBehaviors.InMempoolForm);
+        Transaction decoded = DecodeConsensusPayload(pooled, RlpBehaviors.InMempoolForm);
+
+        byte[] expected = TypedPayload(RlpTestHelper.EncodeSequence(
+            EncodeConsensusPayload(tx)[1..],
+            Rlp.Encode(Eip8141Constants.PooledWrapperVersion),
+            RlpTestHelper.EncodeSequence(Rlp.Encode(tx.ClaimWitnesses[0]), Rlp.Encode(tx.ClaimWitnesses[1])),
+            RlpTestHelper.EncodeSequence()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pooled, Is.EqualTo(expected));
+            Assert.That(decoded.ClaimWitnesses, Is.EqualTo(tx.ClaimWitnesses));
+            Assert.That(decoded.NetworkWrapper, Is.Null);
+            Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)), "the witnesses must not enter the transaction hash");
+        }
+    }
+
+    [Test]
+    public void Decode_PooledWrapperOfAnotherVersion_Throws()
+    {
+        Transaction tx = CreateFrameTx();
+        byte[] pooled = TypedPayload(RlpTestHelper.EncodeSequence(
+            EncodeConsensusPayload(tx)[1..], Rlp.Encode(1L), RlpTestHelper.EncodeSequence(), RlpTestHelper.EncodeSequence()));
+
+        Assert.That(() => DecodeConsensusPayload(pooled, RlpBehaviors.InMempoolForm),
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("pooled wrapper version"));
+    }
+
+    // The witnesses are segregated, so the plain payload of a transaction with claims cannot be pooled.
+    [Test]
+    public void Decode_FrameTxWithClaimsWithoutWrapper_InMempoolForm_Throws()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameClaims = [Secp256k1Claim()];
+
+        Assert.That(() => DecodeConsensusPayload(EncodeConsensusPayload(tx), RlpBehaviors.InMempoolForm),
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("pooled wrapper"));
     }
 
     [Test]
@@ -118,7 +167,7 @@ public class FrameTxDecoderTests
     [Test]
     public void Decode_BlobCarryingFrameTxWithoutWrapper_InMempoolForm_ThrowsRlpException()
     {
-        Transaction tx = CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1);
+        Transaction tx = CreateBlobCarryingFrameTx(blobCount: 1);
         tx.NetworkWrapper = null;
 
         // The plain form is byte-identical to the consensus form.
@@ -223,51 +272,41 @@ public class FrameTxDecoderTests
             Rlp.Encode(0L),                                 // value
             Rlp.Encode(Array.Empty<byte>())]);              // data
 
+    /// <summary><c>compute_sig_hash</c> is <c>keccak(FRAME_TX_TYPE || 0x00 || rlp(tx_body))</c>, so it is never the transaction hash.</summary>
     [Test]
-    public void ComputeSigHash_CanonicalHashSignatureBytesChange_HashUnchanged()
+    public void ComputeSigHash_IsTheDomainSeparatedBodyHash()
     {
-        Transaction first = CreateFrameTx(signatures:
-            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(65, 0x11))]);
-        Transaction second = CreateFrameTx(signatures:
-            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(65, 0x22))]);
+        Transaction tx = CreateFrameTx();
+        tx.FrameClaims = [Secp256k1Claim()];
+        byte[] body = EncodeConsensusPayload(tx)[1..];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxSigHash.ComputeValue(tx), Is.EqualTo(ValueKeccak.Compute([(byte)TxType.FrameTx, 0x00, .. body])));
+            Assert.That(FrameTxSigHash.ComputeValue(tx), Is.Not.EqualTo(ConsensusHash(tx).ValueHash256));
+        }
+    }
+
+    [Test]
+    public void ComputeSigHash_WitnessesChange_HashUnchanged()
+    {
+        Transaction first = CreateFrameTx();
+        first.FrameClaims = [Secp256k1Claim()];
+        first.ClaimWitnesses = [FilledBytes(Eip8141Constants.Secp256k1WitnessLength, 0x11)];
+        Transaction second = CreateFrameTx();
+        second.FrameClaims = [Secp256k1Claim()];
+        second.ClaimWitnesses = [FilledBytes(Eip8141Constants.Secp256k1WitnessLength, 0x22)];
 
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
     [Test]
-    public void ComputeSigHash_CanonicalHashSignatureLengthChange_HashChanges()
+    public void ComputeSigHash_ClaimFieldChanges_HashChanges()
     {
-        Transaction first = CreateFrameTx(signatures:
-            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(65, 0x11))]);
-        Transaction second = CreateFrameTx(signatures:
-            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(66, 0x11))]);
-
-        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
-    }
-
-    [TestCase(0, "c4018080" + "80")]
-    [TestCase(65, "c4018080" + "41")]
-    [TestCase(128, "c5018080" + "8180")]
-    public void ElidedCanonicalSignature_EncodesLengthAsRlpInteger(int signatureLength, string expectedHex)
-    {
-        TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, null, default, new byte[signatureLength]);
-        byte[] buffer = new byte[16];
-        RlpWriter writer = RlpWriter.ContentWriter(buffer);
-
-        TxFrameSignatureDecoder.Instance.Encode(ref writer, entry, elideCanonicalSignatureBytes: true);
-
-        Assert.That(buffer.AsSpan(0, writer.Length).ToArray(), Is.EqualTo(Bytes.FromHexString(expectedHex)));
-    }
-
-    [Test]
-    public void ComputeSigHash_ExplicitDigestSignatureBytesChange_HashChanges()
-    {
-        // A 32-byte msg signs an external digest; its raw bytes stay in the preimage.
-        byte[] digest = FilledBytes(32, 0xab);
-        Transaction first = CreateFrameTx(signatures:
-            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, digest, FilledBytes(65, 0x11))]);
-        Transaction second = CreateFrameTx(signatures:
-            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, digest, FilledBytes(65, 0x22))]);
+        Transaction first = CreateFrameTx();
+        first.FrameClaims = [new TxFrameClaim(TestItem.AddressD, default, default, 50_000, 3)];
+        Transaction second = CreateFrameTx();
+        second.FrameClaims = [new TxFrameClaim(TestItem.AddressD, default, default, 50_000, 4)];
 
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
@@ -308,16 +347,16 @@ public class FrameTxDecoderTests
     /// <param name="chainId">Replaces the chain_id field; defaults to <see cref="TestBlockchainIds.ChainId"/>.</param>
     /// <param name="nonce">Replaces the nonce field; defaults to zero.</param>
     /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
-    /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
+    /// <param name="claims">Replaces the claims field; defaults to the empty list.</param>
     /// <param name="fees">Replaces the fees field; defaults to three zero per-gas fees.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static byte[] FrameTxBody(byte[]? chainId = null, byte[]? nonce = null, byte[]? sender = null, byte[]? signatures = null, byte[]? frames = null, byte[]? fees = null, params byte[][] trailing) =>
+    private static byte[] FrameTxBody(byte[]? chainId = null, byte[]? nonce = null, byte[]? sender = null, byte[]? claims = null, byte[]? frames = null, byte[]? fees = null, params byte[][] trailing) =>
         RlpTestHelper.EncodeSequence([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
             nonce ?? Rlp.Encode(0L),                        // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
+            claims ?? RlpTestHelper.EncodeSequence(),       // claims
             frames ?? RlpTestHelper.EncodeSequence(),       // frames
-            signatures ?? RlpTestHelper.EncodeSequence(),   // signatures
             fees ?? RlpTestHelper.EncodeSequence(Rlp.Encode(0L), Rlp.Encode(0L)),
             RlpTestHelper.EncodeSequence(),                 // blob_versioned_hashes
             .. trailing]);
@@ -380,13 +419,14 @@ public class FrameTxDecoderTests
             Frame(mode: FrameMode.Sender, gasLimit: ulong.MaxValue - 1, stateGasLimit: 1),
         ])).SetName("Roundtrip_TwoDimensionalGasLimits");
 
-        yield return new TestCaseData(CreateFrameTx(signatures:
+        yield return new TestCaseData(CreateFrameTx(claims:
         [
-            new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(11, 0x77)),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(TxFrameSignature.Secp256k1SignatureLength, 0x11)),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, FilledBytes(32, 0xab), FilledBytes(TxFrameSignature.Secp256k1SignatureLength, 0x22)),
-            new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
-        ])).SetName("Roundtrip_AllSignatureSchemes");
+            Secp256k1Claim(),
+            new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, TestItem.AddressC.Bytes.ToArray(), FilledBytes(32, 0xab), 0, 0),
+            new TxFrameClaim(Eip8141Constants.P256VerifierAddress, TestItem.AddressD.Bytes.ToArray(), default, 0, 0),
+            new TxFrameClaim(Eip8141Constants.LeanSphincsVerifierAddress, FilledBytes(32, 0x44), default, 0, 0),
+            new TxFrameClaim(TestItem.AddressE, FilledBytes(32, 0x55), FilledBytes(32, 0x66), ulong.MaxValue, Eip8141Constants.MaxClaimWitnessBytes),
+        ])).SetName("Roundtrip_ProtocolAndCustomVerifierClaims");
 
         Transaction largestNonce = CreateFrameTx();
         largestNonce.Nonce = ulong.MaxValue;
@@ -614,114 +654,26 @@ public class FrameTxDecoderTests
         }
     }
 
-    // EIP-8141 caps the signature count only through gas, and a list this size is payable well inside a
-    // block, so the decoder must not reject it.
-    [Test]
-    public void Decode_SignatureCountBoundedOnlyByGas_IsAccepted([Values(1024, 1025)] int signatureCount)
+    [TestCase(Eip8141Constants.MaxClaims, false)]
+    [TestCase(Eip8141Constants.MaxClaims + 1, true)]
+    public void Decode_BoundsTheClaimCount(int claimCount, bool rejected)
     {
-        TxFrameSignature[] signatures = new TxFrameSignature[signatureCount];
-        for (int i = 0; i < signatures.Length; i++)
+        TxFrameClaim[] claims = new TxFrameClaim[claimCount];
+        for (int i = 0; i < claims.Length; i++)
         {
-            signatures[i] = new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, default);
+            claims[i] = Secp256k1Claim();
         }
 
-        Transaction tx = CreateFrameTx(signatures: signatures);
+        Transaction tx = CreateFrameTx(claims: claims);
 
-        Assert.That(EncodeDecode(tx).FrameSignatures!.Length, Is.EqualTo(signatureCount));
-    }
-
-    // Likewise for the signature length, charged as calldata.
-    [Test]
-    public void Decode_SignatureLengthBoundedOnlyByGas_IsAccepted([Values(65_536, 65_537)] int signatureLength)
-    {
-        Transaction tx = CreateFrameTx(signatures: [new TxFrameSignature(
-            TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(signatureLength, 0x01))]);
-
-        Assert.That(EncodeDecode(tx).FrameSignatures![0].Signature.Length, Is.EqualTo(signatureLength));
-    }
-
-    // The gas budget alone admits 10,000,001 entries at the default MaxBlockGas, so one-byte placeholders would
-    // size an array eight times their own length. RlpLimitException, not the RlpReaderException a null element
-    // raises, is what distinguishes refusing the count from allocating for it.
-    [Test]
-    public void Decode_SignatureCountTheBytesCannotHold_IsRefusedBeforeAllocating([Values(1_024, 100_000)] int count)
-    {
-        byte[] payload = TypedPayload(FrameTxBody(signatures: PlaceholderList(count)));
-
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpLimitException>());
-    }
-
-    // The reader spans the whole message, so a signature list declared to run past this transaction's payload
-    // would otherwise be sized from a batched message's remaining bytes: 2M entries out of 10MB. The bound is
-    // the transaction's own payload extent, so the entries beyond it are refused before the array is sized.
-    [Test]
-    public void Decode_SignatureListReachingPastThisTransaction_IsRefusedBeforeAllocating([Values] bool allowExtraBytes)
-    {
-        const int count = 64;
-        byte[][] entries = new byte[count][];
-        for (int i = 0; i < entries.Length; i++)
+        if (rejected)
         {
-            // The five-byte minimum: a four-item sequence of empty items.
-            entries[i] = RlpTestHelper.EncodeSequence(RlpTestHelper.OfEmptyByteArray, RlpTestHelper.OfEmptyByteArray, RlpTestHelper.OfEmptyByteArray, RlpTestHelper.OfEmptyByteArray);
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
         }
-
-        byte[] body = FrameTxBody(signatures: RlpTestHelper.EncodeSequence(entries));
-        RlpReader walk = new(body);
-        RlpReader content = walk.EnterSequence(out int itemLength);
-        int contentStart = itemLength - content.Remaining;
-        content.DecodeULong();  // chain_id
-        content.DecodeULong();  // nonce
-        content.DecodeAddress();
-        content.SkipItem(); // frames
-        byte[] payload = TypedPayload(WithDeclaredContentLength(body, contentStart, content.BytesRead));
-
-        Assert.That(() => DecodeConsensusPayload(payload, allowExtraBytes ? RlpBehaviors.AllowExtraBytes : RlpBehaviors.None),
-            Throws.InstanceOf<RlpReaderException>());
-    }
-
-    // The direction an attacker uses: an honest envelope around a payload that declares more than it holds.
-    // Pre-fix the limit came from the bytes of the transaction behind it, so the list was payable and the
-    // 100,000-entry array was allocated before the over-declaration surfaced.
-    [Test]
-    public void Decode_BatchedMessageWhereATransactionOverDeclaresItsPayload_IsRefusedBeforeAllocating()
-    {
-        const int count = 100_000;
-        const int siblingBytes = MinSignatureRlpLength * count;
-
-        byte[] body = FrameTxBody(signatures: PlaceholderList(count));
-        RlpReader walk = new(body);
-        RlpReader content = walk.EnterSequence(out int itemLength);
-        int contentStart = itemLength - content.Remaining;
-        byte[] overDeclared = WithDeclaredContentLength(body, contentStart, body.Length - contentStart + siblingBytes);
-
-        Transaction sibling = CreateFrameTx(signatures: [new TxFrameSignature(
-            TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(siblingBytes, 0x01))]);
-        byte[] message = RlpTestHelper.EncodeSequence([
-            Rlp.Encode(TypedPayload(overDeclared)),
-            Rlp.Encode(EncodeConsensusPayload(sibling))]);
-
-        Assert.That(() => DecodeMessage(message), Throws.InstanceOf<RlpReaderException>());
-    }
-
-    /// <summary>Decodes a batched <c>Transactions</c>-style message: many transactions, one reader.</summary>
-    private static Transaction[] DecodeMessage(byte[] message)
-    {
-        RlpReader reader = new(message);
-        return reader.DecodeNonNullArray(_txDecoder);
-    }
-
-    /// <summary>Re-emits <paramref name="body"/>'s sequence header declaring <paramref name="declared"/> content
-    /// bytes, leaving every byte of the content itself in place.</summary>
-    private static byte[] WithDeclaredContentLength(byte[] body, int contentStart, int declared)
-    {
-        byte[] header = new byte[Rlp.LengthOfSequence(declared) - declared];
-        RlpWriter headerWriter = RlpWriter.ContentWriter(header);
-        headerWriter.StartSequence(declared);
-
-        byte[] doctored = new byte[header.Length + body.Length - contentStart];
-        header.CopyTo(doctored, 0);
-        body.AsSpan(contentStart).CopyTo(doctored.AsSpan(header.Length));
-        return doctored;
+        else
+        {
+            Assert.That(EncodeDecode(tx).FrameClaims!.Length, Is.EqualTo(claimCount));
+        }
     }
 
     [Test]
@@ -788,8 +740,8 @@ public class FrameTxDecoderTests
             .SetName("Decode_EmptyPayloadList_ThrowsTruncated");
         yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([
                 chainId, nonce, sender,
+                RlpTestHelper.EncodeSequence(),                     // claims
                 RlpTestHelper.EncodeSequence(),                     // frames
-                RlpTestHelper.EncodeSequence(),                     // signatures
                 RlpTestHelper.EncodeSequence(Rlp.Encode(0L), Rlp.Encode(0L))]))) // fees; no blob_versioned_hashes
             .SetName("Decode_PayloadWithoutItsLastField_ThrowsTruncated");
 
@@ -799,24 +751,14 @@ public class FrameTxDecoderTests
             Rlp.Encode((byte)FrameFlags.None),
             Rlp.Encode(TestItem.AddressB.Bytes),
             RlpTestHelper.EncodeSequence([[0x88, 0x01]])]);  // limits
-        yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([chainId, nonce, sender, RlpTestHelper.EncodeSequence([frameEndingInItsGasLimit])])))
+        yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([chainId, nonce, sender, RlpTestHelper.EncodeSequence(), RlpTestHelper.EncodeSequence([frameEndingInItsGasLimit])])))
             .SetName("Decode_InputEndingInsideAFrame_ThrowsTruncated");
 
-        // The signer declares 20 bytes and two follow it, so the input ends inside the signature entry.
-        byte[] signatureEndingInItsSigner = RlpTestHelper.EncodeSequence([Rlp.Encode(TxFrameSignature.SchemeArbitrary), [0x94, 0x01, 0x02]]);
+        // The verifier declares 20 bytes and two follow it, so the input ends inside the claim.
+        byte[] claimEndingInItsVerifier = RlpTestHelper.EncodeSequence([[0x94, 0x01, 0x02]]);
         yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([
-                chainId, nonce, sender, RlpTestHelper.EncodeSequence(), RlpTestHelper.EncodeSequence([signatureEndingInItsSigner])])))
-            .SetName("Decode_InputEndingInsideASignature_ThrowsTruncated");
-    }
-
-    /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
-    private static byte[] PlaceholderList(int count)
-    {
-        byte[] bytes = new byte[Rlp.LengthOfSequence(count)];
-        RlpWriter writer = RlpWriter.ContentWriter(bytes);
-        writer.StartSequence(count);
-        bytes.AsSpan(bytes.Length - count).Fill(Rlp.EmptyListByte);
-        return bytes;
+                chainId, nonce, sender, RlpTestHelper.EncodeSequence([claimEndingInItsVerifier])])))
+            .SetName("Decode_InputEndingInsideAClaim_ThrowsTruncated");
     }
 
     private static Transaction DecodeConsensusPayload(byte[] payload, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -837,22 +779,23 @@ public class FrameTxDecoderTests
     // The consensus form ignores any network wrapper: keccak(type || rlp(tx_payload_body)).
     private static Hash256 ConsensusHash(Transaction tx) => Keccak.Compute(EncodeConsensusPayload(tx));
 
-    private static byte[] EncodeConsensusPayload(Transaction tx)
+    private static byte[] EncodeConsensusPayload(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping | rlpBehaviors)];
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
-        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping | rlpBehaviors);
         return bytes;
     }
 
-    private static Transaction CreateBlobCarryingFrameTx(ProofVersion version, int blobCount)
+    // EIP-7594: a frame transaction's sidecar carries cell proofs.
+    private static Transaction CreateBlobCarryingFrameTx(int blobCount)
     {
         if (!KzgPolynomialCommitments.IsInitialized)
         {
             KzgPolynomialCommitments.InitializeAsync().Wait();
         }
 
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
         byte[][] blobs = new byte[blobCount][];
         for (int i = 0; i < blobs.Length; i++)
         {
@@ -887,22 +830,25 @@ public class FrameTxDecoderTests
         }
     }
 
-    private static void AssertSignaturesEqual(TxFrameSignature[] actual, TxFrameSignature[] expected)
+    private static void AssertClaimsEqual(TxFrameClaim[] actual, TxFrameClaim[] expected)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length));
         using (Assert.EnterMultipleScope())
         {
             for (int i = 0; i < expected.Length; i++)
             {
-                Assert.That(actual[i].Scheme, Is.EqualTo(expected[i].Scheme), $"signature {i} scheme");
-                Assert.That(actual[i].Signer, Is.EqualTo(expected[i].Signer), $"signature {i} signer");
-                Assert.That(actual[i].Msg, Is.SequenceEqualTo(expected[i].Msg), $"signature {i} msg");
-                Assert.That(actual[i].Signature, Is.SequenceEqualTo(expected[i].Signature), $"signature {i} bytes");
+                Assert.That(actual[i].Verifier, Is.EqualTo(expected[i].Verifier), $"claim {i} verifier");
+                Assert.That(actual[i].Key, Is.SequenceEqualTo(expected[i].Key), $"claim {i} key");
+                Assert.That(actual[i].Msg, Is.SequenceEqualTo(expected[i].Msg), $"claim {i} msg");
+                Assert.That(actual[i].GasLimit, Is.EqualTo(expected[i].GasLimit), $"claim {i} gas limit");
+                Assert.That(actual[i].WitnessLength, Is.EqualTo(expected[i].WitnessLength), $"claim {i} witness length");
             }
         }
     }
 
-    private static Transaction CreateFrameTx(TxFrame[]? frames = null, TxFrameSignature[]? signatures = null) =>
+    private static TxFrameClaim Secp256k1Claim() => new(Eip8141Constants.Secp256k1VerifierAddress, default, default, 0, 0);
+
+    private static Transaction CreateFrameTx(TxFrame[]? frames = null, TxFrameClaim[]? claims = null) =>
         WithMaxFee(new Transaction
         {
             Type = TxType.FrameTx,
@@ -910,7 +856,7 @@ public class FrameTxDecoderTests
             Nonce = 42,
             SenderAddress = TestItem.AddressA,
             Frames = frames ?? [Frame()],
-            FrameSignatures = signatures ?? [],
+            FrameClaims = claims ?? [],
             GasPrice = 1.GWei, // max_priority_fee_per_gas
         }, 3.GWei);
 

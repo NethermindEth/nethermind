@@ -234,7 +234,20 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
+        // EIP-8141: a block being validated hands its transactions their witnesses from the dependency proof; a block
+        // being produced builds the proof from its transactions' witnesses once they are chosen. The zkVM guest's input
+        // carries no proof, so there a frame transaction with claims fails for want of witnesses.
+        bool isProducing = _blockTransactionsExecutor is IBlockProductionTransactionsExecutor;
+        bool hasDependencyProof = !ZkEvmFlag.IsActive && spec.IsEip8141Enabled;
+        if (hasDependencyProof && !isProducing && !options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            FrameTxDependencyProof.AssignWitnesses(block);
+            FrameTxDependencyProof.CheckVerifiersDeployed(block, _stateProvider, spec);
+        }
+
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        if (hasDependencyProof && isProducing) FrameTxDependencyProof.Build(block);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

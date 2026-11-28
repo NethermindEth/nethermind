@@ -524,12 +524,12 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [TestCase(false, ExecutionOptions.FrameValidationPrefixOnly)]
-    [TestCase(true, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameSignaturesPreValidated)]
+    [TestCase(true, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameClaimsPreVerified)]
     public void Simulate_ForwardsTheCallersSignaturePrecondition(bool preValidated, ExecutionOptions expected)
     {
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
 
-        simulator.Simulate(FrameTx(), signaturesPreValidated: preValidated);
+        simulator.Simulate(FrameTx(), claimsPreVerified: preValidated);
 
         processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
     }
@@ -628,7 +628,7 @@ public class FrameTxPrefixSimulatorTests
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
-        FrameSignatures = [],
+        FrameClaims = [],
         DecodedMaxFeePerGas = UInt256.One,
     };
 

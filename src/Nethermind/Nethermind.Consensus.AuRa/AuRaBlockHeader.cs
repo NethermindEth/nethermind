@@ -83,6 +83,7 @@ public sealed class AuRaBlockHeader(
             BlobGasUsed = src.BlobGasUsed,
             ExcessBlobGas = src.ExcessBlobGas,
             SlotNumber = src.SlotNumber,
+            DependencyProofHash = src.DependencyProofHash,
             IsPostMerge = src.IsPostMerge,
         };
     }

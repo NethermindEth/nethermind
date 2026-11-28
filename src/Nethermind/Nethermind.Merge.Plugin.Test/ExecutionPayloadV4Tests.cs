@@ -14,7 +14,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -43,6 +46,49 @@ public class ExecutionPayloadV4Tests
             Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
         }
         Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
+    }
+
+    [Test]
+    public void TryGetBlock_commits_the_header_to_the_dependency_proof_and_Create_carries_it_back([Values] bool empty)
+    {
+        byte[] proof = empty ? [] : [Eip8141Constants.DependencyProofVersionRaw, 0xc1, 0x01];
+        ExecutionPayloadV5 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(Build.A.BlockAccessList.TestObject),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            DependencyProof = proof,
+        };
+
+        Block block = payload.TryGetBlock().Data!;
+        ExecutionPayloadV5 roundTripped = ExecutionPayloadV5.Create(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.DependencyProofHash, Is.EqualTo(Keccak.Compute(proof)));
+            Assert.That(block.DependencyProof, Is.SameAs(proof));
+            Assert.That(roundTripped.DependencyProof, Is.EqualTo(proof));
+        }
+    }
+
+    [Test]
+    public void TryGetBlock_refuses_a_dependency_proof_past_its_maximum()
+    {
+        ExecutionPayloadV5 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(Build.A.BlockAccessList.TestObject),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            DependencyProof = new byte[Eip8141Constants.MaxDependencyProofBytes + 1],
+        };
+
+        Assert.That(payload.TryGetBlock().Error, Does.Contain("MAX_DEPENDENCY_PROOF_BYTES"));
     }
 
     [TestCase(5UL, false)]
@@ -189,17 +235,19 @@ public class ExecutionPayloadV4Tests
 
     // Two devnet fixture lines both call their Amsterdam successor Bogota while meaning different
     // things by it, so the label a genesis carries has to decide which newPayload version the node
-    // accepts: inclusion lists move it to V6, frame transactions leave it on Amsterdam's V5.
-    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6)]
-    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V5)]
-    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted)
+    // accepts: inclusion lists move it to V6, frame transactions to V7 and ExecutionPayloadV5.
+    // ExecutionPayloadV5 extends Amsterdam's payload, so frame transactions without Amsterdam take no version at all.
+    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6, true)]
+    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V7, true)]
+    [TestCase("eip8141PrototypeTime", 0, false)]
+    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted, bool amsterdam)
     {
         string genesis = $$"""
             {
               "config": {
                 "chainId": 1, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
                 "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0,
-                "shanghaiTime": 0, "amsterdamTime": 15, "{{label}}": 15
+                "shanghaiTime": 0, {{(amsterdam ? "\"amsterdamTime\": 15, " : "")}}"{{label}}": 15
               },
               "difficulty": "0x1",
               "gasLimit": "0x8000000",
@@ -220,6 +268,17 @@ public class ExecutionPayloadV4Tests
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = Keccak.EmptyTreeHash,
         };
+        ExecutionPayloadV5 payloadV5 = new()
+        {
+            BlockAccessList = [],
+            SlotNumber = 0,
+            BlockNumber = 1,
+            Timestamp = 15,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            DependencyProof = [],
+        };
 
         using (Assert.EnterMultipleScope())
         {
@@ -227,7 +286,19 @@ public class ExecutionPayloadV4Tests
                 Is.EqualTo(accepted == EngineApiVersions.NewPayload.V5));
             Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6),
                 Is.EqualTo(accepted == EngineApiVersions.NewPayload.V6));
+            Assert.That(payloadV5.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V7),
+                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V7));
         }
+    }
+
+    // Only ExecutionPayloadV5 carries the dependency proof, so newPayloadV4 refuses a frame fork without Amsterdam too.
+    [Test]
+    public void NewPayloadV4_refuses_a_frame_fork_without_Amsterdam()
+    {
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(Osaka.Instance) { IsEip8141Enabled = true });
+        ExecutionPayloadV3 payload = new() { BlockNumber = 1, Timestamp = 15 };
+
+        Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V4), Is.False);
     }
 
     [TestCase(typeof(ExecutionPayloadV4), null, null)]
@@ -235,12 +306,15 @@ public class ExecutionPayloadV4Tests
     [TestCase(typeof(ExecutionPayloadV4), "blobGasUsed", "blobGasUsed")]
     [TestCase(typeof(ExecutionPayloadV4), "blockAccessList", "blockAccessList")]
     [TestCase(typeof(ExecutionPayloadV4), "slotNumber", "slotNumber")]
+    [TestCase(typeof(ExecutionPayloadV4), "dependencyProof", null)]
+    [TestCase(typeof(ExecutionPayloadV5), null, null)]
+    [TestCase(typeof(ExecutionPayloadV5), "dependencyProof", "dependencyProof")]
     [TestCase(typeof(ExecutionPayloadV3), "excessBlobGas", "excessBlobGas")]
     [TestCase(typeof(ExecutionPayloadV3), "blockAccessList", null)]
     [TestCase(typeof(ExecutionPayloadV3), "slotNumber", null)]
     public void Deserialization_tracks_the_required_fields_of_the_payload_version(Type payloadType, string? omittedField, string? expectedUnboundField)
     {
-        ExecutionPayloadV4 complete = new() { Withdrawals = [], BlobGasUsed = 0, ExcessBlobGas = 0, BlockAccessList = [0xc0], SlotNumber = 1 };
+        ExecutionPayloadV4 complete = new() { Withdrawals = [], BlobGasUsed = 0, ExcessBlobGas = 0, BlockAccessList = [0xc0], SlotNumber = 1, DependencyProof = [] };
         JsonObject json = JsonSerializer.SerializeToNode(complete, EthereumJsonSerializer.JsonOptions)!.AsObject();
         if (omittedField is not null) json.Remove(omittedField);
 

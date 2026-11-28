@@ -347,7 +347,7 @@ public class InclusionListBuilderTests
         Nonce = nonce,
         NonceKeys = nonceKeys,
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-        FrameSignatures = [],
+        FrameClaims = [],
         GasLimit = 100_000,
         GasPrice = 1,
         DecodedMaxFeePerGas = 10,

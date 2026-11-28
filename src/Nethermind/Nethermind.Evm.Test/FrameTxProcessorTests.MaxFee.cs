@@ -240,8 +240,9 @@ public partial class FrameTxProcessorTests
         _stateProvider.Set(new StorageCell(Observer, 0), (UInt256)1);
         _stateProvider.Commit(Spec);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer, stateGasLimit: 0));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(null)];
+        tx.ClaimWitnesses = [[]];
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
         WithMaxFee(tx, (UInt256)maxGas * baseFee + (UInt256)maxGas * 4 - 1, tip);
 
         TransactionResult result = ProcessWith(tx, ExecutionOptions.SkipValidationAndCommit, baseFee);

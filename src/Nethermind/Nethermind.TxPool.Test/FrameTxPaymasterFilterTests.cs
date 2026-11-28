@@ -271,7 +271,7 @@ public class FrameTxPaymasterFilterTests
             SenderAddress = Sender,
             Nonce = nonce,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasLimit = 1_000_000,
             GasPrice = gasPrice,
             MaxFee = (UInt256)1_000_000 * gasPrice,

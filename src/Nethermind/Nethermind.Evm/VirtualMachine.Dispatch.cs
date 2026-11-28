@@ -102,7 +102,55 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (mask != UInt256.MaxValue)
                 PrepareFilteredOpcodes(mask, table.GetHandlers<SilentInstructionFlag, TCancelable>(spec));
         }
+
+        if (_txExecutionContext.IsPureVerification)
+            PreparePureOpcodes();
     }
+
+    /// <summary>
+    /// EIP-8141 pure context: every opcode that reads the call's context, another account, the chain, the block or the
+    /// transaction, and every opcode the pure context does not admit, halts exceptionally.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt for each verification rather than cached: the source table can be a filtered one that is refilled in
+    /// place. A <c>STATICCALL</c> stays in the table and refuses a target other than a precompile itself, and the
+    /// writes the static context already forbids stay too, so they fail as a static call's do.
+    /// </remarks>
+    private void PreparePureOpcodes()
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] source = _opcodeHandlers;
+        if (_pureOpcodeHandlers is null || _pureOpcodeHandlers.Length != source.Length)
+            _pureOpcodeHandlers = new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[source.Length];
+
+        // Every undefined opcode holds the one bad-instruction entry, in both halves of a table; 0x0c is never assigned.
+        const int NeverAssigned = 0x0c;
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> badInstruction = source[NeverAssigned];
+        for (int i = 0; i < source.Length; i++)
+            _pureOpcodeHandlers[i] = IsAdmittedInPureContext((Instruction)(i % FallbackHandlersOffset)) ? source[i] : badInstruction;
+
+        _opcodeHandlers = _pureOpcodeHandlers;
+    }
+
+    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _pureOpcodeHandlers;
+
+    /// <summary>Whether <paramref name="opcode"/> may run in the EIP-8141 pure context.</summary>
+    /// <remarks>An allowlist, so an opcode a later EIP introduces halts until that EIP admits it.</remarks>
+    internal static bool IsAdmittedInPureContext(Instruction opcode) => opcode switch
+    {
+        <= Instruction.SIGNEXTEND => true,
+        >= Instruction.LT and <= Instruction.CLZ => true,
+        Instruction.KECCAK256 => true,
+        >= Instruction.CALLVALUE and <= Instruction.CODECOPY => true,
+        Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY => true,
+        >= Instruction.POP and <= Instruction.MSTORE8 => true,
+        Instruction.SSTORE or Instruction.TSTORE or Instruction.MCOPY => true,
+        >= Instruction.JUMP and <= Instruction.JUMPDEST => true,
+        >= Instruction.PUSH0 and <= Instruction.LOG4 => true,
+        Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => true,
+        Instruction.CREATE or Instruction.CREATE2 or Instruction.RETURN or Instruction.STATICCALL => true,
+        Instruction.REVERT or Instruction.INVALID or Instruction.SELFDESTRUCT => true,
+        _ => false,
+    };
 
     /// <summary>Resolves what an attached frame code runner needs for the coming transaction; nothing in builds without one.</summary>
     partial void PrepareFrameCodeRunner<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag;

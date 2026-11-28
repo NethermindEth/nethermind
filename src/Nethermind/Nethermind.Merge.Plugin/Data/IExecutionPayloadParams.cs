@@ -274,6 +274,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
+        if (version < EngineApiVersions.NewPayload.V7 && executionPayload.DependencyProof is not null)
+        {
+            error = "Dependency proof must not be set before engine_newPayloadV7";
+            return ValidationResult.Fail;
+        }
+
         // Runs after the fork checks above, which also guard payloads not bound from JSON and keep their messages.
         if (executionPayload.HasUnboundField)
         {

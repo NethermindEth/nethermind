@@ -41,6 +41,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private Address? _lastPureAccountAddress;
     private Account? _lastPureAccount;
     private BalReadCoverage? _readCoverage;
+    private int _undeclaredAccountReadsDepth;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
@@ -462,6 +463,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override void ResetTransient()
         => _transientStorageProvider.Reset();
 
+    /// <inheritdoc/>
+    public override IDisposable BeginUndeclaredAccountReads() => new UndeclaredAccountReadsScope(this);
+
     [MemberNotNull(nameof(_suggestedBlockAccessList), nameof(_suggestedBlockHeader))]
     private void CheckInitialized()
     {
@@ -515,6 +519,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         // Parent-reader wiring is validated first: its failure is a node-side bug (InvalidOperationException)
         // and must not be masked by the undeclared-address InvalidBlockException.
         GetParentReader();
+        if (_undeclaredAccountReadsDepth != 0 && _suggestedBlockAccessList.GetAccountChanges(address) is null)
+        {
+            // Not cached as the context, so a transaction reading the account still fails fast.
+            return new ReadOnlyAccountChanges(address);
+        }
+
         ReadOnlyAccountChanges accountChanges = GetAccountChangesOrThrow(address);
         _contextChanges = accountChanges;
         _contextAccount = address;
@@ -577,4 +587,23 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
         => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+
+    private sealed class UndeclaredAccountReadsScope : IDisposable
+    {
+        private BlockAccessListBasedWorldState? _state;
+
+        public UndeclaredAccountReadsScope(BlockAccessListBasedWorldState state)
+        {
+            _state = state;
+            state._undeclaredAccountReadsDepth++;
+        }
+
+        public void Dispose()
+        {
+            if (_state is null) return;
+
+            _state._undeclaredAccountReadsDepth--;
+            _state = null;
+        }
+    }
 }

@@ -375,6 +375,31 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Eip8141_payload_round_trips_its_dependency_proof_through_getPayloadV7_and_newPayloadV7()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true };
+        using MergeTestBlockchain chain = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 head = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(inclusionList: []));
+        byte[] payloadId = Bytes.FromHexString(fcu.Data.PayloadId!);
+        ResultWrapper<GetPayloadV6Result?> v6 = await rpc.engine_getPayloadV6(payloadId);
+        ResultWrapper<GetPayloadV7Result?> v7 = await rpc.engine_getPayloadV7(payloadId);
+        ExecutionPayloadV5 executionPayload = v7.Data!.ExecutionPayload;
+        ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV7(
+            executionPayload, [], Keccak.Zero, v7.Data.ExecutionRequests, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(v6.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+            Assert.That(executionPayload.DependencyProof, Is.Empty);
+            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), newPayload.Data.ValidationError);
+        }
+    }
+
+    [Test]
     public async Task Should_process_block_as_expected_V7()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });

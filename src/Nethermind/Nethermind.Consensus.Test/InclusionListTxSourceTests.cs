@@ -210,7 +210,7 @@ public class InclusionListTxSourceTests
         Nonce = nonce,
         SenderAddress = TestItem.AddressC,
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-        FrameSignatures = [],
+        FrameClaims = [],
         GasPrice = 1.GWei,
         MaxFee = (UInt256)100_000 * 30.GWei,
         DecodedMaxFeePerGas = 30.GWei,

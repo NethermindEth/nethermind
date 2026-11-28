@@ -57,9 +57,11 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
     {
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
-        // V3 covers Cancun and V4 covers Prague until Amsterdam; Osaka added no newPayload version.
+        // V3 covers Cancun and V4 covers Prague until Amsterdam; Osaka added no newPayload version. EIP-8141 blocks
+        // carry a dependency proof, which only ExecutionPayloadV5 does.
         return spec.IsCancunEnabled
             && !spec.IsAmsterdamEnabled
+            && !spec.IsEip8141Enabled
             && spec.IsPragueEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V4);
     }
 

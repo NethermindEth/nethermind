@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -20,11 +21,11 @@ namespace Nethermind.Evm;
 /// <summary>Transaction-scoped context for an in-flight EIP-8141 frame transaction: the read-only envelope
 /// plus the approval state the outer loop advances and the <c>APPROVE</c> opcode writes.</summary>
 /// <remarks>One instance per transaction, not thread-safe: it is mutated by the single frame loop executing it.</remarks>
-/// <param name="sender">The transaction sender, and the default target and signer of frames and entries that name none.</param>
+/// <param name="sender">The transaction sender, and the default target of frames and key of claims that name none.</param>
 /// <param name="nonce">The nonce the envelope was signed at: the account nonce, or the shared <c>nonce_seq</c> when
 /// <paramref name="nonceKeys"/> is set.</param>
 /// <param name="frames">The envelope's frames, in execution order.</param>
-/// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
+/// <param name="claims">The envelope's claims, already verified when execution begins.</param>
 /// <param name="transaction">The envelope <see cref="SigHash"/> is computed from on first read.</param>
 /// <param name="sigHash">The canonical signature hash when validation already computed it.</param>
 /// <param name="maxCost">The <c>max_cost</c> the payer's approval collects up front.</param>
@@ -35,7 +36,7 @@ public sealed class FrameTxContext(
     Address sender,
     ulong nonce,
     TxFrame[] frames,
-    TxFrameSignature[] signatures,
+    TxFrameClaim[] claims,
     Transaction transaction,
     ValueHash256? sigHash,
     in UInt256 maxCost,
@@ -43,7 +44,7 @@ public sealed class FrameTxContext(
     in UInt256 legacyNonce,
     UInt256[]? nonceKeys = null)
 {
-    /// <summary>The transaction sender: the default target of a frame and signer of an entry that names none.</summary>
+    /// <summary>The transaction sender: the default target of a frame and key of a claim that names none.</summary>
     public Address Sender { get; } = sender;
 
     /// <summary>The nonce the envelope was signed at; with <see cref="NonceKeys"/> set, the shared <c>nonce_seq</c>.</summary>
@@ -69,12 +70,11 @@ public sealed class FrameTxContext(
     /// <summary>The envelope's frames, in execution order.</summary>
     public TxFrame[] Frames { get; } = frames;
 
-    /// <summary>The envelope's signature entries, validated before the first frame runs.</summary>
-    public TxFrameSignature[] Signatures { get; } = signatures;
+    /// <summary>The envelope's claims, verified before the first frame runs.</summary>
+    public TxFrameClaim[] Claims { get; } = claims;
 
-    /// <summary>The hash entries carrying no explicit <c>msg</c> are taken to have signed.</summary>
-    /// <remarks>Computed on first read unless validation supplied it: only a canonical-hash signature entry and
-    /// <c>TXPARAM(0x08)</c> need it.</remarks>
+    /// <summary>The hash claims carrying no explicit <c>msg</c> are over.</summary>
+    /// <remarks>Computed on first read unless verification supplied it: only <c>TXPARAM(0x08)</c> needs it here.</remarks>
     public ValueHash256 SigHash => _sigHash ??= FrameTxSigHash.ComputeValue(transaction);
 
     private ValueHash256? _sigHash = sigHash;
@@ -132,8 +132,41 @@ public sealed class FrameTxContext(
     /// <summary>A frame's target with the omitted-target encoding resolved to the sender.</summary>
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
 
-    /// <summary>An entry's signer with the omitted-signer encoding resolved to the sender.</summary>
-    public Address ResolvedSigner(int signatureIndex) => Signatures[signatureIndex].Signer ?? Sender;
+    private ValueHash256[]? _resolvedClaimKeys;
+
+    /// <summary>EIP-8141 <c>HASCLAIM</c>: whether a claim matches <paramref name="verifier"/>, <paramref name="key"/>
+    /// and <paramref name="msg"/>.</summary>
+    /// <remarks><paramref name="key"/> is compared against each claim's resolved key. A zero <paramref name="msg"/>
+    /// matches a claim with an empty <c>msg</c>, over the canonical signature hash; any other matches the explicit digest.</remarks>
+    public bool HasClaim(Address verifier, in ValueHash256 key, in ValueHash256 msg)
+    {
+        TxFrameClaim[] claims = Claims;
+        ValueHash256[] keys = _resolvedClaimKeys ??= ResolveClaimKeys(claims, Sender);
+        bool canonical = msg.Bytes.IsZero();
+        for (int i = 0; i < claims.Length; i++)
+        {
+            TxFrameClaim claim = claims[i];
+            if (claim.Verifier == verifier
+                && keys[i] == key
+                && (canonical ? claim.SignsCanonicalHash : !claim.SignsCanonicalHash && claim.Msg.Span.SequenceEqual(msg.Bytes)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static ValueHash256[] ResolveClaimKeys(TxFrameClaim[] claims, Address sender)
+    {
+        ValueHash256[] keys = new ValueHash256[claims.Length];
+        for (int i = 0; i < claims.Length; i++)
+        {
+            keys[i] = claims[i].ResolveKey(sender);
+        }
+
+        return keys;
+    }
 
     private const int NoOwner = -1;
 

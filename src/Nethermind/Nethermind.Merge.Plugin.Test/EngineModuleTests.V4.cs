@@ -21,6 +21,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -419,6 +420,7 @@ public partial class EngineModuleTests
             EngineApiVersions.NewPayload.V4 => (await rpc.engine_newPayloadV4(ExecutionPayloadV3.Create(block), [], Keccak.Zero, [])).ErrorCode,
             EngineApiVersions.NewPayload.V5 => (await rpc.engine_newPayloadV5(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [])).ErrorCode,
             EngineApiVersions.NewPayload.V6 => (await rpc.engine_newPayloadV6(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [], [])).ErrorCode,
+            EngineApiVersions.NewPayload.V7 => (await rpc.engine_newPayloadV7(ExecutionPayloadV5.Create(block), [], Keccak.Zero, [], [])).ErrorCode,
             _ => throw new ArgumentOutOfRangeException(nameof(version))
         };
     }
@@ -445,6 +447,9 @@ public partial class EngineModuleTests
             (Bogota.Instance, EngineApiVersions.NewPayload.V5, MergeErrorCodes.UnsupportedFork),
             (Amsterdam.Instance, EngineApiVersions.NewPayload.V6, MergeErrorCodes.UnsupportedFork),
             (Bogota.Instance, EngineApiVersions.NewPayload.V6, ErrorCodes.None),
+            (Bogota.Instance, EngineApiVersions.NewPayload.V7, MergeErrorCodes.UnsupportedFork),
+            (Eip8141Prototype.Instance, EngineApiVersions.NewPayload.V5, MergeErrorCodes.UnsupportedFork),
+            (Eip8141Prototype.Instance, EngineApiVersions.NewPayload.V7, ErrorCodes.None),
         ];
 
         foreach ((IReleaseSpec spec, int version, int expectedErrorCode) in cases)
@@ -452,6 +457,13 @@ public partial class EngineModuleTests
             yield return new TestCaseData(spec, version) { ExpectedResult = expectedErrorCode }
                 .SetArgDisplayNames($"V{version}", spec.Name);
         }
+
+        // execution-apis#1041: once EIP-8141 is active the payload carries its dependency proof, which only V7 takes.
+        IReleaseSpec bogotaWithFrames = new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true };
+        yield return new TestCaseData(bogotaWithFrames, EngineApiVersions.NewPayload.V6) { ExpectedResult = MergeErrorCodes.UnsupportedFork }
+            .SetArgDisplayNames("V6", "Bogota+EIP-8141");
+        yield return new TestCaseData(bogotaWithFrames, EngineApiVersions.NewPayload.V7) { ExpectedResult = ErrorCodes.None }
+            .SetArgDisplayNames("V7", "Bogota+EIP-8141");
     }
 
     [TestCase(30)]

@@ -118,7 +118,7 @@ public partial class FrameTxFloodMeasurement
 
     private byte[] _frameCalldataPrefix = [];
 
-    private TxFrameSignature[] _frameSignatures = [];
+    private (TxFrameClaim[] Claims, byte[][] Witnesses) _frameClaims = ([], []);
 
     private ulong _frameExecutionGasLimit;
 
@@ -170,7 +170,7 @@ public partial class FrameTxFloodMeasurement
         s_blockProcessingSignal = false;
         _chain = null!;
         _frameCalldataPrefix = [];
-        _frameSignatures = [];
+        _frameClaims = ([], []);
     }
 
     [TearDown]
@@ -294,7 +294,7 @@ public partial class FrameTxFloodMeasurement
         {
             Transaction decoded = new();
             pooled.CopyTo(decoded, copyHash: true);
-            if (pooled.FrameSignatures is { Length: > 0 } signatures) decoded.FrameSignatures = FrameTxTestFrames.Fresh(signatures);
+            if (pooled.ClaimWitnesses is { } witnesses) decoded.ClaimWitnesses = Array.ConvertAll(witnesses, static witness => (byte[])witness.Clone());
             return decoded;
         }
 
@@ -571,8 +571,9 @@ public partial class FrameTxFloodMeasurement
             Nonce = 0,
             SenderAddress = Attacker,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
-            // Shared here; the generator gives each submission its own entries as it submits.
-            FrameSignatures = _frameSignatures,
+            // Shared here; the generator gives each submission its own witnesses as it submits.
+            FrameClaims = _frameClaims.Claims,
+            ClaimWitnesses = _frameClaims.Witnesses,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -588,12 +589,12 @@ public partial class FrameTxFloodMeasurement
 
         bool stuffed = shape == "signature-stuffed";
 
-        // Block production does not set ExecutionOptions.FrameSignaturesPreValidated, so every attempt
+        // Block production does not set ExecutionOptions.FrameClaimsPreVerified, so every attempt
         // re-runs the recoveries. Validation rejects before the frame loop, so the prefix never runs.
-        TxFrameSignature[] signatures = stuffed
-            ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
+        (TxFrameClaim[] Claims, byte[][] Witnesses) claims = stuffed
+            ? FrameTxTestFrames.RecoveredSecp256k1Claims(
                 new EthereumEcdsa(TestBlockchainIds.ChainId), FrameTxPrefixShapes.StuffedSignatureCount(ceiling))
-            : [];
+            : ([], []);
 
         Transaction tx = new()
         {
@@ -602,7 +603,8 @@ public partial class FrameTxFloodMeasurement
             Nonce = 0,
             SenderAddress = Attacker,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? FrameTxPrefixShapes.MinimalFrameGas : ceiling, UInt256.Zero, data)],
-            FrameSignatures = signatures,
+            FrameClaims = claims.Claims,
+            ClaimWitnesses = claims.Witnesses,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -618,7 +620,7 @@ public partial class FrameTxFloodMeasurement
         {
             byte[] verifierCode = Groth16Artifact(sweep, "verifier.hex");
             _frameCalldataPrefix = Groth16Artifact(sweep, "calldata-invalid.hex");
-            _frameSignatures = [];
+            _frameClaims = ([], []);
             _frameExecutionGasLimit = sweep.FrameGasLimit;
             return verifierCode;
         }
@@ -626,14 +628,14 @@ public partial class FrameTxFloodMeasurement
         if (shape == "signature-stuffed")
         {
             _frameCalldataPrefix = [];
-            _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(
+            _frameClaims = FrameTxTestFrames.RecoveredSecp256k1Claims(
                 new EthereumEcdsa(TestBlockchainIds.ChainId), FrameTxPrefixShapes.StuffedSignatureCount(ceiling));
             _frameExecutionGasLimit = FrameTxPrefixShapes.MinimalFrameGas;
             return FrameTxPrefixShapes.Code("banned-opcode");
         }
 
         _frameCalldataPrefix = [];
-        _frameSignatures = [];
+        _frameClaims = ([], []);
         _frameExecutionGasLimit = ceiling;
         return FrameTxPrefixShapes.Code(shape);
     }

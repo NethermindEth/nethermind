@@ -63,6 +63,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Observer = TestItem.AddressB;
     private static readonly Address Recipient = TestItem.AddressC;
+    private static readonly Address Verifier = new("0x00000000000000000000000000000000000c1a17");
     private static readonly Address Beneficiary = TestItem.AddressE;
 
     // The gas leg of max_cost for a SelfVerify + one DEFAULT frame at a tip of 1 per gas, blob-free.
@@ -218,9 +219,11 @@ public partial class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
         Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.SelfVerify(50_000), Frame(FrameMode.Sender, target: Recipient, value: 5));
-        tx.FrameSignatures = placeholder
-            ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
-            : [];
+        if (placeholder)
+        {
+            tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(null)];
+            tx.ClaimWitnesses = [[]];
+        }
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
 
@@ -234,7 +237,7 @@ public partial class FrameTxProcessorTests
             {
                 Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
                 Assert.That(result.ErrorDescription, Does.Contain(placeholder
-                    ? FrameTxSignatureValidator.InvalidSignatureLength
+                    ? FrameTxClaimVerifier.InvalidWitnessLength
                     : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix frame reverted" : "VERIFY frame reverted"));
             }
             if (!succeeds || options.HasFlag(ExecutionOptions.Restore))
@@ -247,14 +250,15 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Simulate_SkipSignatureValidation_StillRunsCustomVerifier(
-        [Values(TxFrameSignature.SchemeSecp256k1, TxFrameSignature.SchemeP256)] byte scheme,
-        [Values] bool placeholder, [Values] bool reverts, [Values] bool simulation)
+    public void Simulate_SkipClaimVerification_StillRunsTheAccountCode(
+        [Values] bool secp256k1, [Values] bool placeholder, [Values] bool reverts, [Values] bool simulation)
     {
         DeploySmartSender(reverts ? RevertWithWord(1) : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        int length = scheme == TxFrameSignature.SchemeSecp256k1 ? TxFrameSignature.Secp256k1SignatureLength : TxFrameSignature.P256SignatureLength;
-        tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, placeholder ? default : new byte[length])];
+        Address verifier = secp256k1 ? Eip8141Constants.Secp256k1VerifierAddress : Eip8141Constants.P256VerifierAddress;
+        int length = secp256k1 ? Eip8141Constants.Secp256k1WitnessLength : Eip8141Constants.P256WitnessLength;
+        tx.FrameClaims = [new TxFrameClaim(verifier, default, default, 0, 0)];
+        tx.ClaimWitnesses = [placeholder ? [] : new byte[length]];
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
         EthereumTransactionProcessor processor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
         processor.SkipSenderChecks = simulation;
@@ -292,14 +296,15 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
-        [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
+    public void CallAndRestore_UnsignedClaim_StillExecutesTheAccountCode([Values] bool reverts, [Values] bool custom)
     {
         DeploySmartSender(reverts
             ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
             : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Verifier, Prepare.EvmCode.Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, scheme == TxFrameSignature.SchemeArbitrary ? new byte[] { 1, 2, 3 } : default)];
+        tx.FrameClaims = [custom ? CustomClaim(Verifier, witnessLength: 3) : new TxFrameClaim(Eip8141Constants.P256VerifierAddress, default, default, 0, 0)];
+        tx.ClaimWitnesses = [custom ? [1, 2, 3] : []];
 
         TransactionResult result = CallAndRestore(tx);
 
@@ -308,14 +313,20 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void CallAndRestore_DefaultVerifier_RejectsInvalidPlaceholders(
-        [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary, TxFrameSignature.SchemeSecp256k1)] byte scheme)
+    public void CallAndRestore_DefaultVerifier_RejectsAClaimItDoesNotAccept([Values(0, 1, 2)] int shape)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
+        DeployContract(Verifier, Prepare.EvmCode.Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(scheme, null,
-            scheme == TxFrameSignature.SchemeSecp256k1 ? TestItem.KeccakA.Bytes.ToArray() : default, default)];
+        // The default code accepts only a SECP256K1 claim keyed to the target over the canonical signature hash.
+        tx.FrameClaims = [shape switch
+        {
+            0 => new TxFrameClaim(Eip8141Constants.P256VerifierAddress, default, default, 0, 0),
+            1 => CustomClaim(Verifier),
+            _ => new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, default, TestItem.KeccakA.Bytes.ToArray(), 0, 0),
+        }];
+        tx.ClaimWitnesses = [[]];
 
         TransactionResult result = CallAndRestore(tx);
 
@@ -332,36 +343,33 @@ public partial class FrameTxProcessorTests
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures =
-        [
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
-        ];
-        SignCanonicalHash(tx, 1, valid ? TestItem.PrivateKeyA : TestItem.PrivateKeyB, signer: null);
+        tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(null), FrameTxTestFrames.Secp256k1Claim(TestItem.AddressB)];
+        tx.ClaimWitnesses = [[], []];
+        SignCanonicalHash(tx, 1, valid ? TestItem.PrivateKeyB : TestItem.PrivateKeyC, TestItem.AddressB);
 
         TransactionResult result = CallAndRestore(tx);
 
         Assert.That(result.TransactionExecuted, Is.EqualTo(valid));
-        if (!valid) Assert.That(result.ErrorDescription, Does.Contain(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        if (!valid) Assert.That(result.ErrorDescription, Does.Contain(FrameTxClaimVerifier.InvalidClaim));
     }
 
     [Test]
-    public void CallAndRestore_ArbitraryDummyData_IsCheckedByCustomVerifier([Values] bool matches)
+    public void Process_CustomVerifierClaim_IsCheckedAgainstItsWitness([Values] bool matches)
     {
-        byte[] condition = Prepare.EvmCode
-            .PushData(0).PushData(1).PushData(0).PushData(0).Op(Instruction.SIGDATACOPY)
-            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.BYTE)
-            .PushData(42).Op(Instruction.EQ).Done;
-        DeploySmartSender(BranchOnStackTop(condition,
-            ApproveCode(FrameFlags.ApproveExecutionAndPayment),
+        // The verifier reads key || msg || witness: it accepts only a witness whose first byte is 42.
+        DeployContract(Verifier, BranchOnStackTop(
+            Prepare.EvmCode.PushData(64).Op(Instruction.CALLDATALOAD).PushData(0).Op(Instruction.BYTE).PushData(42).Op(Instruction.EQ).Done,
+            Prepare.EvmCode.Op(Instruction.STOP).Done,
             Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done));
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { matches ? (byte)42 : (byte)43 })];
+        tx.FrameClaims = [CustomClaim(Verifier, witnessLength: 1)];
+        tx.ClaimWitnesses = [[matches ? (byte)42 : (byte)43]];
 
-        TransactionResult result = CallAndRestore(tx);
+        TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.EqualTo(matches));
-        if (!matches) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        if (!matches) Assert.That(result.ErrorDescription, Does.Contain(FrameTxClaimVerifier.InvalidClaim));
     }
 
     [Test]
@@ -370,7 +378,8 @@ public partial class FrameTxProcessorTests
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(TestItem.AddressB)];
+        tx.ClaimWitnesses = [[]];
         if (!placeholder) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
 
         TransactionResult result = CallAndRestore(tx);
@@ -383,12 +392,13 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void InvalidProtocolSignature_ReturnsMalformedTransaction([Values] bool simulate,
-        [Values(TxFrameSignature.SchemeSecp256k1, TxFrameSignature.SchemeP256)] byte scheme)
+    public void InvalidProtocolClaim_ReturnsMalformedTransaction([Values] bool simulate, [Values] bool secp256k1)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(scheme, TestItem.AddressD, default, new byte[65])];
+        tx.FrameClaims = [new TxFrameClaim(secp256k1 ? Eip8141Constants.Secp256k1VerifierAddress : Eip8141Constants.P256VerifierAddress,
+            TestItem.AddressD.Bytes.ToArray(), default, 0, 0)];
+        tx.ClaimWitnesses = [new byte[secp256k1 ? Eip8141Constants.Secp256k1WitnessLength : Eip8141Constants.P256WitnessLength]];
 
         TransactionResult result = simulate ? CallAndRestore(tx) : Process(tx);
 
@@ -999,7 +1009,6 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
-    [TestCase((byte)0x0B, 0UL, TestName = "Execute_TxParam_SignatureCount")]
     [TestCase((byte)0x0C, DefaultFrameStateGasLimit, TestName = "Execute_TxParam_StateGasLeft")]
     public void Execute_TxParamIntrospection_ExposesTransactionField(byte param, ulong expected)
     {
@@ -1034,19 +1043,20 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Simulation_MaxCost_PlaceholderCoversSignedSignature()
+    public void Simulation_MaxCost_PlaceholderPricesAsTheSignedClaim()
     {
         UInt256 placeholder = SimulatedMaxCost(signed: false);
         UInt256 signed = SimulatedMaxCost(signed: true);
 
-        Assert.That(placeholder, Is.GreaterThanOrEqualTo(signed));
+        Assert.That(placeholder, Is.EqualTo(signed));
     }
 
-    /// <summary>The max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
+    /// <summary>The max_cost a frame observes with a SECP256K1 claim, run as simulation with its state kept.</summary>
     private UInt256 SimulatedMaxCost(bool signed)
     {
         Transaction tx = MaxCostObserverTx();
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(TestItem.AddressB)];
+        tx.ClaimWitnesses = [[]];
         if (signed) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
@@ -1217,71 +1227,82 @@ public partial class FrameTxProcessorTests
         AssertStorage(Observer, 0, new UInt256(expected, isBigEndian: true));
     }
 
+    /// <summary>HASCLAIM(verifier, key, msg) matches a claim on all three, with the key resolved and a zero msg
+    /// standing for a claim over the canonical signature hash.</summary>
     [Test]
-    public void Execute_SigParam_ReadsArbitrarySignatureMetadata()
+    public void Execute_HasClaim_MatchesVerifierResolvedKeyAndMsg()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        // Spec stack order: signatureIndex on top, param second.
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x01).PushData(0).Op(Instruction.SIGPARAM).PushData(0).Op(Instruction.SSTORE) // scheme
-            .PushData(0x02).PushData(0).Op(Instruction.SIGPARAM).PushData(1).Op(Instruction.SSTORE) // msg (0 = canonical)
-            .PushData(0x03).PushData(0).Op(Instruction.SIGPARAM).PushData(2).Op(Instruction.SSTORE) // len(signature)
-            .Op(Instruction.STOP).Done);
+        DeployContract(Verifier, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        byte[] key = TestItem.KeccakA.Bytes.ToArray();
+        byte[] msg = TestItem.KeccakB.Bytes.ToArray();
+        UInt256 verifierWord = AddressAsWord(Verifier);
+        UInt256 keyWord = new(key, isBigEndian: true);
+        UInt256 msgWord = new(msg, isBigEndian: true);
+        (UInt256 Verifier, UInt256 Key, UInt256 Msg)[] queries =
+        [
+            (verifierWord, keyWord, msgWord), // the explicit claim
+            (verifierWord, AddressAsWord(Sender), UInt256.Zero), // the empty key resolves to the sender, the empty msg to zero
+            (verifierWord, keyWord, UInt256.Zero), // an explicit msg is not the canonical hash
+            (AddressAsWord(Observer), keyWord, msgWord), // another verifier
+            (verifierWord | (UInt256.One << 200), keyWord, msgWord), // a verifier word with upper bytes set
+        ];
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < queries.Length; i++)
+        {
+            // Spec stack order: verifier on top, key second, msg third.
+            code = code.PushData(queries[i].Msg).PushData(queries[i].Key).PushData(queries[i].Verifier)
+                .Op(Instruction.HASCLAIM).PushData(i).Op(Instruction.SSTORE);
+        }
+
+        DeployContract(Observer, code.Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 1, 2, 3 })];
+        tx.FrameClaims = [CustomClaim(Verifier, key: key, msg: msg), CustomClaim(Verifier)];
+        tx.ClaimWitnesses = [[], []];
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
         using (Assert.EnterMultipleScope())
         {
-            AssertStorage(Observer, 0, TxFrameSignature.SchemeArbitrary);
-            AssertStorage(Observer, 1, UInt256.Zero);
-            AssertStorage(Observer, 2, 3);
+            AssertStorage(Observer, 0, UInt256.One);
+            AssertStorage(Observer, 1, UInt256.One);
+            AssertStorage(Observer, 2, UInt256.Zero);
+            AssertStorage(Observer, 3, UInt256.Zero);
+            AssertStorage(Observer, 4, UInt256.Zero);
         }
     }
 
     [Test]
-    public void Execute_SigDataCopy_UsesMemOffsetDataOffsetLengthOrder()
+    public void Execute_HasClaim_CostsThreeGas()
     {
-        // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
-        // Operand order (top to bottom) is memOffset, dataOffset, length, signatureIndex — matching
-        // CALLDATACOPY. Asymmetric operands catch a reversed pop order.
-        byte[] signatureBytes = new byte[32];
-        for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
-
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        // GAS, three pushes, HASCLAIM, POP, GAS: everything between the two GAS reads but HASCLAIM is known.
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0).PushData(8).PushData(4).PushData(0)
-            .Op(Instruction.SIGDATACOPY)
-            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.GAS)
+            .PushData(0).PushData(0).PushData(0).Op(Instruction.HASCLAIM).Op(Instruction.POP)
+            .Op(Instruction.GAS).Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, signatureBytes)];
 
-        TransactionResult result = Process(tx);
-
-        Assert.That(result.TransactionExecuted, Is.True);
-        byte[] expected = new byte[32];
-        signatureBytes.AsSpan(4, 8).CopyTo(expected); // copied bytes land in the high-order end of the word
-        AssertStorage(Observer, 0, new UInt256(expected, isBigEndian: true));
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        // Three PUSH1, HASCLAIM, POP and the second GAS.
+        AssertStorage(Observer, 0, (UInt256)(3 * GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.Base));
     }
 
     [Test]
-    public void Execute_SigParamResolvedSignerOfArbitraryEntry_ExceptionallyHalts()
+    public void Execute_TxParamSignatureCount_IsUndefinedAndExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        // Sentinels either side of the SIGPARAM separate the halt from an implementation that pushes the absent
-        // signer as zero and runs on, which would leave slot 0 at zero either way.
+        // Sentinels either side of the TXPARAM separate the halt from an implementation that pushes a count and
+        // runs on, which would leave slot 0 at zero either way.
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0xaa).PushData(2).Op(Instruction.SSTORE)
-            .PushData(0x00).PushData(0).Op(Instruction.SIGPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0x0B).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         TxFrame frame = Frame(FrameMode.Default, target: Observer);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), frame);
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 1, 2, 3 })];
         FrameReceiptTracer tracer = new();
 
         TransactionResult result = Process(tx, tracer: tracer);
@@ -1702,7 +1723,7 @@ public partial class FrameTxProcessorTests
     [Test]
     public void Execute_CodelessSenderSelfVerify_WithoutSignature_TransactionInvalid()
     {
-        // With no signature at index 0 the VERIFY default code reverts, so no payer is ever set.
+        // With no SECP256K1 claim keyed to the sender the VERIFY default code reverts, so no payer is ever set.
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
@@ -1720,7 +1741,7 @@ public partial class FrameTxProcessorTests
     [Test]
     public void Execute_CodelessSenderSelfVerify_WithSignature_ApprovesViaDefaultCode()
     {
-        // Default code recovers the index-0 signature to the sender and approves, so the transaction is
+        // Default code finds the sender's verified SECP256K1 claim and approves, so the transaction is
         // valid without any code being deployed.
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
@@ -1819,7 +1840,6 @@ public partial class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         TransactionResult result = Process(tx);
@@ -1847,7 +1867,6 @@ public partial class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         TransactionResult result = Process(tx);
@@ -1860,10 +1879,10 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_CodelessEoaSponsor_ReadsPaymentSignatureAtIndexOne()
+    public void Execute_CodelessEoaSponsor_ApprovesPaymentWithItsOwnClaim()
     {
-        // A payment-only verifier reads the default-code signature at index 1, so a codeless EOA can
-        // sponsor a transaction whose sender approved execution at index 0.
+        // The default code looks the claim up by its key, so a codeless EOA can sponsor a transaction whose
+        // sender approved execution through its own code, whatever the claim's position.
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecution));
         Address sponsor = TestItem.AddressB;
         _stateProvider.CreateAccount(sponsor, 1.Ether);
@@ -1874,11 +1893,9 @@ public partial class FrameTxProcessorTests
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
             new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, gasLimit: 200_000, UInt256.Zero, default),
             Frame(mode: FrameMode.Sender, target: Recipient));
-        tx.FrameSignatures =
-        [
-            new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
-        ];
+        DeployContract(Verifier, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        tx.FrameClaims = [CustomClaim(Verifier), FrameTxTestFrames.Secp256k1Claim(sponsor)];
+        tx.ClaimWitnesses = [[], []];
         SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyB, sponsor);
 
         TransactionResult result = Process(tx);
@@ -1892,7 +1909,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_Secp256k1SignatureOnly_DoesNotRecordP256PrecompileInBal()
+    public void Execute_Secp256k1ClaimOnly_DoesNotRecordP256PrecompileInBal()
     {
         // EIP-7928: precompiles are BAL-included only when accessed, so resolving the P256VERIFY handle
         // for a transaction that never takes the P256 branch must not create an entry.
@@ -1915,8 +1932,10 @@ public partial class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bal.GetAccountChanges(Sender), Is.Not.Null, "the sender is accessed and recorded in the BAL");
-            Assert.That(bal.GetAccountChanges(FrameTxSignatureValidator.P256VerifyPrecompileAddress), Is.Null,
-                "no P256-scheme signature, so the P256VERIFY precompile is never accessed");
+            Assert.That(bal.GetAccountChanges(FrameTxClaimVerifier.P256VerifyPrecompileAddress), Is.Null,
+                "no P256 claim, so the P256VERIFY precompile is never accessed");
+            Assert.That(bal.GetAccountChanges(Eip8141Constants.Secp256k1VerifierAddress), Is.Null,
+                "a protocol verifier is evaluated natively and never recorded");
         }
     }
 
@@ -2153,11 +2172,7 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Verify, FrameFlags.ApproveExecution, target: Observer),
             Frame(FrameMode.Verify, FrameFlags.ApprovePayment, target: Observer),
             Frame(FrameMode.Sender, target: Recipient, value: 5));
-        static TxFrameSignature Placeholder() =>
-            new(TxFrameSignature.SchemeSecp256k1, Observer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
-        tx.FrameSignatures = [Placeholder(), Placeholder()];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyB, Observer);
-        SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyB, Observer);
 
         TransactionResult result = CallAndRestore(tx);
 
@@ -2579,7 +2594,6 @@ public partial class FrameTxProcessorTests
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit, UInt256.Zero, default),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
         if (emptyNonceKeys) tx.NonceKeys = [];
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         FrameReceiptTracer tracer = new();
@@ -2609,7 +2623,6 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Sender, target: Recipient, value: 1),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsor, executionGasLimit: 200_000, (ulong)GasCostOf.NewAccountState, UInt256.Zero, default));
         if (emptyNonceKeys) tx.NonceKeys = [];
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         FrameReceiptTracer tracer = new();
@@ -3725,29 +3738,31 @@ public partial class FrameTxProcessorTests
     {
         Transaction tx = FrameTx(nonce, verifyFrame ?? SelfVerifyFrame());
         tx.NonceKeys = nonceKeys;
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
         return tx;
     }
 
     /// <summary>
-    /// Replaces <paramref name="index"/>'s entry with a canonical-hash SECP256K1 signature over the
-    /// transaction's sig hash, as the default code requires.
+    /// Installs at <paramref name="index"/> a canonical-hash SECP256K1 claim keyed to <paramref name="signer"/>, or to
+    /// the sender for <see langword="null"/>, with its witness over the transaction's sig hash.
     /// </summary>
-    /// <remarks>
-    /// compute_sig_hash commits to the signature entries (bytes of empty-msg entries replaced by their length), so
-    /// a placeholder of the final scheme, signer and length is installed at <paramref name="index"/> before hashing.
-    /// </remarks>
+    /// <remarks>compute_sig_hash covers the claims but not the witnesses, so the claim is installed before hashing.</remarks>
     private static void SignCanonicalHash(Transaction tx, int index, PrivateKey key, Address? signer)
     {
-        tx.FrameSignatures![index] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = new Ecdsa().Sign(key, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures![index] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, vrs);
+        TxFrameClaim[] claims = new TxFrameClaim[Math.Max(index + 1, tx.FrameClaims?.Length ?? 0)];
+        tx.FrameClaims?.CopyTo(claims, 0);
+        claims[index] = FrameTxTestFrames.Secp256k1Claim(signer);
+        tx.FrameClaims = claims;
+
+        byte[][] witnesses = new byte[claims.Length][];
+        for (int i = 0; i < witnesses.Length; i++) witnesses[i] = tx.ClaimWitnesses is { } existing && i < existing.Length ? existing[i] : [];
+        witnesses[index] = FrameTxTestFrames.Secp256k1SignatureBytes(new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx)));
+        tx.ClaimWitnesses = witnesses;
     }
+
+    /// <summary>A claim for the custom verifier at <paramref name="verifier"/>.</summary>
+    private static TxFrameClaim CustomClaim(Address verifier, ulong gasLimit = 50_000, byte[]? key = null, byte[]? msg = null, ulong witnessLength = 0) =>
+        new(verifier, key ?? default, msg ?? default, gasLimit, witnessLength);
 
     // An unchecked increment wraps the account nonce to zero, replaying every prior transaction. Only
     // the pre-8250 envelope reaches payment approval at the ceiling.
@@ -4241,7 +4256,6 @@ public partial class FrameTxProcessorTests
                     Transaction tx = FrameTx(nonce: 0, verify,
                         new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, Observer, 200_000, 0, UInt256.Zero, default),
                         Frame(FrameMode.Default, FrameFlags.ApprovePayment, target: Recipient));
-                    tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
                     SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
                     return tx;
                 }
@@ -4277,7 +4291,7 @@ public partial class FrameTxProcessorTests
             Nonce = nonce,
             SenderAddress = Sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1, // max_priority_fee_per_gas
             // Ample at a zero base fee, so the tip of 1 per gas bounds max_cost to max_gas.
             MaxFee = DefaultMaxFee,
@@ -4971,13 +4985,13 @@ public partial class FrameTxProcessorTests
     [TestCase(Instruction.FRAMEDATALOAD, (byte)0xB1, TestName = "RegistryByte_FRAMEDATALOAD_0xB1")]
     [TestCase(Instruction.FRAMEDATACOPY, (byte)0xB2, TestName = "RegistryByte_FRAMEDATACOPY_0xB2")]
     [TestCase(Instruction.FRAMEPARAM, (byte)0xB3, TestName = "RegistryByte_FRAMEPARAM_0xB3")]
-    [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
-    [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
+    [TestCase(Instruction.HASCLAIM, (byte)0xB4, TestName = "RegistryByte_HASCLAIM_0xB4")]
     [TestCase(Instruction.TXTRACE, (byte)0xB6, TestName = "RegistryByte_TXTRACE_0xB6")]
     [TestCase(Instruction.EVENTDATACOPY, (byte)0xB7, TestName = "RegistryByte_EVENTDATACOPY_0xB7")]
     public void FrameOpcodeByte_MatchesTheSpecRegistry(Instruction opcode, byte registryByte)
         => Assert.That((byte)opcode, Is.EqualTo(registryByte));
 
+    [TestCase((byte)0xB5, TestName = "UnallocatedFrameOpcode_0xB5_Halts")]
     [TestCase((byte)0xB8, TestName = "UnallocatedFrameOpcode_0xB8_Halts")]
     [TestCase((byte)0xB9, TestName = "UnallocatedFrameOpcode_0xB9_Halts")]
     [TestCase((byte)0xBA, TestName = "UnallocatedFrameOpcode_0xBA_Halts")]
@@ -5132,7 +5146,6 @@ public partial class FrameTxProcessorTests
         DeployContract(Observer, Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         using JsonDocument document = TraceCall(tx, mux: mux, throughReceipts: true).Trace;
@@ -5315,7 +5328,6 @@ public partial class FrameTxProcessorTests
         // A codeless VERIFY target runs the default code without entering the VM, so only the frame
         // reports can place it in the trace.
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         using JsonDocument document = TraceThroughReceiptsTracer(tx);
@@ -5708,12 +5720,7 @@ public partial class FrameTxProcessorTests
 
         if (framePayer == FramePayer.CodelessSponsor)
         {
-            tx.FrameSignatures =
-            [
-                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
-                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
-            ];
-            SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyF, sponsor);
+            SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyF, sponsor);
         }
 
         Address payer = framePayer == FramePayer.Sender ? Sender : sponsor;

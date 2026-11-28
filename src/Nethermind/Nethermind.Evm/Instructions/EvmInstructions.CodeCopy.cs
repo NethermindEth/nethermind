@@ -40,7 +40,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>Copy-to-memory core with the three copy operands already popped, for callers that pop
-    /// preceding operands first (SIGPARAM, FRAMEDATACOPY).</summary>
+    /// preceding operands first (FRAMEDATACOPY).</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmExceptionType DataCopyCore<TGasPolicy, TTracingInst>(

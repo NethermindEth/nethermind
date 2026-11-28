@@ -4346,13 +4346,13 @@ namespace Nethermind.TxPool.Test
                 Nonce = 0,
                 SenderAddress = TestItem.PrivateKeyA.Address,
                 Frames = frames,
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
                 MaxFee = (UInt256)1_000_000 * 1.GWei,
             };
-            frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
+            SignFrame(frameTx, defect);
             frameTx.Hash = frameTx.CalculateHash();
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             return frameTx;
@@ -4459,7 +4459,7 @@ namespace Nethermind.TxPool.Test
                 Nonce = 0,
                 SenderAddress = TestItem.PrivateKeyA.Address,
                 Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, frameData)],
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = executionGasLimit + stateGasLimit,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
@@ -4509,7 +4509,7 @@ namespace Nethermind.TxPool.Test
             Transaction SignedFrameTx(ulong deadline)
             {
                 Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
-                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                SignFrame(tx, FrameSignatureDefect.None);
                 tx.Hash = tx.CalculateHash();
                 return tx;
             }
@@ -4820,7 +4820,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
-            frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
+            SignFrame(frameTx, defect);
             frameTx.Hash = frameTx.CalculateHash();
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
@@ -4830,6 +4830,29 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
             }
+        }
+
+        // The hash does not commit to the witnesses, so a copy rejected for its witnesses must not keep the genuine one out.
+        [Test]
+        public void Frame_transaction_rejected_for_its_witnesses_does_not_shadow_a_valid_copy()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction valid = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            SignFrame(valid, FrameSignatureDefect.None);
+            valid.Hash = valid.CalculateHash();
+            Transaction forged = new();
+            valid.CopyTo(forged);
+            forged.ClaimWitnesses = [new byte[Eip8141Constants.Secp256k1WitnessLength]];
+            forged.Hash = forged.CalculateHash();
+
+#pragma warning disable NUnit2045 // Each admission depends on the pool state the previous one left.
+            Assert.That(forged.Hash, Is.EqualTo(valid.Hash));
+            Assert.That(_txPool.SubmitTx(forged, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(_txPool.IsKnown(valid.Hash!), Is.False, "an announcement of the hash is still requested");
+            Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.True);
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         }
 
         // The EVM resolves P256VERIFY through the code-info repository, so gating it on a fork flag here would
@@ -4844,7 +4867,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
-            frameTx.FrameSignatures = [P256Signature(frameTx)];
+            SignP256(frameTx);
             frameTx.Hash = frameTx.CalculateHash();
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
@@ -4856,14 +4879,13 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private static TxFrameSignature P256Signature(Transaction tx)
+        private static void SignP256(Transaction tx)
         {
             using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             ECPoint q = key.ExportParameters(false).Q;
             byte[] publicKey = [.. q.X!, .. q.Y!];
-            Address signer = new(Keccak.Compute(publicKey).Bytes[12..]);
 
-            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, new byte[TxFrameSignature.P256SignatureLength])];
+            tx.FrameClaims = [new TxFrameClaim(Eip8141Constants.P256VerifierAddress, Keccak.Compute(publicKey).Bytes[12..].ToArray(), default, 0, 0)];
             byte[] signature = key.SignHash(FrameTxSigHash.ComputeValue(tx).Bytes);
 
             UInt256 s = new(signature.AsSpan(32, 32), isBigEndian: true);
@@ -4872,18 +4894,16 @@ namespace Nethermind.TxPool.Test
                 (SecP256r1Curve.N - s).ToBigEndian(signature.AsSpan(32, 32));
             }
 
-            byte[] raw = [.. signature, .. publicKey];
-            return new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw);
+            tx.ClaimWitnesses = [[.. signature, .. publicKey]];
         }
 
         public enum FrameSignatureDefect { None, HighS, LegacyRecoveryId, ForeignSigner }
 
-        private static TxFrameSignature FrameSignature(Transaction tx, FrameSignatureDefect defect)
+        private static void SignFrame(Transaction tx, FrameSignatureDefect defect)
         {
             PrivateKey key = defect == FrameSignatureDefect.ForeignSigner ? TestItem.PrivateKeyB : TestItem.PrivateKeyA;
-            Address signer = TestItem.PrivateKeyA.Address;
-            FrameTxTestFrames.SignSecp256k1(tx, key, signer);
-            byte[] bytes = tx.FrameSignatures![0].Signature.ToArray();
+            FrameTxTestFrames.SignSecp256k1(tx, key, TestItem.PrivateKeyA.Address);
+            byte[] bytes = tx.ClaimWitnesses![0];
 
             switch (defect)
             {
@@ -4896,8 +4916,6 @@ namespace Nethermind.TxPool.Test
                     bytes[0] += 27;
                     break;
             }
-
-            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
         }
 
         // MAX_VERIFY_GAS is a public-mempool DoS bound, not a validity rule: a prefix over the ceiling is
@@ -4919,7 +4937,7 @@ namespace Nethermind.TxPool.Test
             {
                 // A secp256k1 entry verifies for 2 800 gas, deciding the outcome on its own at a 297 200-gas
                 // prefix. It must actually verify: the pool rejects a bad one before comparing the budget.
-                frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
+                SignFrame(frameTx, FrameSignatureDefect.None);
                 frameTx.Hash = frameTx.CalculateHash();
             }
 
@@ -5344,7 +5362,8 @@ namespace Nethermind.TxPool.Test
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             if (!withSignatures)
             {
-                tx.FrameSignatures = [];
+                tx.FrameClaims = [];
+                tx.ClaimWitnesses = null;
                 tx.Hash = tx.CalculateHash();
             }
             EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
@@ -6091,7 +6110,7 @@ namespace Nethermind.TxPool.Test
                         new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
                         new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, paymaster, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
                     ],
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
@@ -6608,7 +6627,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
             // Two signatures: the first verifying entry always runs, so only a later one can yield.
-            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            SetDigestClaims(tx);
             tx.Hash = tx.CalculateHash();
             IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
             if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
@@ -6665,7 +6684,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
             // Two signatures: only an entry after the first can yield, so this tx would be deferred if gossiped now.
-            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            SetDigestClaims(tx);
             tx.Hash = tx.CalculateHash();
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -7247,7 +7266,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                simulator.Received(1).Simulate(tx, signaturesPreValidated: true, local: Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>());
+                simulator.Received(1).Simulate(tx, claimsPreVerified: true, local: Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>());
             }
         }
 
@@ -7434,7 +7453,7 @@ namespace Nethermind.TxPool.Test
                 TxFrame frame = tx.Frames![i];
                 tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
             }
-            tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            SignFrame(tx, FrameSignatureDefect.None);
             // As FrameTxDecoder sets it: the frame-gas sum, so the sender-balance filters price below the
             // payer gate and the exposure bound is what binds.
             ulong frameGas = 0;
@@ -7464,7 +7483,7 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = sender,
                 Frames = [.. frames],
                 NonceKeys = nonceKeys,
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = TxGasLimit,
                 GasPrice = maxPriorityFeePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
@@ -7570,24 +7589,15 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = senderKey.Address,
                 NonceKeys = nonceKeys,
                 Frames = frames,
-                FrameSignatures =
-                [
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
-                ],
+                FrameClaims = [FrameTxTestFrames.Secp256k1Claim(null), FrameTxTestFrames.Secp256k1Claim(sponsorKey.Address)],
                 GasLimit = 1_000_000,
                 GasPrice = feePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = feePerGas ?? 1.GWei,
                 MaxFee = (UInt256)1_000_000 * (feePerGas ?? 1.GWei),
             };
-            // compute_sig_hash replaces each empty-msg entry's signature bytes with their length, so the entries are
-            // installed with 65-byte placeholders before hashing, then their bytes are filled in.
+            // compute_sig_hash covers the claims but not the witnesses, so both sign one digest.
             ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-            tx.FrameSignatures =
-            [
-                Secp256k1FrameSignature(senderKey, in sigHash, signer: null),
-                Secp256k1FrameSignature(sponsorKey, in sigHash, signer: sponsorKey.Address),
-            ];
+            tx.ClaimWitnesses = [Secp256k1Witness(senderKey, in sigHash), Secp256k1Witness(sponsorKey, in sigHash)];
             tx.Hash = tx.CalculateHash();
             return tx;
         }
@@ -7613,7 +7623,7 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = sender,
                 NonceKeys = [nonceKey],
                 Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = KeyedFrameTxGasLimit,
                 Value = value,
                 GasPrice = maxFee,
@@ -7624,9 +7634,16 @@ namespace Nethermind.TxPool.Test
             return tx;
         }
 
-        private static TxFrameSignature Secp256k1FrameSignature(PrivateKey key, in ValueHash256 sigHash, Address signer) =>
-            new(TxFrameSignature.SchemeSecp256k1, signer, default,
-                FrameTxTestFrames.Secp256k1SignatureBytes(new Ecdsa().Sign(key, sigHash)));
+        private static byte[] Secp256k1Witness(PrivateKey key, in ValueHash256 sigHash) =>
+            FrameTxTestFrames.Secp256k1SignatureBytes(new Ecdsa().Sign(key, sigHash));
+
+        private static void SetDigestClaims(Transaction tx)
+        {
+            (TxFrameClaim first, byte[] firstWitness) = FrameTxTestFrames.DigestClaim(TestItem.PrivateKeyB, 1);
+            (TxFrameClaim second, byte[] secondWitness) = FrameTxTestFrames.DigestClaim(TestItem.PrivateKeyC, 2);
+            tx.FrameClaims = [first, second];
+            tx.ClaimWitnesses = [firstWitness, secondWitness];
+        }
 
         [Test]
         public async Task Over_value_keyed_tx_does_not_dump_a_valid_plain_tx_from_the_same_sender()
@@ -8524,7 +8541,7 @@ namespace Nethermind.TxPool.Test
                 ChainId = TestBlockchainIds.ChainId,
                 SenderAddress = TestItem.AddressA,
                 Frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)],
-                FrameSignatures = [],
+                FrameClaims = [],
                 NonceKeys = [UInt256.One],
             },
             // The optional frame extensions carry their own fork gates, and each needs a transaction that
@@ -8539,7 +8556,7 @@ namespace Nethermind.TxPool.Test
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
                     new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
                 ],
-                FrameSignatures = [],
+                FrameClaims = [],
                 NonceKeys = [UInt256.One],
             },
             NearCapFrameTx(),
@@ -8571,7 +8588,7 @@ namespace Nethermind.TxPool.Test
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
                     new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
                 ],
-                FrameSignatures = [],
+                FrameClaims = [],
                 NonceKeys = [UInt256.One],
             };
         }

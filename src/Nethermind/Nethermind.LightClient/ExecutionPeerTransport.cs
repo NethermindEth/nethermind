@@ -766,6 +766,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         copy.ParentBeaconBlockRoot = CopyHash(header.ParentBeaconBlockRoot);
         copy.RequestsHash = CopyHash(header.RequestsHash);
         copy.BlockAccessListHash = CopyHash(header.BlockAccessListHash);
+        copy.DependencyProofHash = CopyHash(header.DependencyProofHash);
         if (copy is AuRaBlockHeader { AuRaSignature: { } signature } aura)
             aura.AuRaSignature = signature.AsSpan().ToArray();
         return copy;

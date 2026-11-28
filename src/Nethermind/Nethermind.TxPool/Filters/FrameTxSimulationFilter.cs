@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 
@@ -17,7 +18,7 @@ namespace Nethermind.TxPool.Filters;
 /// frame may spend here — with no simulator-side floor under it, unlike execution gas, so zeroing
 /// <see cref="ITxPoolConfig.FrameTxMaxVerifyStateGas"/> lifts that bound entirely. Runs inside the pool's
 /// head read lock, so the simulator has to bound its own wait.
-/// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.
+/// The simulation verifies the claims <see cref="FrameTxClaimFilter"/> has not, so it runs for those even when the payer resolved natively.
 /// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
 /// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.
 /// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.
@@ -37,14 +38,20 @@ internal sealed class FrameTxSimulationFilter(
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        // Fast path: legible prefixes resolved natively (payer already set) never reach the EVM.
-        if (!tx.SupportsFrames || tx.PayerAddress is not null || simulator is null)
+        if (!tx.SupportsFrames || simulator is null)
+        {
+            return AcceptTxResult.Accepted;
+        }
+
+        // Fast path: legible prefixes resolved natively (payer already set) never reach the EVM, unless a claim is
+        // still unverified: only the simulation verifies the claims the claim filter leaves to it.
+        if (state.FrameClaimsVerified && tx.PayerAddress is not null)
         {
             return AcceptTxResult.Accepted;
         }
 
         // An unresolved payer is either provably invalid (NoPayer) or opaque; only the latter is simulated.
-        if (FrameTxPayerResolver.Resolve(tx, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
+        if (state.FrameClaimsVerified && FrameTxPayerResolver.Resolve(tx, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;
         }
@@ -52,7 +59,7 @@ internal sealed class FrameTxSimulationFilter(
         bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
         FrameTxSimulationResult result = simulator.Simulate(
             tx,
-            signaturesPreValidated: state.FrameSignaturesVerified,
+            claimsPreVerified: state.FrameClaimsVerified,
             local: local,
             preempt: local || state.ReAddedFromReorg ? null : _blockWorkInProgress);
         switch (result.Outcome)
@@ -70,6 +77,7 @@ internal sealed class FrameTxSimulationFilter(
                 }
 
                 state.FrameValidationRan = true;
+                state.SidecarRejected = FrameTxClaimVerifier.IsWitnessError(result.Reason);
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);

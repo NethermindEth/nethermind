@@ -438,6 +438,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         bool builderRequestsEnabled = parameters.Eip8282TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip8282TransitionTimestamp;
         bool blockAccessListsEnabled = parameters.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7928TransitionTimestamp;
         bool slotNumberEnabled = parameters.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7843TransitionTimestamp;
+        bool dependencyProofEnabled = parameters.Eip8141TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip8141TransitionTimestamp;
 
         if (withdrawalsEnabled)
         {
@@ -476,6 +477,11 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         if (slotNumberEnabled)
         {
             genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
+        }
+
+        if (dependencyProofEnabled)
+        {
+            genesisHeader.DependencyProofHash = Keccak.OfAnEmptyString;
         }
 
         chainSpec.Genesis = !blockAccessListsEnabled ?

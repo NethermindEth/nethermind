@@ -21,7 +21,7 @@ public class FrameTxPayerFilterTests
     {
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
-        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
+        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Claim(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
 
         AcceptTxResult result = Accept(state, tx);
 
@@ -53,7 +53,7 @@ public class FrameTxPayerFilterTests
         state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
         // only_verify with no following pay frame never approves a payer: refused, but not as Invalid,
         // so the peer that relayed it is not disconnected.
-        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)], OnlyVerify(PrefixFrameGas));
+        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Claim(TestItem.AddressA)], OnlyVerify(PrefixFrameGas));
 
         AcceptTxResult result = Accept(state, tx);
 

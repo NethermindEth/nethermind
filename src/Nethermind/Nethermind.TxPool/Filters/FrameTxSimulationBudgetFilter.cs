@@ -8,8 +8,8 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>Defers a gossiped EIP-8141 frame transaction that needs simulation once this head's simulation budget is
-/// spent, before its signatures are verified.</summary>
-/// <remarks>Runs after sender recovery and before <see cref="FrameTxSignatureFilter"/> to avoid signature recoveries
+/// spent, before its claims are verified.</summary>
+/// <remarks>Runs after sender recovery and before <see cref="FrameTxClaimFilter"/> to avoid claim verifications
 /// that a spent head budget would waste. The budget hint is advisory: a head transition may let through a transaction
 /// that simulation then defers, or defer one the next head would admit. Local submissions are exempt.</remarks>
 internal sealed class FrameTxSimulationBudgetFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
@@ -30,7 +30,7 @@ internal sealed class FrameTxSimulationBudgetFilter(IFrameTxPrefixSimulator? sim
 
         Interlocked.Increment(ref Metrics.FrameTxSimulationsBudgetExhausted);
         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
-        if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash} before signature verification, this head's validation-prefix simulation budget is spent.");
+        if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash} before claim verification, this head's validation-prefix simulation budget is spent.");
         return AcceptTxResult.FrameSimulationDeferred.WithMessage(TxPoolErrorMessages.FrameSimulationBudgetSpent);
     }
 }

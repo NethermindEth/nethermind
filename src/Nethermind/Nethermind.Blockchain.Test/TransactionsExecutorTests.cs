@@ -519,7 +519,7 @@ namespace Nethermind.Blockchain.Test
                 GasPrice = 1,
                 DecodedMaxFeePerGas = 1,
                 Frames = txType == TxType.FrameTx ? [] : null,
-                FrameSignatures = txType == TxType.FrameTx ? [] : null,
+                FrameClaims = txType == TxType.FrameTx ? [] : null,
             };
 
             Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction * 2).TestObject;
@@ -576,7 +576,7 @@ namespace Nethermind.Blockchain.Test
                 Nonce = 0,
                 SenderAddress = TestItem.AddressA,
                 Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = frameGasLimit,
                 GasPrice = 1,
                 DecodedMaxFeePerGas = 1,
@@ -622,7 +622,7 @@ namespace Nethermind.Blockchain.Test
                 .TestObject;
             // The picker prices a frame tx through its frames, so it needs at least one to be priceable.
             frameBlobTx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
-            frameBlobTx.FrameSignatures = [];
+            frameBlobTx.FrameClaims = [];
 
             Block block = Build.A.Block
                 .WithNumber(1)
@@ -668,7 +668,7 @@ namespace Nethermind.Blockchain.Test
                 Nonce = 0,
                 SenderAddress = TestItem.AddressA,
                 Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
-                FrameSignatures = [],
+                FrameClaims = [],
                 GasLimit = verifyGas,
                 GasPrice = 1,
                 DecodedMaxFeePerGas = 1,

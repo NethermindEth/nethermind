@@ -287,13 +287,6 @@ internal sealed class ProducerRig : IDisposable
         Block block = _blocks[_blockCursor];
         _blockCursor = _blockCursor + 1 == _blocks.Length ? 0 : _blockCursor + 1;
 
-        // The victim is a fixed workload, so every pass re-verifies its signatures. A pending transaction keeps its
-        // recovered signers across builds, which would shrink each pass to the cached path after the first.
-        foreach (Transaction tx in block.Transactions)
-        {
-            foreach (TxFrameSignature signature in tx.FrameSignatures ?? []) signature.Recovered = null;
-        }
-
         long start = Stopwatch.GetTimestamp();
         _receiptsTracer.StartNewBlockTrace(block);
         _executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));

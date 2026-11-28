@@ -751,7 +751,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         [MethodImpl(MethodImplOptions.NoInlining)]
         void NotifyException(BlockRef blockRef, Exception exception)
         {
-            if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
+            // Expected while syncing over devp2p, which does not carry the proof.
+            if (exception is FrameTxDependencyProof.UnavailableException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Processing block {blockRef} skipped: {exception.Message}");
+            }
+            else if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
             OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
         }
 

@@ -193,7 +193,7 @@ public class FrameTxMempoolDosMeasurement
     private ulong _frameExecutionGasLimit = VerifyGas;
     private ulong _verifyGasCeiling = VerifyGas;
 
-    private TxFrameSignature[] _frameSignatures = [];
+    private (TxFrameClaim[] Claims, byte[][] Witnesses) _frameClaims = ([], []);
 
     private byte[] _frameCalldataPrefix = [];
 
@@ -206,7 +206,7 @@ public class FrameTxMempoolDosMeasurement
         _simulateMicros = [with(Warmup + Samples + 1)];
         _frameExecutionGasLimit = VerifyGas;
         _frameCalldataPrefix = [];
-        _frameSignatures = [];
+        _frameClaims = ([], []);
 
         _txPool = null!;
         _realSimulator = null;
@@ -423,7 +423,7 @@ public class FrameTxMempoolDosMeasurement
 
         await BuildHarness(PrefixCode("banned-opcode"), ceiling);
         _frameExecutionGasLimit = MinimalFrameGas;
-        _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count);
+        _frameClaims = FrameTxTestFrames.RecoveredSecp256k1Claims(_ethereumEcdsa, count);
 
         ulong declaredGas = FrameTxValidation.ValidationWorkGas(FrameTx(0));
         Assert.That(declaredGas, Is.LessThanOrEqualTo(ceiling),
@@ -431,7 +431,7 @@ public class FrameTxMempoolDosMeasurement
             + "transaction never asked for");
 
         long gasRefusalsBefore = Metrics.PendingTransactionsFrameTxVerifyGasTooHigh;
-        _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count + 1);
+        _frameClaims = FrameTxTestFrames.RecoveredSecp256k1Claims(_ethereumEcdsa, count + 1);
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
             Is.EqualTo(AcceptTxResult.FrameTxVerifyGasTooHigh),
@@ -439,7 +439,7 @@ public class FrameTxMempoolDosMeasurement
             + "if they are not, the pool is not enforcing the ceiling this row claims");
 #pragma warning restore NUnit2045
         Assert.That(Metrics.PendingTransactionsFrameTxVerifyGasTooHigh, Is.EqualTo(gasRefusalsBefore + 1));
-        _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count);
+        _frameClaims = FrameTxTestFrames.RecoveredSecp256k1Claims(_ethereumEcdsa, count);
 
         long signatureFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
@@ -734,8 +734,8 @@ public class FrameTxMempoolDosMeasurement
             Nonce = 0,
             SenderAddress = Sender,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
-            // Its own entries, so no transaction inherits another's cached recoveries.
-            FrameSignatures = FrameTxTestFrames.Fresh(_frameSignatures),
+            FrameClaims = _frameClaims.Claims,
+            ClaimWitnesses = _frameClaims.Witnesses,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -886,7 +886,7 @@ public class FrameTxMempoolDosMeasurement
     {
         public FrameTxSimulationResult Simulate(
             Transaction tx,
-            bool signaturesPreValidated = false,
+            bool claimsPreVerified = false,
             bool local = false,
             CancellationToken token = default,
             Func<bool>? preempt = null)
@@ -894,7 +894,7 @@ public class FrameTxMempoolDosMeasurement
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token, preempt: preempt);
+                return inner.Simulate(tx, claimsPreVerified: claimsPreVerified, local: local, token: token, preempt: preempt);
             }
             finally
             {

@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test;
 /// <list type="bullet">
 /// <item>The pool, which returns the verdict a shape gets from the real pool: <c>FrameSimulationFailed</c>
 /// for an EVM shape such as keccak-wide, optionally alternating with <c>FrameSimulationDeferred</c> to model a
-/// spent per-head simulation budget, and <c>Invalid</c> from <c>FrameTxSignatureFilter</c> for signature
+/// spent per-head simulation budget, and <c>Invalid</c> from <c>FrameTxClaimFilter</c> for signature
 /// stuffing. The controller reads only the verdict, so the wire transactions are plain signed legacy ones.</item>
 /// <item>The flood controller's clock, swapped for a <see cref="ManualTimestamper"/> so the 60 s window runs
 /// in simulated time.</item>

@@ -932,15 +932,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        public enum UncommittedSidecar { Blobs, FrameTxBlobs, FrameTxClaimWitnesses }
+
         [Test]
-        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission([Values] bool frameTx)
+        public void Transaction_forgets_a_verdict_on_its_uncommitted_sidecar_before_its_only_submission([Values] UncommittedSidecar sidecar)
         {
-            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
-            if (frameTx)
+            Transaction tx = sidecar == UncommittedSidecar.FrameTxClaimWitnesses
+                ? Build.A.Transaction.SignedAndResolved().TestObject
+                : Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            if (sidecar != UncommittedSidecar.Blobs)
             {
                 tx.Type = TxType.FrameTx;
                 tx.Frames = [];
-                tx.FrameSignatures = [];
+                tx.FrameClaims = sidecar == UncommittedSidecar.FrameTxClaimWitnesses ? [FrameTxTestFrames.Secp256k1Claim(null)] : [];
                 tx.Hash = tx.CalculateHash();
             }
 

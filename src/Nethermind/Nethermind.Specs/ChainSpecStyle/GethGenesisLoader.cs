@@ -332,6 +332,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         bool isCancunActive = IsForkActive(config.CancunTime, genesisHeader.Timestamp);
         bool isPragueActive = IsForkActive(config.PragueTime, genesisHeader.Timestamp);
         bool isAmsterdamActive = IsForkActive(config.AmsterdamTime, genesisHeader.Timestamp);
+        bool isEip8141Active = IsForkActive(config.Eip8141PrototypeTime, genesisHeader.Timestamp);
 
         if (isShanghaiActive)
         {
@@ -354,6 +355,11 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         {
             genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
             genesisHeader.SlotNumber = gethGenesisJson.SlotNumber ?? 0;
+        }
+
+        if (isEip8141Active)
+        {
+            genesisHeader.DependencyProofHash = Keccak.OfAnEmptyString;
         }
 
         chainSpec.Genesis = isAmsterdamActive

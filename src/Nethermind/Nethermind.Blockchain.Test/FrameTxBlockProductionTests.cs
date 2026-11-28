@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -208,6 +209,30 @@ public class FrameTxBlockProductionTests
         }
     }
 
+    /// <summary>EIP-8141 verifies dependencies against the block's pre-state, so a producer must not seal a claim on
+    /// a verifier deployed earlier in the same block, however the claim verifies when its transaction runs.</summary>
+    [TestCase(true, TestName = "A claim on a verifier deployed earlier in the block is left out of the produced block")]
+    [TestCase(false, TestName = "A claim on a verifier in the pre-state is produced")]
+    public void Produced_block_verifies_custom_claims_against_the_pre_state(bool deployedInBlock)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(Inert).Done;
+        Address verifier = deployedInBlock ? ContractAddress.From(Observer, new byte[32], initCode) : SecondObserver;
+        Transaction deploy = FrameTx(Sender,
+            SelfApprove(),
+            new TxFrame(FrameMode.Sender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        Transaction claimant = FrameTx(Sender, SelfApprove());
+        claimant.FrameClaims = [new TxFrameClaim(verifier, default, Keccak.OfAnEmptyString.BytesToArray(), gasLimit: 50_000, witnessLength: 0)];
+        claimant.ClaimWitnesses = [[]];
+        claimant = WithNonce(claimant, 1);
+
+        Produced produced = Produce([deploy, claimant], generateAccessList: true,
+            [(Observer, Prepare.EvmCode.ForCreate2Of(initCode).Op(Instruction.STOP).Done), (SecondObserver, Inert)]);
+
+        Assert.That(produced.Block.Transactions.Select(static tx => tx.Hash),
+            Is.EqualTo(deployedInBlock ? new[] { deploy.Hash } : [deploy.Hash, claimant.Hash]));
+        Assert.That(() => Validate(produced), Throws.Nothing);
+    }
+
     private static TxReceipt[] ProcessBlock(Chain chain, ulong slot, params Transaction[] transactions)
     {
         IBlockProcessor.IBlockTransactionsExecutor executor = chain.ValidationExecutor;
@@ -234,6 +259,42 @@ public class FrameTxBlockProductionTests
     /// and the execution refund it earns.</summary>
     public enum StateScenario { None, FreshSlot, RestoredSlot }
 
+    /// <summary>The processor a block with an access list executes on, built per worker rather than resolved, verifies a
+    /// leanSPHINCS claim with the node's verifier as the resolved processor does.</summary>
+    [Test]
+    public void LeanSphincs_claim_is_verified_with_the_registered_verifier([Values] bool accessListProcessor)
+    {
+        CountingLeanSphincsVerifier leanSphincs = new();
+        using Chain chain = new(leanSphincs);
+        Transaction tx = FrameTx(SelfApprove());
+        tx.FrameClaims = [new TxFrameClaim(Eip8141Constants.LeanSphincsVerifierAddress, TestItem.KeccakA.BytesToArray(), default, 0, 0)];
+        tx.ClaimWitnesses = [new byte[Eip8141Constants.LeanSphincsSignatureSize]];
+        tx.Hash = tx.CalculateHash();
+        (ITransactionProcessor processor, _, IDisposable virtualMachine) = accessListProcessor
+            ? chain.BalTxProcessorFactory.Create(chain.State, parallel: false)
+            : (chain.Processor, null!, null!);
+
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(ProductionHeader(), chain.Spec), NullTxTracer.Instance);
+        virtualMachine?.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(leanSphincs.Calls, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class CountingLeanSphincsVerifier : ILeanSphincsVerifier
+    {
+        public int Calls { get; private set; }
+
+        public bool Verify(in ValueHash256 publicKey, in ValueHash256 message, ReadOnlySpan<byte> signature)
+        {
+            Calls++;
+            return true;
+        }
+    }
+
     /// <summary>What the producer settled on, carrying the pre-state <see cref="Validate"/> must replay over.</summary>
     private readonly record struct Produced(
         Block Block,
@@ -248,23 +309,34 @@ public class FrameTxBlockProductionTests
 
     /// <summary>Offers <paramref name="candidates"/> to the real production executor over a pre-state
     /// carrying <paramref name="contracts"/>, and returns what the producer settled on.</summary>
-    private static Produced Produce(Transaction[] candidates, params (Address Address, byte[] Code)[] contracts)
+    private static Produced Produce(Transaction[] candidates, params (Address Address, byte[] Code)[] contracts) =>
+        Produce(candidates, generateAccessList: false, contracts);
+
+    /// <param name="generateAccessList">Builds the block access list as a producer on an EIP-7928 chain does.</param>
+    private static Produced Produce(Transaction[] candidates, bool generateAccessList, (Address Address, byte[] Code)[] contracts)
     {
         using Chain chain = new(contracts);
 
         BlockToProduce blockToProduce = new(ProductionHeader(), candidates, []);
+        IBlockAccessListManager balManager = NullBlockAccessListManager.Instance;
+        if (generateAccessList)
+        {
+            balManager = chain.AccessListManager;
+            balManager.PrepareForProcessing(blockToProduce, chain.Spec, ProcessingOptions.ProducingBlock);
+        }
 
         BlockProcessor.BlockProductionTransactionsExecutor executor = new(
             new BuildUpTransactionProcessorAdapter(chain.Processor),
             chain.State,
             new BlockProcessor.BlockProductionTransactionPicker(chain.SpecProvider),
             LimboLogs.Instance,
-            NullBlockAccessListManager.Instance,
+            balManager,
             NullTxPool.Instance);
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(blockToProduce);
         executor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, chain.Spec));
+        if (generateAccessList) balManager.Setup(blockToProduce);
         TxReceipt[] receipts = executor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
         ulong executionGas = receiptsTracer.CumulativeExecutionGasUsed;
         ulong stateGas = receiptsTracer.BlockStateGasUsed;
@@ -286,6 +358,7 @@ public class FrameTxBlockProductionTests
             chain.State);
 
         Block replayed = new(ProductionHeader(), produced.Block.Transactions, []);
+        FrameTxDependencyProof.CheckVerifiersDeployed(replayed, chain.State, chain.Spec);
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(replayed);
@@ -303,9 +376,15 @@ public class FrameTxBlockProductionTests
         private readonly ILifetimeScope _lifetime;
         private readonly IDisposable _scope;
 
-        public Chain(params (Address Address, byte[] Code)[] contracts)
+        public Chain(params (Address Address, byte[] Code)[] contracts) : this(leanSphincsVerifier: null, contracts)
         {
-            _container = new ContainerBuilder().AddModule(new TestNethermindModule(Eip8141Prototype.Instance)).Build();
+        }
+
+        public Chain(ILeanSphincsVerifier? leanSphincsVerifier, params (Address Address, byte[] Code)[] contracts)
+        {
+            ContainerBuilder builder = new ContainerBuilder().AddModule(new TestNethermindModule(Eip8141Prototype.Instance));
+            if (leanSphincsVerifier is not null) builder.AddSingleton(leanSphincsVerifier);
+            _container = builder.Build();
             _lifetime = _container.BeginLifetimeScope(builder => builder
                 .AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState)
                 .AddModule(_container.Resolve<IBlockValidationModule[]>()));
@@ -327,6 +406,8 @@ public class FrameTxBlockProductionTests
         public ITransactionProcessor Processor { get; }
         public IReleaseSpec Spec => SpecProvider.GenesisSpec;
         public IBlockProcessor.IBlockTransactionsExecutor ValidationExecutor => _lifetime.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
+        public IBlockAccessListManager AccessListManager => _lifetime.Resolve<IBlockAccessListManager>();
+        public BalTxProcessorFactory BalTxProcessorFactory => _lifetime.Resolve<BalTxProcessorFactory>();
 
         private void Deploy(Address address, byte[] code, UInt256 balance = default)
         {
@@ -356,7 +437,7 @@ public class FrameTxBlockProductionTests
             Nonce = 0,
             SenderAddress = sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,
         };

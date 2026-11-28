@@ -32,11 +32,12 @@ internal static class ShardBlobNetworkWrapperRlp
 
     /// <param name="reader">A reader over the items of the enclosing wrapper sequence, after the transaction payload.
     /// The optional storage-only trailer is detected within it.</param>
-    public static ShardBlobNetworkWrapper Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="impliedVersion">The version of a wrapper whose form fixes it, which then carries no version scalar.</param>
+    public static ShardBlobNetworkWrapper Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ProofVersion? impliedVersion = null)
         where TCanonicalChecks : struct, IFlag
     {
-        ProofVersion version = ProofVersion.V0;
-        if (!reader.IsNextSequence && !reader.IsNextItemEmptyByteArray())
+        ProofVersion version = impliedVersion ?? ProofVersion.V0;
+        if (impliedVersion is null && !reader.IsNextSequence && !reader.IsNextItemEmptyByteArray())
         {
             // The version was read as a raw byte, so the non-canonical 0x00 for V0 stays accepted.
             version = reader.PeekByte() == 0
@@ -208,9 +209,10 @@ internal static class ShardBlobNetworkWrapperRlp
         proofs.Length / ShardBlobNetworkWrapper.BytesPerProof * Rlp.LengthOfByteString(ShardBlobNetworkWrapper.BytesPerProof, firstByte: 0);
 
     [SkipLocalsInit]
-    public static void Encode(ref RlpWriter writer, ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="writeVersion">Whether to write the version scalar; not for a wrapper whose form implies it.</param>
+    public static void Encode(ref RlpWriter writer, ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool writeVersion = true)
     {
-        if (wrapper.Version > ProofVersion.V0)
+        if (writeVersion && wrapper.Version > ProofVersion.V0)
         {
             writer.Encode((byte)wrapper.Version);
         }
@@ -228,8 +230,9 @@ internal static class ShardBlobNetworkWrapperRlp
         }
     }
 
-    public static int GetFieldsLength(ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        wrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {wrapper.Version}") }
+    /// <param name="includeVersion">As <c>writeVersion</c> of <see cref="Encode"/>.</param>
+    public static int GetFieldsLength(ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool includeVersion = true) =>
+        (!includeVersion ? 0 : wrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {wrapper.Version}") })
         + Rlp.LengthOf(wrapper.Blobs)
         + Rlp.LengthOf(wrapper.Commitments)
         + Rlp.LengthOfSequence(GetProofsContentLength(wrapper.Proofs))

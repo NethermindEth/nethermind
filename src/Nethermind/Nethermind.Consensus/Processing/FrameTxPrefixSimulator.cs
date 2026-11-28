@@ -52,7 +52,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool claimsPreVerified = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null)
     {
         token.ThrowIfCancellationRequested();
 
@@ -115,7 +115,7 @@ public sealed class FrameTxPrefixSimulator(
             long startedAt = _time.GetTimestamp();
             try
             {
-                return SimulateLocked(tx, head, signaturesPreValidated, token, preempt);
+                return SimulateLocked(tx, head, claimsPreVerified, token, preempt);
             }
             finally
             {
@@ -130,7 +130,7 @@ public sealed class FrameTxPrefixSimulator(
         }
     }
 
-    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token, Func<bool>? preempt)
+    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool claimsPreVerified, CancellationToken token, Func<bool>? preempt)
     {
         FrameTxValidationTracer? tracer = null;
         try
@@ -146,7 +146,7 @@ public sealed class FrameTxPrefixSimulator(
             tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt,
                 maxVerifyGas: _maxVerifyGas, maxCodeDependencies: _maxCodeDependencies);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
-            if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
+            if (claimsPreVerified) opts |= ExecutionOptions.FrameClaimsPreVerified;
             TransactionResult result = processor.Process(tx, tracer, opts);
             Interlocked.Increment(ref Metrics.FrameTxSimulations);
 

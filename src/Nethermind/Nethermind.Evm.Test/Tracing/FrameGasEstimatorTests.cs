@@ -117,7 +117,7 @@ public class FrameGasEstimatorTests
             ulong executionLimits = 0;
             foreach (TxFrame frame in frames) executionLimits += frame.ExecutionGasLimit;
             MaxExecutionLimits = Math.Max(MaxExecutionLimits, executionLimits);
-            MaxTotalLimits = Math.Max(MaxTotalLimits, FrameTxValidation.TotalGasLimit(frames) + FrameTxValidation.SignatureVerificationWorkGas(transaction));
+            MaxTotalLimits = Math.Max(MaxTotalLimits, FrameTxValidation.TotalGasLimit(frames) + FrameTxValidation.ClaimVerificationGas(transaction));
 
             IFrameTxReceiptTracer tracer = (IFrameTxReceiptTracer)txTracer;
             TxFrameReceipt[] receipts = new TxFrameReceipt[frames.Length];

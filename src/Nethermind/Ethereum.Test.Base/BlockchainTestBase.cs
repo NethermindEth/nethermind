@@ -746,9 +746,17 @@ public abstract partial class BlockchainTestBase
                 && enginePayload.ExecutionWitnessMutated != true
                 && validationError is null;
 
+            IEnumerable<string> paramsRaw = enginePayload.Params.Select(static p => p.GetRawText());
+            if (newPayloadVersion < EngineApiVersions.NewPayload.V7 && enginePayload.Params[0].TryGetProperty("dependencyProof", out _))
+            {
+                // EELS still sends an EIP-8141 payload on its parent fork's version; execution-apis#1041 gives it
+                // engine_newPayloadV7, which adds an inclusion list after the execution requests.
+                paramsRaw = paramsRaw.Take(NewPayloadParamCounts[newPayloadVersion]).Concat(["[]"]);
+                newPayloadVersion = EngineApiVersions.NewPayload.V7;
+            }
+
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
-            IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
-            string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
+            string paramsJson = "[" + string.Join(",", paramsRaw.Take(paramCount)) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
@@ -1079,6 +1087,9 @@ public abstract partial class BlockchainTestBase
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
         foreach (string fragment in FrameExceptionFragments.Decode)
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.DependencyProof)
+            yield return ("BlockException.INVALID_DEPENDENCY_PROOF", fragment);
+        yield return ("BlockException.INVALID_DEPENDENCY_PROOF_HASH", FrameTxDependencyProof.HashMismatch);
         foreach (string fragment in FrameExceptionFragments.FeeOverflow)
         {
             yield return ("TransactionException.GASPRICE_OVERFLOW", fragment);
@@ -1100,6 +1111,9 @@ public abstract partial class BlockchainTestBase
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
+        // The Engine API derives dependency_proof_hash from the payload's dependencyProof, so a header committing to
+        // another proof surfaces as a block hash mismatch.
+        ("BlockException.INVALID_DEPENDENCY_PROOF_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations|BuilderDeposits|BuilderExits)Empty: Contract is not deployed\.")),
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations|BuilderDeposits|BuilderExits)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
@@ -1186,6 +1200,7 @@ public abstract partial class BlockchainTestBase
                 RlpReader blockReader = new(rlpBytes);
                 suggestedBlock = blockDecoder.DecodeComplete(ref blockReader);
                 rejectionRecorder.Register(suggestedBlock.Hash!, i);
+                if (testBlockJson.DependencyProof is { } dependencyProof) suggestedBlock.DependencyProof = Bytes.FromHexString(dependencyProof);
                 // The list travels beside the block, as it does over the network, so a list that does not match
                 // the header is dropped as the client's sync drops a peer's. One the header commits to but the
                 // decoder rejects throws here, and the block is invalid.

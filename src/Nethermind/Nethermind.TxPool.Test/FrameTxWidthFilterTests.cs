@@ -30,7 +30,10 @@ public class FrameTxWidthFilterTests
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
 
-    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Eip8141Constants.Secp256k1VerificationGasCost + Eip8250Constants.KeyedNonceAccessCost;
+    // A SECP256K1 claim's verification, its verifier address as calldata (18 zero and 2 non-zero bytes), and its
+    // 65-byte witness priced as non-zero calldata.
+    private const ulong Secp256k1ClaimGas = Eip8141Constants.Secp256k1VerificationGasCost + 4 * (18 + 2 * 4) + 16 * Eip8141Constants.Secp256k1WitnessLength;
+    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Secp256k1ClaimGas + Eip8250Constants.KeyedNonceAccessCost;
 
     [TestCase(0, true, TestName = "the single baseline admission is free")]
     [TestCase((int)Baseline, false, TestName = "first admission beyond the baseline")]
@@ -82,14 +85,14 @@ public class FrameTxWidthFilterTests
     public void Accept_ChargeScalesWithAdmissionGas()
     {
         SenderWidthCache cache = new();
-        cache.Earn(Sender, Cost + 2 * Eip8141Constants.Secp256k1VerificationGasCost);
+        cache.Earn(Sender, Cost + 2 * Secp256k1ClaimGas);
 
         AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline, signatures: 3), PendingKeyedTxs((int)Baseline));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "two more signatures add two signature verifications to the admission gas");
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "two more claims add two claims' verification and calldata to the admission gas");
         }
     }
 
@@ -542,10 +545,10 @@ public class FrameTxWidthFilterTests
 
     private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1, int signatures = 1, TxFrame[]? frames = null)
     {
-        TxFrameSignature[] frameSignatures = new TxFrameSignature[signatures];
+        TxFrameClaim[] frameClaims = new TxFrameClaim[signatures];
         for (int i = 0; i < signatures; i++)
         {
-            frameSignatures[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default);
+            frameClaims[i] = FrameTxTestFrames.Secp256k1Claim(null);
         }
 
         Transaction tx = new()
@@ -555,7 +558,7 @@ public class FrameTxWidthFilterTests
             Nonce = nonce,
             NonceKeys = nonceKeys,
             Frames = frames ?? [],
-            FrameSignatures = frameSignatures,
+            FrameClaims = frameClaims,
             GasLimit = 1_000_000,
             GasPrice = gasPrice,
             DecodedMaxFeePerGas = gasPrice,

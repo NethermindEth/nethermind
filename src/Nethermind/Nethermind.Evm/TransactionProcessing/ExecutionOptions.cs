@@ -44,11 +44,11 @@ public enum ExecutionOptions
     FrameValidationPrefixOnly = 32,
 
     /// <summary>
-    /// Asserts the caller has already verified this transaction's frame signatures against the same spec.
-    /// Read only under <see cref="FrameValidationPrefixOnly"/>. Execution with <see cref="SkipValidation"/> independently allows empty signature placeholders.
+    /// Asserts the caller has already verified this transaction's frame claims against the same spec.
+    /// Read only under <see cref="FrameValidationPrefixOnly"/>. Execution with <see cref="SkipValidation"/> independently allows missing witnesses.
     /// Some paths compare these options by exact equality, so do not OR it into another mode.
     /// </summary>
-    FrameSignaturesPreValidated = 64,
+    FrameClaimsPreVerified = 64,
 
     /// <summary>Frame-gas search: retain fee introspection but defer gas escrow until the final probe.
     /// Only effective together with <see cref="Restore"/>.</summary>

@@ -610,7 +610,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
+            FrameClaims = [],
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
             NetworkWrapper = wrapper,
         };
@@ -719,7 +719,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(1_000)],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
 
         ValidationResult full = new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(
@@ -750,7 +750,7 @@ public class TxValidatorTests
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     executionGasLimit: PrefixFrameGas, stateGasLimit: Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, Array.Empty<byte>())
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
         // The decoder, not the caller, derives GasLimit from the frames; mirror it or the cap is never reached.
         tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
@@ -807,7 +807,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
 
         using (Assert.EnterMultipleScope())
@@ -917,7 +917,7 @@ public class TxValidatorTests
             Nonce = 0,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1, // max_priority_fee_per_gas
             MaxFee = 100,
             BlobVersionedHashes = carriesBlobs ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null,
@@ -941,7 +941,7 @@ public class TxValidatorTests
             Nonce = 0,
             SenderAddress = TestItem.AddressA,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 100,
         };
@@ -1394,7 +1394,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = maxPriorityFeePerGas,
             MaxFee = 1,
             DecodedMaxFeePerGas = 0,
@@ -1428,7 +1428,7 @@ public class TxValidatorTests
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     Eip7825Constants.DefaultTxGasLimitCap - 100_000, Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             DecodedMaxFeePerGas = 1,
         };
 
@@ -1457,7 +1457,7 @@ public class TxValidatorTests
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             DecodedMaxFeePerGas = 1,
         };
 
@@ -1504,7 +1504,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
+            FrameClaims = [],
             NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key),
             Nonce = Eip8250Constants.MaxNonceSeq,
         };
@@ -1543,7 +1543,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
+            FrameClaims = [],
             MaxFee = 100_000,
             BlobVersionedHashes = versionedHashes,
         };
@@ -1615,7 +1615,7 @@ public class FrameTxStructuralAdmissionTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            FrameSignatures = [],
+            FrameClaims = [],
         };
 
         Assert.That(Validate(tx).Error, Is.EqualTo(FrameTxValidation.MissingFrames));
