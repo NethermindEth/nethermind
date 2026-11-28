@@ -8,13 +8,14 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Test.ProofAggregation;
 
 /// <summary>A Lean backend whose proof of a statement is its dependency digest, padded to <see cref="ProofLength"/>, so a
 /// proof verifies only against the statement it was produced for.</summary>
 /// <remarks>Like the native backend, it rejects aggregate proofs under any key but its pinned guest's.</remarks>
-internal sealed class FakeLeanProofVerifier : ILeanProofVerifier
+internal sealed class FakeLeanProofVerifier : ILeanProofVerifier, ILeanSphincsVerifier
 {
     private int _proofCalls;
 
@@ -30,6 +31,8 @@ internal sealed class FakeLeanProofVerifier : ILeanProofVerifier
     public void EnsureAvailable() { }
 
     public bool VerifyLeanSphincs(in ValueHash256 message, in ValueHash256 publicKey, ReadOnlySpan<byte> witness) => !Reject;
+
+    public bool Verify(in ValueHash256 publicKey, in ValueHash256 message, ReadOnlySpan<byte> signature) => !Reject;
 
     public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) =>
         Fault ? throw new InvalidOperationException("native fault") : !Reject && aggregatedVk.SequenceEqual(Eip8288Constants.AggregatedVk) && proof.SequenceEqual(ProofOf(depsHash));

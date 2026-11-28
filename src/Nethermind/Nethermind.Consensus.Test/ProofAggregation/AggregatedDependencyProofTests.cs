@@ -35,7 +35,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -136,55 +135,62 @@ public class AggregatedDependencyProofTests
         }
     }
 
-    /// <summary>The node's block processor verifies an aggregated proof through the node's verifier, on either access
-    /// list execution path.</summary>
+    /// <summary>A builder's deadline-bound production uses a proof proven off the deadline, and the node's validation processor verifies it
+    /// through the node's verifier, on either access list execution path.</summary>
     [Test]
-    public async Task BlockProcessor_ProcessesAnAggregatedBlock([Values] bool parallelExecution)
+    public async Task BlockProcessor_ProducesAndProcessesAnAggregatedBlock([Values] bool parallelExecution)
     {
         Address claimant = TestItem.AddressD;
         FakeLeanProofVerifier verifier = new();
+        DependencyProofCache cache = new(verifier, LimboLogs.Instance);
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec) { AllowTestChainOverride = false })
-            .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = parallelExecution)
-            .AddSingleton(new DependencyProofCache(verifier, LimboLogs.Instance))
+            .Intercept<IBlocksConfig>(blocksConfig =>
+            {
+                blocksConfig.ParallelExecution = parallelExecution;
+                blocksConfig.DependencyProofAggregation = DependencyProofAggregation.BuilderOnly;
+            })
+            .AddSingleton(cache)
+            .AddSingleton<ILeanSphincsVerifier>(verifier)
             .WithGenesisPostProcessor((_, state, specProvider) =>
             {
                 state.CreateAccount(claimant, 100.Ether);
                 state.InsertCode(claimant, Prepare.EvmCode
                     .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, specProvider.GenesisSpec);
             }));
-        BlockHeader parent = chain.BlockTree.Head!.Header;
-        Block template = await chain.AddBlock();
-        IReleaseSpec spec = chain.SpecProvider.GetSpec(template.Header);
 
         Transaction tx = FrameTxWith(claimant, LeanSphincsClaim(TestItem.KeccakA, TestItem.KeccakB), LeanSphincsClaim(TestItem.KeccakC, TestItem.KeccakA));
-        tx.GasPrice = tx.DecodedMaxFeePerGas = template.BaseFeePerGas + 1;
+        tx.GasPrice = tx.DecodedMaxFeePerGas = 1.GWei;
         tx.GasLimit = 1_000_000;
+        tx.ClaimWitnesses = [Filled(Eip8141Constants.LeanSphincsSignatureSize, 1), Filled(Eip8141Constants.LeanSphincsSignatureSize, 3)];
         tx.Hash = tx.CalculateHash();
-        Block produced = new(template.Header.Clone(), new BlockBody([tx], [], template.Withdrawals));
-        Commit(produced, AggregatedDependencyProof.Encode(Stark(produced), []));
+        // Proven off the payload deadline, as a scheduled statement is, so the deadline-bound build uses it.
+        List<AggregatedDependency> deps = Eip8288Dependencies.Canonicalize(
+            AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(Build.A.Block.WithTransactions(tx).TestObject)));
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+        cache.Remember(deps, depsHash, verifier.ProveDependencyProof(depsHash, Eip8288Constants.AggregatedVk, new AggregationInput()));
 
-        // The producer's run settles the header and access list the received block commits to.
-        FrameTxDependencyProof.AssignWitnesses(produced, spec, verifier);
-        Block processed;
-        using (chain.MainWorldState.BeginScope(parent))
-        {
-            (processed, _) = chain.BlockProcessor.ProcessOne(produced, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec, CancellationToken.None);
-        }
+        Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        chain.Timestamper.Add(TimeSpan.FromSeconds(12));
+        using CancellationTokenSource deadline = new();
+        Block produced = (await chain.BlockProducer.BuildBlock(parent, cancellationToken: deadline.Token))!;
+        Assert.That(produced.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { tx.Hash }), "precondition: the claimant is included");
 
-        Block received = ReceivedCopy(processed);
-        received.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(BlockAccessListDecoder.EncodeToBytes(processed.GeneratedBlockAccessList!));
+        // Replayed as received, without the producer's witnesses, on the path the configuration selects.
+        Block received = ReceivedCopy(produced);
+        received.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(produced.EncodedBlockAccessList!);
         IBlockAccessListManager balManager = ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>();
         TxReceipt[] receipts;
         using (chain.MainWorldState.BeginScope(parent))
         {
-            (_, receipts) = chain.BlockProcessor.ProcessOne(received, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, CancellationToken.None);
+            (_, receipts) = chain.BlockProcessor.ProcessOne(received, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(produced.Header), CancellationToken.None);
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(balManager.ParallelExecutionEnabled, Is.EqualTo(parallelExecution), "precondition: the block runs on the path the configuration selects");
-            Assert.That(received.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated));
+            Assert.That(produced.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated));
             Assert.That(received.Transactions[0].ClaimWitnesses, Has.All.SameAs(FrameTxClaimVerifier.AggregatedWitness));
             Assert.That(receipts.Single().StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
         }
