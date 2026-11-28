@@ -148,4 +148,11 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     ulong MaxGasLimit { get; set; }
+
+    [ConfigItem(
+        Description = "The max VERIFY budget cost, in gas, of an EIP-8141 frame transaction this node lists when " +
+                      "building an inclusion list. It does not affect block validity: newPayload judges inclusion " +
+                      "lists under the fork's `MAX_VERIFY_GAS_PER_TX`. `0` to lift the limit.",
+        DefaultValue = "262144")]
+    ulong FocilProfile2MaxVerifyGas { get; set; }
 }

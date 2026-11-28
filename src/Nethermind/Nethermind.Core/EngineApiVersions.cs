@@ -43,7 +43,8 @@ public static class EngineApiVersions
         public const int V4 = 4; // Prague
         public const int V5 = 5; // Osaka
         public const int V6 = 6; // Amsterdam
-        public const int Latest = V6;
+        public const int V7 = 7; // Bogota
+        public const int Latest = V7;
     }
 
     /// <summary>engine_getBlobs method versions.</summary>

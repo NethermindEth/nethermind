@@ -54,7 +54,8 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1)];
+    // FramesDevnet1 and Eip8369Prototype exist for fixture runs only and are scheduled on no network.
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1), nameof(Eip8369Prototype)];
 
     private const string ForksThroughShanghaiAtGenesis =
         "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0";

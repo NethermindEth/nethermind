@@ -141,7 +141,7 @@ public static class SszRestPaths
             [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
             [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
             // Like the POST witness endpoint: the getPayload version, from the EIP-7928 fork onward.
-            [BuiltPayloadWithWitness] = static spec => spec.IsEip7928Enabled ? spec.EngineApiGetPayloadVersion : null,
+            [BuiltPayloadWithWitness] = static spec => spec.IsEip7928Enabled && !spec.IsEip7805Enabled ? spec.EngineApiGetPayloadVersion : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Every recognized fork-scoped (HTTP method, resource) pair, derived from the tables above.</summary>

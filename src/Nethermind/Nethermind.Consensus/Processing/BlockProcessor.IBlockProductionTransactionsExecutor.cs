@@ -33,15 +33,32 @@ namespace Nethermind.Consensus.Processing
             public TxAction Action { get; private set; } = TxAction.Add;
             public string Reason => ReferenceEquals(_reason, DeferredReason) ? _reason = FormatDeferredReason() : _reason;
 
+            /// <summary>Whether the transaction is skipped because it is invalid at this index, rather than by the builder's
+            /// policy; an omission claim is made only for such a skip.</summary>
+            public bool IsInvalidHere { get; private set; }
+
             public AddingTxEventArgs Set(TxAction action, string reason)
             {
                 Action = action;
                 _reason = reason;
+                IsInvalidHere = false;
+                return this;
+            }
+
+            /// <summary>Skips the transaction as invalid at this index.</summary>
+            public AddingTxEventArgs SetInvalid(string reason)
+            {
+                Set(TxAction.Skip, reason);
+                IsInvalidHere = true;
                 return this;
             }
 
             /// <summary>Sets <paramref name="action"/> with a reason <see cref="FormatDeferredReason"/> builds on the first read of <see cref="Reason"/>.</summary>
-            private protected void SetDeferred(TxAction action) => Set(action, DeferredReason);
+            private protected void SetDeferred(TxAction action, bool invalidHere = false)
+            {
+                Set(action, DeferredReason);
+                IsInvalidHere = invalidHere;
+            }
 
             private protected virtual string FormatDeferredReason() => throw new InvalidOperationException("No deferred reason to format.");
         }

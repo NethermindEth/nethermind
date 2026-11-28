@@ -46,10 +46,6 @@ namespace Nethermind.Consensus.Processing
         /// <inheritdoc/>
         public void RecoverDataForTransactionTrace(Block block)
         {
-            if (block.InclusionListTransactions is not null)
-            {
-                RecoverData(block.InclusionListTransactions, _specProvider.GetSpec(block.Header), skipErrors: true);
-            }
         }
 
         /// <summary>
@@ -72,11 +68,6 @@ namespace Nethermind.Consensus.Processing
                 && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
             {
                 RecoverData(txs, AlignedEncodings(txs, block.EncodedTransactions), releaseSpec, skipErrors: false, 0, txs.Length);
-            }
-
-            if (block.InclusionListTransactions is not null)
-            {
-                RecoverData(block.InclusionListTransactions, releaseSpec, skipErrors: true);
             }
         }
 

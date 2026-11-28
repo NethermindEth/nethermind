@@ -245,10 +245,10 @@ public abstract partial class BlockchainTestBase
                 blockchainProcessor.BlockRemoved += (_, args) =>
                 {
                     if (args.ProcessingResult != ProcessingResult.Success)
+                    {
                         asyncBlockError = args.Message ?? args.Exception?.Message;
-                    // An unsatisfied inclusion list still commits the block, so it is no rejection.
-                    if (args.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied))
                         rejectionRecorder.Record(args.BlockHash, args.Message ?? args.Exception?.Message ?? args.ProcessingResult.ToString());
+                    }
                 };
                 Result<BlockHeader> suggestResult = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader, blockDecoder, WithholdBlockAccessLists, undeliveredAccessLists, rejectionRecorder);
                 parentHeader = suggestResult.Data!;
@@ -747,7 +747,7 @@ public abstract partial class BlockchainTestBase
                 && validationError is null;
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
-            IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
+            IEnumerable<string> paramsRaw = NewPayloadParams(enginePayload.Params, paramCount, newPayloadVersion);
             string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
@@ -765,9 +765,8 @@ public abstract partial class BlockchainTestBase
 
                 if (expectWitness)
                 {
-                    // The witness result has no PayloadStatusV2, and engine_newPayloadWithWitnessV6 retains no
-                    // compliance for the fork-choice update either, so the expectation cannot be checked here
-                    // and must not be silently dropped.
+                    // The witness result has no PayloadStatusV2, so it cannot carry the inclusion check's identifier,
+                    // and the expectation must not be silently dropped.
                     Assert.That(enginePayload.InclusionListSatisfied, Is.Null,
                         $"engine_newPayloadWithWitnessV{newPayloadVersion} cannot report inclusionListSatisfied, which this fixture states");
 
@@ -799,17 +798,21 @@ public abstract partial class BlockchainTestBase
                     PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
                     UseFirstRejection(payloadStatus, enginePayload, firstRejections);
                     RecordInvalidPayload(rejectionRecorder, payloadIndex, enginePayload, payloadStatus);
-                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, matchExpectedExceptions, enginePayload.InclusionListSatisfied);
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, matchExpectedExceptions);
+                    if (payloadStatus is PayloadStatusV2 { Status: PayloadStatus.Valid } statusV2)
+                    {
+                        bool? verdict = await GetInclusionVerdict(rpcService, rpcContext, statusV2, newPayloadVersion);
+                        Assert.That(DescribeInclusionVerdictMismatch(enginePayload, verdict, newPayloadVersion), Is.Null);
+                    }
                     lastStatus = payloadStatus.Status;
                     if (payloadStatus.ValidationError is not null)
                         lastValidationError = payloadStatus.ValidationError;
 
                     // The block is committed even when unsatisfied, so the head must still advance.
-                    if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
+                    if (payloadStatus.Status == PayloadStatus.Valid)
                     {
                         Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
-                        JsonRpcResponse fcuResponse = await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash, finalizeHeads);
-                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash, finalizeHeads);
                     }
                 }
             }
@@ -817,6 +820,21 @@ public abstract partial class BlockchainTestBase
         return lastValidationError is null
             ? Result<string>.Success(lastStatus)
             : Result<string>.Fail(lastValidationError, lastStatus);
+    }
+
+    internal static IEnumerable<string> NewPayloadParams(JsonElement[] parameters, int paramCount, int payloadVersion)
+    {
+        if (payloadVersion < 6 || parameters.Length < 5 || parameters[4].ValueKind != JsonValueKind.Array
+            || parameters[4].EnumerateArray().Any(static t => t.ValueKind != JsonValueKind.String))
+            return parameters.Take(paramCount).Select(static p => p.GetRawText());
+
+        List<string>[] lists = [.. Enumerable.Range(0, Eip7805Constants.InclusionListCommitteeSize).Select(static _ => new List<string>())];
+        int position = 0;
+        foreach (JsonElement transaction in parameters[4].EnumerateArray())
+            lists[position++ % lists.Length].Add(transaction.GetRawText());
+
+        string inclusionLists = "[" + string.Join(",", lists.Select(static l => "[" + string.Join(",", l) + "]")) + "]";
+        return [.. parameters.Take(4).Select(static p => p.GetRawText()), inclusionLists, "[]"];
     }
 
     /// <summary>
@@ -899,7 +917,7 @@ public abstract partial class BlockchainTestBase
     private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
         response switch
         {
-            // newPayloadV6 returns PayloadStatusV2 (derives from V1), preserving inclusionListSatisfied.
+            // newPayloadV6 returns PayloadStatusV2 (derives from V1), preserving the inclusion check's identifier.
             ResultWrapper<PayloadStatusV2> { Result.ResultType: ResultType.Success } v2Wrapper => v2Wrapper.Data,
             ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
@@ -943,48 +961,45 @@ public abstract partial class BlockchainTestBase
     private static void AssertPayloadWasNotExpectedToError(int? expectedErrorCode, string? validationError, int payloadVersion) =>
         Assert.That(DescribeMissingRpcError(expectedErrorCode, validationError, payloadVersion), Is.Null);
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool matchExpectedException, bool? expectedInclusionListSatisfied = null)
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool matchExpectedException)
     {
         string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
         Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
-
-        // EIP-7805: IL compliance is only reported for a VALID payload (execution-apis#609).
-        if (expectedInclusionListSatisfied is { } expectedIlSatisfied && payloadStatus.Status == PayloadStatus.Valid)
-            Assert.That((payloadStatus as PayloadStatusV2)?.InclusionListSatisfied, Is.EqualTo(expectedIlSatisfied),
-                $"engine_newPayloadV{payloadVersion} reported inclusionListSatisfied={(payloadStatus as PayloadStatusV2)?.InclusionListSatisfied}, expected {expectedIlSatisfied}");
 
         if (expectedValidationError is not null && matchExpectedException)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
     }
 
     /// <summary>
-    /// Describes why the inclusion-list compliance reported by the fork-choice update that follows a payload
-    /// contradicts the fixture (EIP-7805), or null when it matches or the fixture states no expectation.
+    /// Describes why the inclusion verdict for a <c>VALID</c> payload contradicts the fixture (EIP-7805), or null when
+    /// it matches or the fixture states no expectation.
     /// </summary>
-    /// <remarks>
-    /// execution-apis <c>bogota.md</c> pins the fork-choice answer for a head just deemed VALID by
-    /// <c>engine_newPayloadV6</c>: it repeats the compliance answer determined there, so the expectation is
-    /// the fixture's <c>inclusionListSatisfied</c>. A fork-choice version that cannot carry the field is a
-    /// mismatch in its own right rather than an absent field. The reported payload status is named too: an
-    /// FCU answering SYNCING also reports no compliance, and that is a different failure from the head being
-    /// VALID and disagreeing.
-    /// </remarks>
-    internal static string? DescribeFcuInclusionListMismatch(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
-    {
-        if (enginePayload.InclusionListSatisfied is not bool expected) return null;
-
-        if ((response as IResultWrapper)?.Data is not ForkchoiceUpdatedV2Result result)
-            return $"engine_forkchoiceUpdatedV{fcuVersion} answered with {((response as IResultWrapper)?.Data ?? response).GetType().Name}, which cannot report inclusionListSatisfied, expected {expected}";
-
-        bool? actual = result.PayloadStatus.InclusionListSatisfied;
-
-        return actual == expected
+    /// <param name="verdict">The verdict <c>engine_newPayloadV6</c> returned, or that polling its identifier
+    /// produced; <c>null</c> when the check never completed.</param>
+    internal static string? DescribeInclusionVerdictMismatch(TestEngineNewPayloadsJson enginePayload, bool? verdict, int payloadVersion) =>
+        enginePayload.InclusionListSatisfied is not bool expected || verdict == expected
             ? null
-            : $"engine_forkchoiceUpdatedV{fcuVersion} returned {result.PayloadStatus.Status} and reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected}";
-    }
+            : $"engine_newPayloadV{payloadVersion} inclusion check reported inclusionListSatisfied={verdict?.ToString() ?? "null (still pending)"}, expected {expected}";
 
-    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>
-        Assert.That(DescribeFcuInclusionListMismatch(response, enginePayload, fcuVersion), Is.Null);
+    /// <summary>The completed verdict of a <c>VALID</c> payload's inclusion check, polled through
+    /// <c>engine_getInclusionListVerdictV1</c> while it is pending (bogota.md § Deferred inclusion checking).</summary>
+    /// <returns><c>null</c> when the check is still pending at <see cref="EngineProcessingTimeout"/>.</returns>
+    private static async Task<bool?> GetInclusionVerdict(IJsonRpcService rpcService, JsonRpcContext context, PayloadStatusV2 status, int payloadVersion)
+    {
+        Assert.That(status.InclusionCheckId, Is.Not.Null, $"engine_newPayloadV{payloadVersion} answered VALID without an inclusionCheckId");
+        if (status.InclusionListSatisfied is { } completed) return completed;
+
+        long deadline = Stopwatch.GetTimestamp() + (long)(EngineProcessingTimeout.TotalSeconds * Stopwatch.Frequency);
+        while (true)
+        {
+            JsonRpcResponse response = await SendRpc(rpcService, context, "engine_getInclusionListVerdictV1", $"[\"{status.InclusionCheckId}\"]");
+            Assert.That(TryGetRpcError(response, out int errorCode, out string? errorMessage), Is.False,
+                $"engine_getInclusionListVerdictV1 failed with {errorCode} {errorMessage}");
+            if ((response as IResultWrapper)?.Data is bool verdict) return verdict;
+            if (Stopwatch.GetTimestamp() > deadline) return null;
+            await Task.Delay(10);
+        }
+    }
 
     private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
     {
@@ -1156,10 +1171,7 @@ public abstract partial class BlockchainTestBase
         string? status = response switch
         {
             ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper => resultWrapper.Data?.PayloadStatus.Status,
-            // engine_forkchoiceUpdatedV5 returns ForkchoiceUpdatedV2Result, which does not derive from V1.
-            ResultWrapper<ForkchoiceUpdatedV2Result> v2Wrapper => v2Wrapper.Data?.PayloadStatus.Status,
             JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV1Result result } => result.PayloadStatus.Status,
-            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV2Result v2Result } => v2Result.PayloadStatus.Status,
             _ => null
         };
         Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");

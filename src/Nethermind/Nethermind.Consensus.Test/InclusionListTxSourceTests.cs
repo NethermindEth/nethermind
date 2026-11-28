@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -34,7 +35,11 @@ public class InclusionListTxSourceTests
         txValidator,
         LimboLogs.Instance);
 
-    private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
+    private static PayloadAttributes Attributes(byte[][][] inclusionLists) => new() { InclusionLists = inclusionLists };
+
+    /// <summary>One list per committee position, <paramref name="inclusionList"/> at position 0 and the rest empty.</summary>
+    private static byte[][][] AtPosition0(byte[][] inclusionList) =>
+        [inclusionList, .. Enumerable.Repeat<byte[][]>([], Eip7805Constants.InclusionListCommitteeSize - 1)];
 
     private static IEnumerable<Transaction> GetTransactions(
         InclusionListTxSource source,
@@ -58,7 +63,7 @@ public class InclusionListTxSourceTests
     {
         InclusionListTxSource source = CreateSource();
         Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[][] il = [Encode(tx)];
+        byte[][][] il = AtPosition0([Encode(tx)]);
         PayloadAttributes attrs = Attributes(il);
 
         Assert.That(GetTransactions(source, attrs), Is.Empty);
@@ -76,8 +81,8 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = CreateSource();
         Transaction txA = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction txB = Build.A.Transaction.WithNonce(2).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] ilA = [Encode(txA)];
-        byte[][] ilB = [Encode(txB)];
+        byte[][][] ilA = AtPosition0([Encode(txA)]);
+        byte[][][] ilB = AtPosition0([Encode(txB)]);
         PayloadAttributes attrsA = Attributes(ilA);
         PayloadAttributes attrsB = Attributes(ilB);
 
@@ -96,7 +101,7 @@ public class InclusionListTxSourceTests
     public void Set_with_empty_array_yields_empty()
     {
         InclusionListTxSource source = CreateSource();
-        byte[][] il = [];
+        byte[][][] il = AtPosition0([]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -112,7 +117,7 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), new TxValidator(MainnetSpecProvider.Instance.ChainId), LimboLogs.Instance);
         // A fresh signer, so the process-wide sender cache cannot answer before the counting ecdsa.
         Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
-        byte[][] il = [Encode(tx)];
+        byte[][][] il = AtPosition0([Encode(tx)]);
 
         source.Set(il, Bogota.Instance);
         using (Assert.EnterMultipleScope())
@@ -122,6 +127,24 @@ public class InclusionListTxSourceTests
             Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
         }
         Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
+    }
+
+    // A validator at several committee positions has the same list at each: production takes each entry once, and
+    // its sender is recovered once however many positions carry it.
+    [Test]
+    public void Entries_repeated_across_positions_are_produced_and_recovered_once()
+    {
+        CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), new TxValidator(MainnetSpecProvider.Instance.ChainId), LimboLogs.Instance);
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
+        byte[][][] il = [.. Enumerable.Repeat<byte[][]>([Encode(tx), Encode(tx)], Eip7805Constants.InclusionListCommitteeSize)];
+
+        source.Set(il, Bogota.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, Attributes(il)).Select(t => t.Nonce), Is.EqualTo([1ul]));
+            Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
+        }
     }
 
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.
@@ -147,7 +170,7 @@ public class InclusionListTxSourceTests
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        byte[][] il = [Encode(normal), Encode(blob)];
+        byte[][][] il = AtPosition0([Encode(normal), Encode(blob)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -173,7 +196,7 @@ public class InclusionListTxSourceTests
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        byte[][] il = [Encode(normal), Encode(illFormed)];
+        byte[][][] il = AtPosition0([Encode(normal), Encode(illFormed)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -188,13 +211,11 @@ public class InclusionListTxSourceTests
     [Test]
     public void Blob_carrying_frame_transactions_are_filtered_out()
     {
-        ITxValidator acceptAll = Substitute.For<ITxValidator>();
-        acceptAll.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
-        InclusionListTxSource source = CreateSource(acceptAll);
+        InclusionListTxSource source = CreateSource(AcceptAll());
         Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction blobFrameTx = FrameTx(nonce: 2, blobVersionedHashes: [new byte[32]]);
         Transaction plainFrameTx = FrameTx(nonce: 3, blobVersionedHashes: null!);
-        byte[][] il = [Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)];
+        byte[][][] il = AtPosition0([Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -202,6 +223,86 @@ public class InclusionListTxSourceTests
             GetTransactions(source, attrs).Select(t => t.Nonce),
             Is.EquivalentTo([1ul, 3ul]));
     }
+
+    [Test]
+    public void Frame_transactions_past_the_verify_budget_are_not_offered()
+    {
+        Transaction legacy = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction[] frameTxs = [.. TestItem.Addresses.Skip(1).Take(5).Select(sender => Profile2FrameTx(sender, 250_000))];
+        Hash256 overBudget = frameTxs.Select(tx => tx.CalculateHash()).Max()!;
+        InclusionListTxSource source = CreateProfile2Source();
+        byte[][][] il = AtPosition0([Encode(legacy), .. frameTxs.Select(Encode)]);
+
+        source.Set(il, Eip8369Prototype.Instance);
+        List<Transaction> offered = [.. GetTransactions(source, Attributes(il))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(offered.Select(tx => tx.Hash), Does.Not.Contain(overBudget));
+            Assert.That(offered, Has.Count.EqualTo(5));
+            Assert.That(offered.Count(tx => tx.Hash == legacy.CalculateHash()), Is.EqualTo(1), "Profile 1 entries are still offered");
+        }
+    }
+
+    [Test]
+    public void Frame_transaction_admitted_at_another_position_is_offered()
+    {
+        Transaction[] frameTxs = [.. TestItem.Addresses.Skip(1).Take(5).Select(sender => Profile2FrameTx(sender, 250_000))];
+        Transaction overBudget = frameTxs.MaxBy(tx => tx.CalculateHash())!;
+        InclusionListTxSource source = CreateProfile2Source();
+        byte[][][] il = [[.. frameTxs.Select(Encode)], [Encode(overBudget)], .. Enumerable.Repeat<byte[][]>([], Eip7805Constants.InclusionListCommitteeSize - 2)];
+
+        source.Set(il, Eip8369Prototype.Instance);
+
+        Assert.That(GetTransactions(source, Attributes(il)).Select(tx => tx.Hash), Is.EquivalentTo(frameTxs.Select(tx => tx.CalculateHash())));
+    }
+
+    [TestCase(0UL, 2, TestName = "Lifting MAX_VERIFY_GAS_PER_TX admits the costlier entry")]
+    [TestCase(Eip8369Constants.MaxVerifyGasPerTx, 1, TestName = "An entry over MAX_VERIFY_GAS_PER_TX is not offered")]
+    public void Frame_transaction_over_the_per_tx_cap_is_not_offered(ulong maxVerifyGasPerTx, int expected)
+    {
+        Transaction admitted = Profile2FrameTx(TestItem.AddressB, 100_000);
+        Transaction overCap = Profile2FrameTx(TestItem.AddressC, Eip8369Constants.MaxVerifyGasPerTx + 1);
+        InclusionListTxSource source = CreateProfile2Source(new BlocksConfig { FocilProfile2MaxVerifyGas = maxVerifyGasPerTx });
+        byte[][][] il = AtPosition0([Encode(overCap), Encode(admitted)]);
+
+        source.Set(il, Eip8369Prototype.Instance);
+        List<Transaction> offered = [.. GetTransactions(source, Attributes(il))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(offered, Has.Count.EqualTo(expected));
+            Assert.That(offered.Select(tx => tx.Hash), Does.Contain(admitted.CalculateHash()));
+        }
+    }
+
+    private static InclusionListTxSource CreateProfile2Source(IBlocksConfig blocksConfig = null) => new(
+        new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
+        new CustomSpecProvider(((ForkActivation)0, Eip8369Prototype.Instance)),
+        AcceptAll(),
+        LimboLogs.Instance,
+        blocksConfig: blocksConfig);
+
+    private static ITxValidator AcceptAll()
+    {
+        ITxValidator acceptAll = Substitute.For<ITxValidator>();
+        acceptAll.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+        return acceptAll;
+    }
+
+    private static Transaction Profile2FrameTx(Address sender, ulong verifyGas) => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = MainnetSpecProvider.Instance.ChainId,
+        Nonce = 0,
+        SenderAddress = sender,
+        NonceKeys = [UInt256.Zero],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasPrice = 2.GWei,
+        MaxFee = (UInt256)verifyGas * 10.GWei,
+        DecodedMaxFeePerGas = 10.GWei,
+    };
 
     private static Transaction FrameTx(ulong nonce, byte[][] blobVersionedHashes) => new()
     {
@@ -224,7 +325,7 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = CreateSource();
         Transaction nonce1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction nonce0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[][] il = [Encode(nonce1), Encode(nonce0)];
+        byte[][][] il = AtPosition0([Encode(nonce1), Encode(nonce0)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -241,7 +342,7 @@ public class InclusionListTxSourceTests
         Transaction b1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Transaction a1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction b0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] il = [Encode(b1), Encode(a1), Encode(b0)];
+        byte[][][] il = AtPosition0([Encode(b1), Encode(a1), Encode(b0)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);

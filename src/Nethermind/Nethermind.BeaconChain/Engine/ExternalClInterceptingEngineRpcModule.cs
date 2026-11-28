@@ -89,8 +89,8 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => Detect(() => _engine.engine_newPayloadV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
-    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => Detect(() => _engine.engine_newPayloadV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
+    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][][]? inclusionLists, OmissionClaim[]? omissionClaims)
+        => Detect(() => _engine.engine_newPayloadV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionLists, omissionClaims));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => Detect(() => _engine.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes));
@@ -104,7 +104,7 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
         => Detect(() => _engine.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes, custodyColumns));
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
         => Detect(() => _engine.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes, custodyColumns));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV4(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
@@ -113,8 +113,8 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
-    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][][]? inclusionLists, OmissionClaim[]? omissionClaims)
+        => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionLists, omissionClaims));
 
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _engine.engine_exchangeCapabilities(methods);
@@ -143,6 +143,9 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId)
         => _engine.engine_getPayloadV6(payloadId);
 
+    public Task<ResultWrapper<GetPayloadV7Result?>> engine_getPayloadV7(byte[] payloadId)
+        => _engine.engine_getPayloadV7(payloadId);
+
     public ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes)
         => _engine.engine_getPayloadBodiesByHashV1(blockHashes);
 
@@ -169,4 +172,7 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
 
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => _engine.engine_getInclusionListV1(parentBlockHash);
+
+    public Task<ResultWrapper<bool?>> engine_getInclusionListVerdictV1(Hash256 inclusionCheckId)
+        => _engine.engine_getInclusionListVerdictV1(inclusionCheckId);
 }

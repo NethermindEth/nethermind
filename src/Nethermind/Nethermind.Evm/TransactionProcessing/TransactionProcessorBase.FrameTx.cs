@@ -438,6 +438,27 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             assertReverted: assertReverted);
     }
 
+    /// <summary>Prices a prefix simulation's payer bound at <paramref name="header"/>'s base fees, as execution does.</summary>
+    private TransactionResult PricePrefixAtBlockBaseFee(Transaction tx, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec,
+        out UInt256 maxCost, out UInt256 effectiveGasPrice)
+    {
+        maxCost = default;
+        effectiveGasPrice = default;
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
+        }
+
+        UInt256 blobFee = UInt256.Zero;
+        if (tx.BlobVersionedHashes is { Length: > 0 }
+            && !_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out _, out blobFee))
+        {
+            return RequiredBalanceExceeds256Bits(tx);
+        }
+
+        return PriceFeeBudget(tx, opts, header, maxGas, in blobFee, out maxCost, out effectiveGasPrice);
+    }
+
     /// <summary>Prices the <c>max_fee</c> budget at <paramref name="header"/>'s base fees.</summary>
     /// <param name="maxGas">The transaction's <c>max_gas</c>.</param>
     /// <param name="maxCost">The escrow the payer's approval collects.</param>
@@ -785,14 +806,23 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
 
-        // A bound this simulation rolls back, not an escrow: shared with the admission gate so both judge the
-        // same number. It is max_fee, as the base fees at inclusion are unknown here.
-        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
+        UInt256 maxCost;
+        if (opts.HasFlag(ExecutionOptions.FramePrefixAtBlockBaseFee))
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
+            TransactionResult budgetResult = PricePrefixAtBlockBaseFee(tx, opts, header, spec, out maxCost, out effectiveGasPrice);
+            if (!budgetResult) return budgetResult;
         }
+        else
+        {
+            // A bound this simulation rolls back, not an escrow: shared with the admission gate so both judge the
+            // same number. It is max_fee, as the base fees at inclusion are unknown here.
+            if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out maxCost))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
+            }
 
-        effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
+            effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
+        }
         frameContext = new FrameTxContext(
             sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], tx, sigHash,
             in maxCost, in tx.MaxPriorityFeePerGas,

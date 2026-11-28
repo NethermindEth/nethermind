@@ -81,6 +81,30 @@ internal static class WireConversionExtensions
         return result;
     }
 
+    public static byte[][][]? ToInclusionLists(this SszInclusionList[]? inclusionLists)
+    {
+        if (inclusionLists is null) return null;
+        byte[][][] result = new byte[inclusionLists.Length][][];
+        for (int i = 0; i < inclusionLists.Length; i++) result[i] = inclusionLists[i].Transactions.ToExecutionRequests() ?? [];
+        return result;
+    }
+
+    public static OmissionClaim[]? ToClaims(this OmissionClaimWire[]? claims)
+    {
+        if (claims is null) return null;
+        OmissionClaim[] result = new OmissionClaim[claims.Length];
+        for (int i = 0; i < claims.Length; i++) result[i] = new OmissionClaim(claims[i].TransactionHash, claims[i].EvaluationIndex);
+        return result;
+    }
+
+    public static OmissionClaimWire[] ToWire(this OmissionClaim[] claims)
+    {
+        OmissionClaimWire[] result = new OmissionClaimWire[claims.Length];
+        for (int i = 0; i < claims.Length; i++)
+            result[i] = new OmissionClaimWire { TransactionHash = claims[i].TransactionHash, EvaluationIndex = claims[i].EvaluationIndex };
+        return result;
+    }
+
     public static byte[][]? ToExecutionRequests(this SszTransaction[]? reqs) => reqs switch
     {
         null => null,

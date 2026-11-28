@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
                     {
-                        return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
+                        return NewArgs(block, currentTx, transactionsInBlock).SetInvalid(KeyedNonceSkipReason(stateProvider, currentTx));
                     }
                 }
                 else
@@ -219,7 +219,7 @@ namespace Nethermind.Consensus.Processing
                     _kind = kind;
                     _first = first;
                     _second = second;
-                    SetDeferred(TxAction.Skip);
+                    SetDeferred(TxAction.Skip, invalidHere: true);
                 }
 
                 private protected override string FormatDeferredReason() => _kind switch

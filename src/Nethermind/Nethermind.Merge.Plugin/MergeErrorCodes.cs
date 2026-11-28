@@ -39,4 +39,9 @@ public static class MergeErrorCodes
     /// Reorg depth exceeds the EL's limit.
     /// </summary>
     public const int ReorgTooDeep = -38006;
+
+    /// <summary>
+    /// Inclusion check identifier is unknown or evicted.
+    /// </summary>
+    public const int UnknownInclusionCheck = -38007;
 }

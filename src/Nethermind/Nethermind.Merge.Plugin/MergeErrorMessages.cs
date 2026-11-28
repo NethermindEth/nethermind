@@ -6,4 +6,6 @@ namespace Nethermind.Merge.Plugin;
 public static class MergeErrorMessages
 {
     public const string UnsupportedFork = "Unsupported fork";
+
+    public const string UnknownInclusionCheck = "Unknown inclusion check";
 }

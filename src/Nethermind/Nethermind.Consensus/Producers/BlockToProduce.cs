@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -53,12 +54,17 @@ namespace Nethermind.Consensus.Producers
         public Transaction[]? InclusionList { get; set; }
         public CancellationToken AbandonToken { get; internal set; }
 
+        /// <summary>Hashes of the Profile 2 candidates in the build's inclusion lists that some position admits, each of which the
+        /// build answers with a claim when it fails to append one; <c>null</c> when there are none.</summary>
+        public IReadOnlySet<Hash256AsKey>? InclusionListCandidates { get; set; }
+
         public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals)
         {
             TransactionsExemptFromByteLimit = TransactionsExemptFromByteLimit,
             RequiredTransactions = RequiredTransactions,
             InclusionList = InclusionList,
             AbandonToken = AbandonToken,
+            InclusionListCandidates = InclusionListCandidates,
         };
     }
 }

@@ -264,7 +264,6 @@ public class EngineTests
     [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid)]
     [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic)]
     [TestCase(PayloadStatus.Accepted, ExecutionStatus.Optimistic)]
-    [TestCase(PayloadStatus.InclusionListUnsatisfied, ExecutionStatus.Optimistic)]
     [TestCase(PayloadStatus.Invalid, ExecutionStatus.Invalid)]
     public async Task Engine_driver_maps_statuses_and_bridges_the_transition_hook(string status, ExecutionStatus expected)
     {
@@ -507,7 +506,6 @@ public class EngineTests
     [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid)]
     [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic)]
     [TestCase(PayloadStatus.Accepted, ExecutionStatus.Optimistic)]
-    [TestCase(PayloadStatus.InclusionListUnsatisfied, ExecutionStatus.Optimistic)]
     [TestCase(PayloadStatus.Invalid, ExecutionStatus.Invalid)]
     public void Engine_driver_notifies_a_gloas_envelope_payload_through_newPayloadV5_and_maps_its_status(string status, ExecutionStatus expected)
     {

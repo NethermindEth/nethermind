@@ -166,4 +166,19 @@ public class ForkTests
             Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
         }
     }
+
+    [Test]
+    public void Eip8369Prototype_combines_inclusion_lists_with_frame_transactions_and_their_extensions()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8369Prototype.Instance.Parent, Is.SameAs(Bogota.Instance));
+            Assert.That(Eip8369Prototype.Instance.IsEip7805Enabled, Is.True);
+            Assert.That(Eip8369Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip8369Prototype.Instance.IsEip8250Enabled, Is.True);
+            Assert.That(Eip8369Prototype.Instance.IsEip8272Enabled, Is.True);
+            Assert.That(Eip8369Prototype.Instance.IsEip7906Enabled, Is.False);
+            Assert.That(SpecNameParser.Parse(nameof(Eip8369Prototype)), Is.SameAs(Eip8369Prototype.Instance));
+        }
+    }
 }

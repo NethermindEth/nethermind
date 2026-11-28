@@ -84,20 +84,14 @@ public class RecoverSignaturesTest
     }
 
     [Test]
-    public void RecoverDataForTransactionTrace_leaves_the_block_senders_and_recovers_the_inclusion_list()
+    public void RecoverDataForTransactionTrace_leaves_the_block_senders()
     {
         Transaction[] txs = SignedTransactions(5);
-        Transaction included = Signed(TestItem.PrivateKeyB, 0);
         Block block = Build.A.Block.WithTransactions(txs).TestObject;
-        block.InclusionListTransactions = [included];
 
         CreateRangeSut().RecoverDataForTransactionTrace(block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.Null);
-            Assert.That(included.SenderAddress, Is.EqualTo(TestItem.AddressB));
-        }
+        Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.Null);
     }
 
     private static RecoverSignatures CreateRangeSut()
