@@ -366,9 +366,38 @@ namespace Nethermind.Evm.TransactionProcessing
             return ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isCodeOverridable)
-            => !isCodeOverridable && tx.AuthorizationList is null && !ForceSimpleTransferDisabled;
+        /// <summary>
+        /// Determines whether a transaction may use the empty-account simple-transfer optimization.
+        /// </summary>
+        /// <returns><c>true</c> when the optimization may be considered.</returns>
+        /// <remarks>
+        /// Specialized transaction processors can disable the optimization when their execution rules
+        /// require the full virtual-machine frame lifecycle.
+        /// </remarks>
+        protected virtual bool IsSimpleTransferFastPathCandidate(Transaction tx) =>
+            !ForceSimpleTransferDisabled && !_isCodeOverridable && tx.AuthorizationList is null;
+
+        /// <summary>
+        /// Resolves the code used to initialize a top-level transaction frame.
+        /// </summary>
+        /// <param name="codeInfoRepository">The repository associated with the transaction environment.</param>
+        /// <param name="codeSource">The transaction recipient.</param>
+        /// <param name="followDelegation">Whether the effective delegated code should be loaded.</param>
+        /// <param name="spec">The active release specification.</param>
+        /// <param name="delegationAddress">The delegation target encoded by the source account, if any.</param>
+        /// <returns>The code information used to create the top-level execution environment.</returns>
+        /// <remarks>
+        /// This hook resolves code for both the simple-transfer preload and the regular top-level frame
+        /// path. Under EIP-8037, it resolves the delegation designator only; the delegated target is loaded
+        /// after its delayed access charge. Frame transactions likewise resolve their delegated target directly.
+        /// </remarks>
+        protected virtual CodeInfo ResolveTopLevelCodeInfo(
+            ICodeInfoRepository codeInfoRepository,
+            Address codeSource,
+            bool followDelegation,
+            IReleaseSpec spec,
+            out Address? delegationAddress) =>
+            codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, spec, out delegationAddress);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
@@ -384,9 +413,9 @@ namespace Nethermind.Evm.TransactionProcessing
             preloadedCodeInfo = null;
             preloadedDelegationAddress = null;
             Address? recipient = tx.To;
-            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return null;
+            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx)) return null;
 
-            preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
+            preloadedCodeInfo = ResolveTopLevelCodeInfo(_codeInfoRepository, recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;
         }
 
@@ -494,8 +523,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out RefundResult refundResult) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out refundResult);
 
+#if !ZK_EVM
             if (refundResult.Result)
                 refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+#endif
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
@@ -630,8 +661,10 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy standardGas = intrinsicGas.Standard;
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             RefundResult refundResult = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);
+#if !ZK_EVM
             if (refundResult.Result)
                 refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+#endif
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
@@ -920,8 +953,13 @@ namespace Nethermind.Evm.TransactionProcessing
             InvalidNonce,
             InvalidChainId,
             InvalidSignature,
-            InvalidAsCodeDeployed
+            InvalidAsCodeDeployed,
+            RejectedByPolicy
         }
+
+        /// <summary>Determines whether a valid authorization may access and update its authority.</summary>
+        /// <remarks>Called after signature validation and before the authority is warmed or read.</remarks>
+        protected virtual bool IsAuthorizationAllowed(Address authority, IReleaseSpec spec) => true;
 
         private AuthorizationTupleResult IsValidForExecution(
             AuthorizationTuple authorizationTuple,
@@ -950,6 +988,12 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Bad signature.");
                 return AuthorizationTupleResult.InvalidSignature;
+            }
+
+            if (!IsAuthorizationAllowed(authorizationTuple.Authority, spec))
+            {
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Authorization rejected by policy.");
+                return AuthorizationTupleResult.RejectedByPolicy;
             }
 
             accessTracker.WarmUp(authorizationTuple.Authority);
@@ -1404,7 +1448,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out delegationAddress);
+                    codeInfo = ResolveTopLevelCodeInfo(codeInfoRepository, recipient, followDelegation: !spec.IsEip8037Enabled, spec, out delegationAddress);
                 }
 
                 if (delegationAddress is not null)
@@ -1996,6 +2040,7 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <see cref="GasConsumed.SpentGas"/>; block gas used follows <see cref="GasConsumed.EffectiveBlockGas"/>, plus
         /// <see cref="GasConsumed.BlockStateGas"/> under EIP-8037. Return an adjusted copy of <paramref name="gas"/>: a bare
         /// <c>ulong</c> converts to a result with zero <see cref="GasConsumed.BlockGas"/> and <see cref="GasConsumed.BlockStateGas"/>.
+        /// The zkEVM guest uses unadjusted Ethereum settlement and omits this host extension hook.
         /// Unspent gas is already refunded, so an override that lowers the gas credits the sender the difference through
         /// <see cref="PayRefund"/>. Returning <see cref="RefundResult.Invalid"/> rejects the transaction, but block building
         /// does not roll back its state changes.

@@ -63,7 +63,8 @@ namespace Nethermind.Facade
         IRpcLogFinder logFinder,
         IBlockAccessListStore balStore,
         ISpecProvider specProvider,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ICallTransactionProcessorDecorator? callProcessorDecorator = null)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -292,6 +293,7 @@ namespace Nethermind.Facade
 
         private CallOutput RunCall(IWorldState nonceSource, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
+            if (callProcessorDecorator is not null) txProcessor = callProcessorDecorator.Decorate(txProcessor);
             CallOutputTracer tracer = new();
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
             TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap

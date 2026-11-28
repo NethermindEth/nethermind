@@ -62,7 +62,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         CodeInfo codeInfo = VmState.Env.CodeInfo;
         // The machine polled just before the offer, so the runner starts with none of the interval spent.
         int opCodesSincePoll = 0;
-        EvmExceptionType result = runner.Run(this, codeInfo, _frameCodeBodies ??= GetOpcodeBodySet(Spec), ref stack, ref gas,
+        EvmExceptionType result = runner.Run(this, codeInfo, _frameCodeBodies ??= GetFrameCodeBodies(Spec), ref stack, ref gas,
             ref programCounter, ref opCodesSincePoll, TCancelable.IsActive ? FrameRunFlags.Cancelable : FrameRunFlags.None);
         if (result == FrameCodeRunner<TGasPolicy>.Declined)
             return RunDispatchLoop<OffFlag, TCancelable>(ref stack, ref gas, ref programCounter, HandedBackSincePoll<TCancelable>(opCodesSincePoll));
@@ -90,11 +90,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     partial void PrepareFrameCodeRunner<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
         if (!TTracingInst.IsActive && _frameCodeRunner is not null)
-            _frameCodeBodies ??= GetOpcodeBodySet(spec);
+            _frameCodeBodies ??= GetFrameCodeBodies(spec);
     }
+
+    /// <summary>What this machine's untraced dispatch table runs for <paramref name="spec"/>, its opcode hooks included.</summary>
+    private OpcodeBodySet GetFrameCodeBodies(IReleaseSpec spec) => HasOpcodeHooks
+        ? _hookedBodySetsBySpec.GetValue(spec, static s => DescribeBodies(s, opcodeHooks: true))
+        : GetOpcodeBodySet(spec);
 
     // Weak keys, as for the dispatch tables: transient override and simulation specs must stay collectable.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeBodySet> _bodySetsBySpec = [];
+    private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeBodySet> _hookedBodySetsBySpec = [];
     private static readonly ConcurrentDictionary<BodySetKey, OpcodeBodySet> _internedBodySets = new();
 
     /// <summary>Set only while <see cref="DescribeBodies"/> builds its table, which then records each entry's body here.</summary>
@@ -111,7 +117,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// The table factories record their own handler as they build it, so the entries map back to the exact bodies the
     /// interpreter runs for the fork, fast-path variants included. The cached dispatch tables are not touched.
     /// </remarks>
-    private static OpcodeBodySet DescribeBodies(IReleaseSpec spec)
+    private static OpcodeBodySet DescribeBodies(IReleaseSpec spec, bool opcodeHooks = false)
     {
         Dictionary<nint, OpcodeBody>? outer = _bodyRecorder;
         Dictionary<nint, OpcodeBody> recorder = [with(2 * FallbackHandlersOffset)];
@@ -119,7 +125,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] table;
         try
         {
-            table = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+            table = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec, opcodeHooks);
         }
         finally
         {

@@ -21,6 +21,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     // Weak keys: transient state-override specs in eth_simulateV1 must not be retained forever by this
     // process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
+    private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _hookedOpcodeTablesBySpec = [];
 
     private OpcodeTable? _cachedOpcodeTable;
 
@@ -30,7 +31,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private OpcodeTable GetOpcodeTable() =>
-        _cachedOpcodeTable ??= _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
+        _cachedOpcodeTable ??= HasOpcodeHooks
+            ? _hookedOpcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable(opcodeHooks: true))
+            : _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
 
     partial void ResetSpecCaches()
     {

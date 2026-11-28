@@ -149,6 +149,10 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
 
+### Gas policy at exceptional exits
+
+`EthereumGasPolicy.UnspentGasBeforeHalt` records the execution gas remaining immediately before an exceptional halt. Traced and untraced execution must preserve the same value on the frame's policy. Fixed-gas dispatch bodies use a temporary policy for their fast path; on failure they copy the recorded halt gas back before returning. Plugins consuming child-frame completion therefore observe the same halt accounting with instruction tracing enabled or disabled.
+
 ## Getting help
 
 Check out the [docs][docs] first. If the answer is not there, see:
