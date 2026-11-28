@@ -1,0 +1,344 @@
+name: Run EIP-8288 Calibration
+
+# Runs the EIP-8288 proving and verification calibration suite (NethermindEth/lean-bindings, src/ffi/calibration), or
+# Nethermind's EIP-8288 builder-aggregation and mempool benchmarks (scripts/eip8288-bench at nethermind_ref), on an
+# ephemeral GCE VM created through .github/actions/gcp-runner. All benchmark logic is in the suite's
+# ci/run-calibration.sh or in scripts/eip8288-bench/run.sh; this workflow only provisions the machine, calls it and collects
+# the output.
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: lean-bindings runs the calibration suite; nethermind-bench runs scripts/eip8288-bench/run.sh from nethermind_ref
+        type: choice
+        options: [lean-bindings, nethermind-bench]
+        default: lean-bindings
+      config:
+        description: Suite config under src/ffi/calibration/configs, run as one scenario
+        type: choice
+        options:
+          - gcp-committed
+          - gcp-committed-batch
+          - gcp-flat
+          - gcp-two-budget
+          - gcp-worst-cases
+          - gcp-deep-carry
+          - gcp-share-blocks
+          - gcp-pq-leaves
+          - gcp-pq-leaves-bounds
+          - native-verify
+          - xcal
+          - smoke
+        default: gcp-committed
+      scenarios:
+        description: Optional comma-separated config names (or paths in the checkout) replacing `config`, run in order under one timeout
+        type: string
+        default: ''
+      machine_type:
+        description: GCE machine type (x86-64 only). Constants only compare across runs on the same type. nethermind-bench needs (NODES + 1) x NODE_CPUS vCPUs for mempool, 56 by default, so c3-standard-88
+        type: string
+        default: c3-highmem-22
+      provisioning:
+        description: SPOT is cheaper but can be reclaimed mid-run; STANDARD bills on-demand
+        type: choice
+        options: [SPOT, STANDARD]
+        default: SPOT
+      boot_disk_type:
+        description: Boot disk type; auto picks hyperdisk-balanced for N4/C4/C4D and pd-balanced otherwise
+        type: choice
+        options: [auto, pd-balanced, pd-ssd, hyperdisk-balanced]
+        default: auto
+      lean_bindings_ref:
+        description: lean-bindings branch, tag or commit holding the suite
+        type: string
+        default: feature/gas-calibration-suite
+      timeout_minutes:
+        description: Suite time budget in minutes, shared by all scenarios (at most 360)
+        type: string
+        default: '180'
+      leanvm_revs:
+        description: Optional comma-separated leanVM revisions whose README benchmarks run first (machine cross-calibration, with xcal)
+        type: string
+        default: ''
+      ecrecover_anchor:
+        description: Also time Nethermind's ecrecover precompile at this commit as the native-verification gas anchor
+        type: boolean
+        default: false
+      nethermind_ref:
+        description: nethermind-bench only; the Nethermind branch, tag or commit whose scripts/eip8288-bench runs
+        type: string
+        default: feature/eip8288-eth76-benchmarks
+      bench_scenarios:
+        description: nethermind-bench only; comma-separated builder (scenario B) and mempool (scenario A)
+        type: string
+        default: builder,mempool
+      bench_env:
+        description: nethermind-bench only; space-separated NAME=value settings for run.sh, e.g. COUNTS=20,200 REPEATS=5 RATE=5
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# No concurrency group: every run creates a VM of its own, named from the run id and attempt, so dispatches never share
+# one, and a group would let a newer dispatch replace a pending one.
+
+jobs:
+  resolve:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      scenarios: ${{ steps.resolve.outputs.scenarios }}
+      bench_scenarios: ${{ steps.resolve.outputs.bench_scenarios }}
+      boot_disk_type: ${{ steps.resolve.outputs.boot_disk_type }}
+      job_timeout: ${{ steps.resolve.outputs.job_timeout }}
+      max_run_duration: ${{ steps.resolve.outputs.max_run_duration }}
+    steps:
+      - name: Resolve inputs
+        id: resolve
+        env:
+          CONFIG: ${{ inputs.config }}
+          SCENARIOS: ${{ inputs.scenarios }}
+          MACHINE_TYPE: ${{ inputs.machine_type }}
+          BOOT_DISK_TYPE: ${{ inputs.boot_disk_type }}
+          REF: ${{ inputs.lean_bindings_ref }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          LEANVM_REVS: ${{ inputs.leanvm_revs }}
+          NETHERMIND_REF: ${{ inputs.nethermind_ref }}
+          BENCH_SCENARIOS: ${{ inputs.bench_scenarios }}
+          BENCH_ENV: ${{ inputs.bench_env }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          scenarios=${SCENARIOS:-$CONFIG}
+          # run-calibration.sh quotes the scenario list into a container command line, so keep it to plain names.
+          name='[A-Za-z0-9_][A-Za-z0-9._/-]*'
+          [[ $scenarios =~ ^$name(,$name)*$ ]] || fail "scenarios must be comma-separated config names or paths"
+          [[ $MACHINE_TYPE =~ ^[a-z][a-z0-9]*-[a-z0-9-]+$ ]] || fail "machine_type is not a GCE machine type"
+          # The runner image and actions/runner download are x86-64 only.
+          case $MACHINE_TYPE in c4a-*|t2a-*|n4a-*|a4x-*) fail "$MACHINE_TYPE is Arm; the GCP runner is x86-64 only" ;; esac
+          # -lssd types bundle local SSDs, which the runner's provisioning rejects when it requests none.
+          case $MACHINE_TYPE in *-lssd) fail "$MACHINE_TYPE bundles local SSDs; this workflow requests none" ;; esac
+          [[ $REF =~ ^$name$ ]] || fail "lean_bindings_ref must be a branch, tag or commit"
+          [[ $LEANVM_REVS =~ ^($name(,$name)*)?$ ]] || fail "leanvm_revs must be comma-separated revisions"
+          [[ $NETHERMIND_REF =~ ^$name$ ]] || fail "nethermind_ref must be a branch, tag or commit"
+          [[ $BENCH_SCENARIOS =~ ^(builder|mempool)(,(builder|mempool))*$ ]] || fail "bench_scenarios must be builder and/or mempool"
+          # Only the benchmark settings run.sh and its scripts read, with plain values, so bench_env cannot set PATH, LD_PRELOAD,
+          # BASH_ENV or any other variable that changes what runs.
+          allowed=' AVERAGE_CPUS AVERAGE_MEMORY BASELINE_REF MEMPOOL_RUNS COUNTS WARMUPS REPEATS SLOT_MS RESERVE_MS NODES DEGREE
+            NODE_CPUS NODE_MEMORY DELAY_MS JITTER_MS UP_MBIT LOSS_PCT RATE SECONDS_TO_RUN WARMUP_SECONDS GRACE_SECONDS DEPS
+            TXS_PER_WRAPPER DUP_FRACTION SHARED_FRACTION SEED ACCOUNTS SHAPES '
+          read -ra settings <<< "$BENCH_ENV"
+          for setting in ${settings[@]+"${settings[@]}"}; do
+            [[ $setting =~ ^([A-Z][A-Z0-9_]*)=[A-Za-z0-9_.,:/-]*$ ]] || fail "bench_env must be space-separated NAME=value words"
+            [[ ${allowed//[[:space:]]/ } == *" ${BASH_REMATCH[1]} "* ]] || fail "bench_env does not take ${BASH_REMATCH[1]}"
+          done
+          if [[ ! $TIMEOUT_MINUTES =~ ^[1-9][0-9]{0,2}$ ]] || (( TIMEOUT_MINUTES > 360 )); then fail "timeout_minutes must be 1-360"; fi
+          disk=$BOOT_DISK_TYPE
+          if [[ $disk == auto ]]; then
+            case $MACHINE_TYPE in c4-*|c4d-*|n4-*|n4d-*) disk=hyperdisk-balanced ;; *) disk=pd-balanced ;; esac
+          fi
+          # Job budget: the suite plus clone, image pull and the optional leanVM and ecrecover runs. The VM's lifetime
+          # adds boot time on top, as the backstop GCE enforces if teardown fails.
+          {
+            echo "scenarios=$scenarios"
+            echo "bench_scenarios=$BENCH_SCENARIOS"
+            echo "boot_disk_type=$disk"
+            echo "job_timeout=$(( TIMEOUT_MINUTES + 60 ))"
+            echo "max_run_duration=$(( TIMEOUT_MINUTES + 90 ))m"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  create_a_runner:
+    name: Create the calibration runner
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=eip8288-calibration-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a Runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          machine_type: ${{ inputs.machine_type }}
+          local_ssd_count: 0
+          boot_disk_size: 200
+          boot_disk_type: ${{ needs.resolve.outputs.boot_disk_type }}
+          provisioning_model: ${{ inputs.provisioning }}
+          max_run_duration: ${{ needs.resolve.outputs.max_run_duration }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  calibrate:
+    name: Calibrate
+    needs: [resolve, create_a_runner]
+    # Benchmark code runs here; it needs no token scope.
+    permissions: {}
+    runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
+    timeout-minutes: ${{ fromJSON(needs.resolve.outputs.job_timeout) }}
+    env:
+      RUN_DIR: eip8288-calibration-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Calibrate
+        if: ${{ inputs.suite == 'lean-bindings' }}
+        env:
+          REF: ${{ inputs.lean_bindings_ref }}
+          SCENARIOS: ${{ needs.resolve.outputs.scenarios }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          LEANVM_REVS: ${{ inputs.leanvm_revs }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          rm -rf "$scratch"
+          mkdir -p "$scratch/out"
+          df -h "$RUNNER_TEMP" || true
+          git clone -q https://github.com/NethermindEth/lean-bindings.git "$scratch/lean-bindings"
+          git -C "$scratch/lean-bindings" -c advice.detachedHead=false checkout -q "$REF"
+          sha=$(git -C "$scratch/lean-bindings" rev-parse HEAD)
+          echo "lean-bindings $REF at $sha"
+          args=(--lean-bindings-ref "$REF@$sha" --scenarios "$SCENARIOS" --timeout-minutes "$TIMEOUT_MINUTES"
+                --out "$scratch/out" --arch amd64 --docker rust:1.99.0-bookworm)
+          [[ -z $LEANVM_REVS ]] || args+=(--leanvm-revs "$LEANVM_REVS")
+          "$scratch/lean-bindings/src/ffi/calibration/ci/run-calibration.sh" "${args[@]}"
+
+      - name: Run the Nethermind EIP-8288 benchmarks
+        if: ${{ inputs.suite == 'nethermind-bench' }}
+        env:
+          NETHERMIND_REF: ${{ inputs.nethermind_ref }}
+          BENCH_SCENARIOS: ${{ needs.resolve.outputs.bench_scenarios }}
+          BENCH_ENV: ${{ inputs.bench_env }}
+          BENCH_MACHINE_TYPE: ${{ inputs.machine_type }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          rm -rf "$scratch"
+          mkdir -p "$scratch/out"
+          repo=$scratch/nethermind
+          git clone -q --filter=blob:none https://github.com/NethermindEth/nethermind.git "$repo"
+          # The ref must be an upstream branch or tag, or a commit one of them contains: GitHub serves fork-only commits
+          # through the upstream repository too, and they must not run here unreviewed.
+          if sha=$(git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$NETHERMIND_REF^{commit}") ||
+             sha=$(git -C "$repo" rev-parse -q --verify "refs/tags/$NETHERMIND_REF^{commit}"); then :
+          elif [[ $NETHERMIND_REF =~ ^[0-9a-f]{40}$ ]] && git -C "$repo" cat-file -e "$NETHERMIND_REF^{commit}" 2>/dev/null &&
+               [[ -n $(git -C "$repo" for-each-ref --count=1 --contains "$NETHERMIND_REF" refs/remotes/origin refs/tags) ]]; then
+            sha=$NETHERMIND_REF
+          else
+            echo "::error::nethermind_ref must be an upstream branch, tag, or full commit SHA contained in one"; exit 1
+          fi
+          git -C "$repo" -c advice.detachedHead=false checkout -q "$sha"
+          echo "nethermind $NETHERMIND_REF at $sha"
+          read -ra settings <<< "$BENCH_ENV"
+          # run.sh fetches BASELINE_REF as an upstream branch or tag name only.
+          timeout "${TIMEOUT_MINUTES}m" env ${settings[@]+"${settings[@]}"} \
+            "$scratch/nethermind/scripts/eip8288-bench/run.sh" "$scratch/out" "$BENCH_SCENARIOS"
+
+      - name: Time the ecrecover anchor
+        if: ${{ !cancelled() && inputs.suite == 'lean-bindings' && inputs.ecrecover_anchor }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          bench=$scratch/lean-bindings/src/ffi/calibration/ci/ecrecover-bench.sh
+          [[ -x $bench ]] || { echo "::error::$bench is missing at this lean-bindings ref"; exit 1; }
+          "$bench" "$scratch/out/ecrecover" "$GITHUB_SHA"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          [[ ! -f $scratch/out/host.txt ]] || { echo '```'; cat "$scratch/out/host.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [[ ! -f $scratch/out/summary.md ]] || head -c 900000 "$scratch/out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          # GitHub drops a step summary over 1 MiB entirely, so the reports share a budget; all are in the artifact.
+          budget=900000
+          for report in "$scratch"/out/*/report.md; do
+            if (( budget <= 0 )); then echo "_Further reports omitted; see the artifact._" >> "$GITHUB_STEP_SUMMARY"; break; fi
+            size=$(wc -c < "$report")
+            {
+              echo "## $(basename "$(dirname "$report")")"; head -c "$budget" "$report"; echo
+              if (( size > budget )); then echo "_Truncated; see the artifact._"; fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            budget=$(( budget - size ))
+          done
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eip8288-${{ inputs.suite == 'lean-bindings' && 'calibration' || 'bench' }}-${{ inputs.machine_type }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/${{ env.RUN_DIR }}/out
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/.home
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/bin
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/corpus
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/baseline-src
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/signatures.bin
+          if-no-files-found: warn
+          retention-days: 30
+
+  destroy_runner:
+    name: Destroy the calibration runner
+    needs: [create_a_runner, calibrate]
+    if: always() && needs.create_a_runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy Runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label || format('eip8288-calibration-{0}-{1}', github.run_id, github.run_attempt) }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          expect_instance: ${{ needs.create_a_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          INSTANCE: ${{ steps.destroy.outputs.instance_name }}
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "instance=${INSTANCE} terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
