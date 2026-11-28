@@ -63,8 +63,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig
             if (traceStoreConfig.AddressIndexEnabled)
                 builder.AddSingleton<TraceAddressIndex>().AddStep(typeof(StartTraceAddressIndex));
 
-            if (traceStoreConfig.BlocksToKeep != 0)
-                builder.ResolveOnServiceActivation<TraceStorePruner, IBlockTree>();
+            builder.ResolveOnServiceActivation<TraceStorePruner, IBlockTree>();
         }
     }
 
