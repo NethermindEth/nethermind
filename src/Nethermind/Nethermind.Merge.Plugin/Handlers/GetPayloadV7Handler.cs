@@ -18,7 +18,8 @@ public class GetPayloadV7Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV7Result>(EngineApiVersions.GetPayload.V7, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
-    protected override bool ValidateFork(IReleaseSpec spec) => spec.IsEip8141Enabled;
+    // ExecutionPayloadV5 extends Amsterdam's payload, so a frame fork without Amsterdam has no payload version.
+    protected override bool ValidateFork(IReleaseSpec spec) => spec.IsEip8141Enabled && spec.IsAmsterdamEnabled;
 
     protected override GetPayloadV7Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV7DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
 }
