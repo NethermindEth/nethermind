@@ -40,6 +40,8 @@ namespace Nethermind.Synchronization.Peers
 
         public static bool SupportsBlockAccessLists(this ISyncPeer peer) => peer.ProtocolVersion >= EthVersions.Eth71;
 
+        public static bool SupportsDependencyProofs(this ISyncPeer peer) => peer.ProtocolVersion >= EthVersions.Eth74;
+
         private static readonly Regex _openEthereumVersionRegex = OpenEthereumRegex();
 
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)

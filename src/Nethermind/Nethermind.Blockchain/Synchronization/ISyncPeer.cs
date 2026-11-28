@@ -69,5 +69,11 @@ namespace Nethermind.Blockchain.Synchronization
         Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
         Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             Task.FromResult(IOwnedReadOnlyList<byte[]?>.Empty);
+
+        /// <summary>EIP-8512: the EIP-8141 dependency proofs of <paramref name="blockHashes"/>, in order.</summary>
+        /// <returns>At most one entry per hash, possibly fewer; an empty entry is an unavailable proof or the empty proof of a
+        /// block without dependencies. Peers without <c>eth/74</c> return none.</returns>
+        Task<IOwnedReadOnlyList<byte[]>> GetDependencyProofs(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
+            Task.FromResult(IOwnedReadOnlyList<byte[]>.Empty);
     }
 }

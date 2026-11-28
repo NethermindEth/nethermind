@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -128,9 +130,13 @@ public static class FrameTxDependencyProof
     /// <remarks>A custom verifier runs in the pure context, which reads nothing a transaction before it can change but
     /// the verifier's own code, so verifying each claim as its transaction executes reaches the verdict the block's
     /// pre-state does once <see cref="CheckVerifiersDeployed"/> has ruled out a verifier deployed earlier in the same block.</remarks>
+    /// <param name="spec">The block's spec; an EIP-8288 spec also accepts an aggregated proof, whose leanSPHINCS
+    /// claims are then assigned <see cref="FrameTxClaimVerifier.AggregatedWitness"/>.</param>
+    /// <param name="leanProofVerifier">Verifies an aggregated proof's recursive STARK.</param>
     /// <exception cref="InvalidBlockException">The proof does not match the header, or does not fit the dependencies.</exception>
     /// <exception cref="UnavailableException">The proof is not available, so no verdict can be reached.</exception>
-    public static void AssignWitnesses(Block block)
+    /// <exception cref="InvalidOperationException">The aggregated proof's STARK cannot be verified here, so no verdict can be reached.</exception>
+    public static void AssignWitnesses(Block block, IReleaseSpec? spec = null, ILeanProofVerifier? leanProofVerifier = null)
     {
         // Only a header committing to a proof has one to check; a fork block's header is validated to carry the hash.
         if (block.Header.DependencyProofHash is null) return;
@@ -154,6 +160,12 @@ public static class FrameTxDependencyProof
         {
             if (proof.Length != 0) throw new InvalidBlockException(block, Malformed);
         }
+        // The zkVM guests carry no dependency proof, so they leave EIP-8288 verification out of their image.
+        else if (!ZkEvmFlag.IsActive && proof is [Eip8288Constants.DependencyProofVersionAggregated, ..] && spec?.IsEip8288Enabled == true)
+        {
+            witnesses = AggregatedDependencyProof.Verify(block, dependencies, proof,
+                leanProofVerifier ?? throw new InvalidOperationException($"No EIP-8288 verifier to check block {block.ToString(Block.Format.Short)}"));
+        }
         else
         {
             // Every claim charges its full gas limit to its transaction, so a valid block never needs more verifier
@@ -165,7 +177,8 @@ public static class FrameTxDependencyProof
 
         for (int j = 0; j < dependencies.Length; j++)
         {
-            if ((ulong)witnesses[j].Length != dependencies[j].WitnessLength) throw new InvalidBlockException(block, WitnessLengthMismatch);
+            if ((ulong)witnesses[j].Length != dependencies[j].WitnessLength && !ReferenceEquals(witnesses[j], FrameTxClaimVerifier.AggregatedWitness))
+                throw new InvalidBlockException(block, WitnessLengthMismatch);
         }
 
         Transaction[] transactions = block.Transactions;

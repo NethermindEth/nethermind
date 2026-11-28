@@ -2,6 +2,8 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Nethermind.Benchmarks</RootNamespace>
+    <!-- The EIP-8288 builder benchmark signs its claims with the native package's fixtures tool, which ships for Linux only. -->
+    <NethermindCryptoLeanTestAssets Condition="$([MSBuild]::IsOSPlatform('Linux')) Or $(RuntimeIdentifier.StartsWith('linux'))">true</NethermindCryptoLeanTestAssets>
   </PropertyGroup>
   
   <ItemGroup>

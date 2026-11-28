@@ -186,4 +186,28 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
     [Description("Histogram of block processing time")]
     public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 recursive proofs produced by the native prover.")]
+    public static long LeanNativeProofs;
+
+    [CounterMetric]
+    [Description("Total milliseconds spent in native EIP-8288 recursive proving.")]
+    public static long LeanNativeProveMilliseconds;
+
+    [GaugeMetric]
+    [Description("Duration of the latest native EIP-8288 recursive proof in milliseconds.")]
+    public static long LeanNativeProveLastMilliseconds;
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 recursive proof verifications answered from earlier successful verifications.")]
+    public static long LeanVerificationCacheHits;
+
+    [CounterMetric]
+    [Description("Number of produced blocks whose leanSPHINCS witnesses were replaced by an EIP-8288 aggregated dependency proof.")]
+    public static long LeanAggregatedBlocks;
+
+    [CounterMetric]
+    [Description("Number of produced blocks that kept raw leanSPHINCS witnesses because their EIP-8288 proof was not ready or not smaller.")]
+    public static long LeanRawFallbacks;
 }

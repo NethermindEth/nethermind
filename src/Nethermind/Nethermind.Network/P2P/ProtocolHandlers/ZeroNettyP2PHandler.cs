@@ -39,7 +39,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     {
         IByteBuffer content = input.Buffer;
         int readableBytes = content.ReadableBytes;
-        if (!SnappyDecoder.IsWithinSizeLimit(readableBytes))
+        if (!SnappyDecoder.IsWithinSizeLimit(readableBytes) || (!SnappyEnabled && ExceedsProtocolLimit(input.PacketType, readableBytes)))
         {
             _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
             return;
@@ -59,6 +59,12 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             catch (InvalidFrameException exception)
             {
                 throw exception.ToCorruptedFrameException();
+            }
+
+            if (ExceedsProtocolLimit(input.PacketType, uncompressedLength))
+            {
+                _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+                return;
             }
 
             if (readableBytes > SnappyParameters.MaxSnappyLength / 4)
@@ -132,6 +138,10 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             }
         }
     }
+
+    // eth/74 DependencyProofs is bounded by its advertised uncompressed size, before any decompression.
+    private bool ExceedsProtocolLimit(int packetType, int uncompressedLength) =>
+        _session is IMessageLimitSession limited && limited.ExceedsMessageLimit(packetType, uncompressedLength);
 
     private NettyBufferPacket TakeOutputPacket(IChannelHandlerContext context, int length)
     {
