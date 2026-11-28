@@ -464,6 +464,59 @@ public class RpcModuleProviderTests
         Assert.That(container.Resolve<TestRpcModuleDependencies>().WasRequested, Is.EqualTo(preload));
     }
 
+    [TestCase(null)]
+    [TestCase(2)]
+    public async Task Trace_module_pool_uses_default_or_configured_capacity(int? configuredCapacity)
+    {
+        JsonRpcConfig config = new()
+        {
+            EnabledModules = [ModuleType.Trace],
+            Timeout = 0,
+            TraceModuleConcurrentInstances = configuredCapacity,
+        };
+        List<ITraceRpcModule> createdModules = [];
+        IRpcModuleFactory<ITraceRpcModule> factory = Substitute.For<IRpcModuleFactory<ITraceRpcModule>>();
+        factory.Create().Returns(_ =>
+        {
+            ITraceRpcModule module = Substitute.For<ITraceRpcModule>();
+            createdModules.Add(module);
+            return module;
+        });
+
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton(factory)
+            .Build();
+
+        IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), Is.SameAs(factory));
+            Assert.That(createdModules, Is.Empty);
+        }
+
+        int expectedCapacity = configuredCapacity ?? Environment.ProcessorCount;
+        List<IRpcModule> rentedModules = [];
+        try
+        {
+            for (int i = 0; i < expectedCapacity; i++)
+            {
+                rentedModules.Add(await provider.Rent(nameof(ITraceRpcModule.trace_block), canBeShared: false));
+            }
+
+            await Assert.ThrowsAsync<ModuleRentalTimeoutException>(() =>
+                provider.Rent(nameof(ITraceRpcModule.trace_block), canBeShared: false).AsTask());
+            Assert.That(createdModules, Has.Count.EqualTo(expectedCapacity + 1));
+        }
+        finally
+        {
+            foreach (IRpcModule module in rentedModules)
+            {
+                provider.Return(nameof(ITraceRpcModule.trace_block), module);
+            }
+        }
+    }
+
     [Test]
     public void Eth_calls_within_the_limit_start_at_once()
     {

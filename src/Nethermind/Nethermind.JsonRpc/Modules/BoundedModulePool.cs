@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly T _shared;
         private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<Task<T>> _pool = new();
-        private readonly Dictionary<object, Task<T>> _exclusiveAsTasks = [with(ReferenceEqualityComparer.Instance)];
+        private readonly ConcurrentDictionary<object, Task<T>> _exclusiveAsTasks = new(ReferenceEqualityComparer.Instance);
         private readonly SemaphoreSlim _semaphore;
         private readonly RpcLimits _limits;
 
@@ -96,13 +96,6 @@ namespace Nethermind.JsonRpc.Modules
             Factory = factory;
 
             _semaphore = new SemaphoreSlim(exclusiveCapacity);
-            for (int i = 0; i < exclusiveCapacity; i++)
-            {
-                Task<T> exclusive = Task.FromResult(Factory.Create());
-                _exclusiveAsTasks[exclusive.Result] = exclusive;
-                _pool.Enqueue(exclusive);
-            }
-
             _shared = factory.Create();
             _sharedAsTask = Task.FromResult(_shared);
         }
@@ -119,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules
             return _sharedAsTask;
         }
 
-        private Task<T> ExclusivePath(CancellationToken cancellationToken) => _semaphore.Wait(0, CancellationToken.None) ? Dequeue() : SlowPath(cancellationToken);
+        private Task<T> ExclusivePath(CancellationToken cancellationToken) => _semaphore.Wait(0, CancellationToken.None) ? TakeExclusive() : SlowPath(cancellationToken);
 
         private async Task<T> SlowPath(CancellationToken cancellationToken)
         {
@@ -143,13 +136,51 @@ namespace Nethermind.JsonRpc.Modules
                 _limits.DecrementQueuedCalls();
             }
 
-            return await Dequeue();
+            return await TakeExclusive();
         }
 
-        private Task<T> Dequeue()
+        /// <remarks>
+        /// Called with a semaphore slot held. <see cref="ReturnModule"/> queues an instance before it releases its slot,
+        /// so an empty queue means every created instance is rented and fewer than the capacity exist.
+        /// </remarks>
+        private Task<T> TakeExclusive() => _pool.TryDequeue(out Task<T>? result) ? result : CreateExclusive();
+
+        private Task<T> CreateExclusive()
         {
-            _pool.TryDequeue(out Task<T> result);
-            return result;
+            T module;
+            try
+            {
+                module = Factory.Create();
+            }
+            catch
+            {
+                _semaphore.Release();
+                throw;
+            }
+
+            Task<T> exclusive = Task.FromResult(module);
+            _exclusiveAsTasks[module] = exclusive;
+            return exclusive;
+        }
+
+        /// <summary>Creates every exclusive instance up to the capacity, so later rentals do not pay for construction.</summary>
+        public void Preload()
+        {
+            List<T> rented = [];
+            try
+            {
+                while (_semaphore.Wait(0))
+                {
+                    rented.Add(TakeExclusive().Result);
+                }
+            }
+            finally
+            {
+                foreach (T module in rented)
+                {
+                    ReturnModule(module);
+                }
+            }
         }
 
         public void ReturnModule(T module)
@@ -160,7 +191,7 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
 
-            _pool.Enqueue(_exclusiveAsTasks.GetValueOrDefault(module) ?? Task.FromResult(module));
+            _pool.Enqueue(_exclusiveAsTasks.TryGetValue(module, out Task<T>? exclusive) ? exclusive : Task.FromResult(module));
             _semaphore.Release();
         }
 
