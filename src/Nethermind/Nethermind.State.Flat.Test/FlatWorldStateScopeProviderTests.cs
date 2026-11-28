@@ -1026,7 +1026,8 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit,
+        [Values(40, 300)] int slotCount)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
@@ -1042,7 +1043,7 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
         FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
         Hash256 preBlockRoot = tree.RootHash;
-        UInt256[] expected = new UInt256[40];
+        UInt256[] expected = new UInt256[slotCount];
         expected[3] = clearAtBlockEnd ? UInt256.Zero : (UInt256)30;
 
         if (applyEarly)
@@ -1197,6 +1198,55 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
+    public void EarlyStorageApply_BlockEndDuringAPassKeepsTheFinishedPasses()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        UInt256[] expected = new UInt256[20];
+        for (int slot = 1; slot < expected.Length; slot++) expected[slot] = (UInt256)(slot + 100);
+        ApplyEarlyHints(tree, () => tree.HintSet(1, 500));
+        for (int slot = 1; slot < 10; slot++)
+        {
+            int committedSlot = slot;
+            ApplyEarlyHints(tree, () => tree.HintSet((UInt256)committedSlot, expected[committedSlot]));
+        }
+
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim resume = new();
+        tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
+        try
+        {
+            tree.HintSet(1, 999);
+            Assert.That(started.Wait(5000), Is.True);
+
+            Task blockEnd = Task.Run(() =>
+            {
+                using IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1);
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, expected.Length);
+                for (int slot = 1; slot < expected.Length; slot++) storage.Set((UInt256)slot, expected[slot]);
+            });
+            Assert.That(blockEnd.Wait(5000), Is.True, "the block end must not wait for the unfinished pass");
+        }
+        finally
+        {
+            resume.Set();
+        }
+
+        Assert.That(() => ctx.Scope.EarlyApplyCounts.Applied, Is.EqualTo(11).After(5000, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(9), "the slots of the finished passes are reused");
+            Assert.That(ctx.Scope.EarlyApplyCounts.Abandoned, Is.EqualTo(1));
+        }
+        ctx.Scope.Commit(1);
+        AssertStorageRoot(ctx, expected);
+    }
+
+    [Test]
+    [NonParallelizable]
     public void EarlyStorageApply_FailedPassIsNotAdopted()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
@@ -1278,6 +1328,20 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enabled.Scope.AppliesStorageWritesEarly, Is.False);
         using TestContext next = new();
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    [Test]
+    public void EarlyStorageApply_StartupFailureStopsStartedHelpers([Values(1, 2)] int startedCount)
+    {
+        List<Thread> started = [];
+        Assert.Throws<ThreadStateException>(() => new IdleStorageApplier(LimboLogs.Instance, 2, thread =>
+        {
+            if (started.Count == startedCount) throw new ThreadStateException();
+            thread.Start();
+            started.Add(thread);
+        }));
+
+        foreach (Thread thread in started) Assert.That(thread.Join(5000), Is.True);
     }
 
     [Test]
