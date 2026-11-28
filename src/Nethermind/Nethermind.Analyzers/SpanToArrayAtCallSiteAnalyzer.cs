@@ -3,6 +3,8 @@
 
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -181,8 +183,8 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                     elementType,
                     isSpan,
                     spanTypes,
-                    context.ContainingSymbol,
-                    context.Compilation);
+                    toArrayCall,
+                    context);
             }
             else
             {
@@ -212,14 +214,17 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         ITypeSymbol elementType,
         bool callerIsSpan,
         SpanTypes spanTypes,
-        ISymbol? containingSymbol,
-        Compilation compilation)
+        IInvocationOperation toArrayCall,
+        OperationAnalysisContext context)
     {
         IMethodSymbol currentOriginal = currentMethod.OriginalDefinition;
         ImmutableArray<IParameterSymbol> currentParams = currentOriginal.Parameters;
+        ISymbol? containingSymbol = context.ContainingSymbol;
         ISymbol? containingOriginal = containingSymbol?.OriginalDefinition;
         ISymbol withinAccessibility = containingSymbol?.ContainingType ?? containingSymbol ?? currentMethod.ContainingType;
         string? bestMatch = null;
+        bool rebound = false;
+        IMethodSymbol? reboundMethod = null;
 
         foreach (IMethodSymbol candidate in overloads)
         {
@@ -239,7 +244,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (candidate.TypeParameters.Length != currentOriginal.TypeParameters.Length)
                 continue;
             // Suggesting an inaccessible overload would produce uncompilable code.
-            if (!compilation.IsSymbolAccessibleWithin(candidate, withinAccessibility))
+            if (!context.Compilation.IsSymbolAccessibleWithin(candidate, withinAccessibility))
                 continue;
 
             string? matchKind = MatchingSpanParamKind(
@@ -264,6 +269,20 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (!otherParamsMatch)
                 continue;
 
+            if (MayRejectTypeArguments(candidate, currentOriginal))
+            {
+                // A matching signature is not enough: the compiler must accept the type arguments at this call.
+                if (!rebound)
+                {
+                    reboundMethod = BindSpanCall(context.Operation, toArrayCall);
+                    rebound = true;
+                }
+
+                if (reboundMethod is null
+                    || !SymbolEqualityComparer.Default.Equals((reboundMethod.ReducedFrom ?? reboundMethod).OriginalDefinition, candidate.OriginalDefinition))
+                    continue;
+            }
+
             // Prefer Span<T> overload when caller already has Span<T> (matches without conversion).
             if (callerIsSpan && matchKind == "Span")
                 return "Span";
@@ -271,6 +290,104 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         }
 
         return bestMatch;
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="candidate"/> may reject type arguments that <paramref name="current"/> accepts,
+    /// through a constraint the compiler enforces as an error or a missing <c>allows ref struct</c>.
+    /// </summary>
+    private static bool MayRejectTypeArguments(IMethodSymbol candidate, IMethodSymbol current)
+    {
+        for (int i = 0; i < candidate.TypeParameters.Length; i++)
+        {
+            ITypeParameterSymbol parameter = candidate.TypeParameters[i];
+            if (parameter.HasReferenceTypeConstraint || parameter.HasValueTypeConstraint || parameter.HasUnmanagedTypeConstraint
+                || parameter.HasConstructorConstraint || !parameter.ConstraintTypes.IsEmpty
+                || (current.TypeParameters[i].AllowsRefLikeType && !parameter.AllowsRefLikeType))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Binds <paramref name="call"/> with <paramref name="toArrayCall"/> replaced by its span receiver.
+    /// </summary>
+    /// <returns>
+    /// The method the compiler selects, or <see langword="null"/> when it selects none or the call shape cannot be bound speculatively.
+    /// </returns>
+    private static IMethodSymbol? BindSpanCall(IOperation call, IInvocationOperation toArrayCall)
+    {
+        if (call.SemanticModel is not { } model || toArrayCall.Instance?.Syntax is not ExpressionSyntax span)
+            return null;
+
+        if (call.IsImplicit)
+            return BindCollectionInitializerAdd(call, toArrayCall.Syntax, span, model);
+
+        if (call.Syntax is not InvocationExpressionSyntax invocation)
+            return null;
+
+        InvocationExpressionSyntax rewritten = invocation.ReplaceNode(toArrayCall.Syntax, span);
+        ConditionalAccessExpressionSyntax? conditional = null;
+        for (SyntaxNode? node = invocation.Parent; node is not null and not MemberDeclarationSyntax; node = node.Parent)
+        {
+            if (node is ConditionalAccessExpressionSyntax access && access.WhenNotNull.Span.Contains(invocation.Span))
+                conditional = access;
+        }
+
+        if (conditional is null)
+            return model.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression).Symbol as IMethodSymbol;
+
+        // A call after `?.` only binds inside its conditional access, so speculate on the whole access,
+        // as a statement in a body or as a field or property initializer.
+        SyntaxAnnotation marker = new();
+        ExpressionSyntax rewrittenAccess = conditional.ReplaceNode(invocation, rewritten.WithAdditionalAnnotations(marker));
+        ExpressionStatementSyntax statement = SyntaxFactory.ExpressionStatement(rewrittenAccess);
+        EqualsValueClauseSyntax initializer = SyntaxFactory.EqualsValueClause(rewrittenAccess);
+        SyntaxNode container;
+        if (model.TryGetSpeculativeSemanticModel(conditional.SpanStart, statement, out SemanticModel? speculative))
+            container = statement;
+        else if (model.TryGetSpeculativeSemanticModel(conditional.SpanStart, initializer, out speculative))
+            container = initializer;
+        else
+            return null;
+
+        return container.GetAnnotatedNodes(marker).FirstOrDefault() is { } bound
+            ? speculative.GetSymbolInfo(bound).Symbol as IMethodSymbol
+            : null;
+    }
+
+    /// <summary>
+    /// Binds an implicit collection initializer <c>Add</c> as an explicit <c>Add</c> call on a value of the initialized type,
+    /// with <paramref name="toArray"/> replaced by <paramref name="span"/>.
+    /// </summary>
+    /// <returns>
+    /// The method the compiler selects, or <see langword="null"/> when it selects none or <paramref name="add"/> is another implicit call.
+    /// </returns>
+    private static IMethodSymbol? BindCollectionInitializerAdd(IOperation add, SyntaxNode toArray, ExpressionSyntax span, SemanticModel model)
+    {
+        if (add.Parent is not IObjectOrCollectionInitializerOperation { Type: { } collectionType }
+            || add.Syntax is not ExpressionSyntax element)
+            return null;
+
+        // A type that cannot be written in source, such as one with an anonymous type argument, does not parse.
+        TypeSyntax receiverType = SyntaxFactory.ParseTypeName(collectionType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+        if (receiverType.ContainsDiagnostics)
+            return null;
+
+        // `{ a }` calls Add(a) and `{ { a, b } }` calls Add(a, b).
+        ExpressionSyntax rewritten = element.ReplaceNode(toArray, span);
+        SeparatedSyntaxList<ExpressionSyntax> values = rewritten is InitializerExpressionSyntax complex
+            ? complex.Expressions
+            : SyntaxFactory.SingletonSeparatedList(rewritten);
+        InvocationExpressionSyntax explicitAdd = SyntaxFactory.InvocationExpression(
+            SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                SyntaxFactory.DefaultExpression(receiverType),
+                SyntaxFactory.IdentifierName(WellKnownMemberNames.CollectionInitializerAddMethodName)),
+            SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(values.Select(static value => SyntaxFactory.Argument(value)))));
+
+        return model.GetSpeculativeSymbolInfo(element.SpanStart, explicitAdd, SpeculativeBindingOption.BindAsExpression).Symbol as IMethodSymbol;
     }
 
     private static string? MatchingSpanParamKind(

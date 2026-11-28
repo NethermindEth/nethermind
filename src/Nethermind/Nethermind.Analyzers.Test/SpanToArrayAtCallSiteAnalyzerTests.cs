@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
@@ -163,6 +165,178 @@ public class SpanToArrayAtCallSiteAnalyzerTests
         await Verify(source, Diagnostic().WithLocation(0).WithArguments("M", "ReadOnlySpan", "int"));
     }
 
+    private static IEnumerable<TestCaseData> ConstrainedSpanOverloadCases()
+    {
+        yield return new TestCaseData("unmanaged", "int", true);
+        yield return new TestCaseData("unmanaged", "string", false); // CS8377
+        yield return new TestCaseData("class", "string", true);
+        yield return new TestCaseData("class", "int", false); // CS0452
+        yield return new TestCaseData("struct", "int", true);
+        yield return new TestCaseData("struct", "string", false); // CS0453
+        yield return new TestCaseData("new()", "object", true);
+        yield return new TestCaseData("new()", "string", false); // CS0310
+        yield return new TestCaseData("notnull", "string", true);
+        yield return new TestCaseData("IComparable<T>", "int", true);
+        yield return new TestCaseData("IComparable<T>", "object", false); // CS0311
+    }
+
+    [TestCaseSource(nameof(ConstrainedSpanOverloadCases))]
+    public async Task Constrained_generic_span_overload_reports_only_when_call_compiles(string constraint, string typeArgument, bool reports)
+    {
+        string Arg(int location) => reports ? $"{{|#{location}:s.ToArray()|}}" : "s.ToArray()";
+        string source = $$"""
+            #nullable enable
+            using System;
+            class R
+            {
+                public int Count<T>(T[] values) => values.Length;
+                public int Count<T>(ReadOnlySpan<T> values) where T : {{constraint}} => values.Length;
+            }
+            static class E
+            {
+                public static int Count<T>(this string receiver, T[] values) => values.Length;
+                public static int Count<T>(this string receiver, ReadOnlySpan<T> values) where T : {{constraint}} => values.Length;
+            }
+            class C
+            {
+                static int Instance(R r, ReadOnlySpan<{{typeArgument}}> s) => r.Count<{{typeArgument}}>({{Arg(0)}});
+                static int? Conditional(R? r, ReadOnlySpan<{{typeArgument}}> s) => r?.Count<{{typeArgument}}>({{Arg(1)}});
+                static int Extension(string e, ReadOnlySpan<{{typeArgument}}> s) => e.Count<{{typeArgument}}>({{Arg(2)}});
+                static int Static(string e, ReadOnlySpan<{{typeArgument}}> s) => E.Count<{{typeArgument}}>(e, {{Arg(3)}});
+                static void ConditionalInferred(string? e, ReadOnlySpan<{{typeArgument}}> s)
+                {
+                    e?.Count({{Arg(4)}});
+                }
+            }
+            """;
+        DiagnosticResult[] expected = reports
+            ? [.. Enumerable.Range(0, 5).Select(i => Diagnostic().WithLocation(i).WithArguments("Count", "ReadOnlySpan", typeArgument))]
+            : [];
+        await Verify(source, expected);
+    }
+
+    [TestCase("byte", true)]
+    [TestCase("Span<byte>", false)] // CS9244
+    public async Task Span_overload_without_allows_ref_struct_reports_only_when_call_compiles(string tag, bool reports)
+    {
+        string argument = reports ? "{|#0:s.ToArray()|}" : "s.ToArray()";
+        string source = $$"""
+            using System;
+            class C
+            {
+                static int Count<T, TTag>(T[] values) where TTag : allows ref struct => values.Length;
+                static int Count<T, TTag>(ReadOnlySpan<T> values) => values.Length;
+                static int Use(ReadOnlySpan<int> s) => Count<int, {{tag}}>({{argument}});
+            }
+            """;
+        DiagnosticResult[] expected = reports ? [Diagnostic().WithLocation(0).WithArguments("Count", "ReadOnlySpan", "int")] : [];
+        await Verify(source, ReferenceAssemblies.Net.Net90, expected);
+    }
+
+    [TestCase("int", true)]
+    [TestCase("string", false)] // CS8377
+    public async Task Constrained_span_overload_in_field_initializer_reports_only_when_call_compiles(string typeArgument, bool reports)
+    {
+        string Arg(int location) => reports
+            ? $"{{|#{location}:default(ReadOnlySpan<{typeArgument}>).ToArray()|}}"
+            : $"default(ReadOnlySpan<{typeArgument}>).ToArray()";
+        string source = $$"""
+            #nullable enable
+            using System;
+            class R
+            {
+                public int Count<T>(T[] values) => values.Length;
+                public int Count<T>(ReadOnlySpan<T> values) where T : unmanaged => values.Length;
+            }
+            class C
+            {
+                static readonly R? Receiver = new();
+                static readonly int Plain = new R().Count<{{typeArgument}}>({{Arg(0)}});
+                static readonly int? Conditional = Receiver?.Count<{{typeArgument}}>({{Arg(1)}});
+                int? Property { get; } = Receiver?.Count<{{typeArgument}}>({{Arg(2)}});
+            }
+            """;
+        DiagnosticResult[] expected = reports
+            ? [.. Enumerable.Range(0, 3).Select(i => Diagnostic().WithLocation(i).WithArguments("Count", "ReadOnlySpan", typeArgument))]
+            : [];
+        await Verify(source, expected);
+    }
+
+    [TestCase("int", true)]
+    [TestCase("string", false)] // CS8377
+    public async Task Collection_initializer_add_with_constrained_span_overload_reports_only_when_call_compiles(string typeArgument, bool reports)
+    {
+        string Arg(int location) => reports ? $"{{|#{location}:s.ToArray()|}}" : "s.ToArray()";
+        string source = $$"""
+            #nullable enable
+            using System;
+            using System.Collections;
+            class Bag : IEnumerable
+            {
+                public void Add<T>(T[] values) { }
+                public void Add<T>(ReadOnlySpan<T> values) where T : unmanaged { }
+                public void Add<T>(int key, T[] values) { }
+                public void Add<T>(int key, ReadOnlySpan<T> values) where T : unmanaged { }
+                public IEnumerator GetEnumerator() => Array.Empty<int>().GetEnumerator();
+            }
+            class Sack : IEnumerable
+            {
+                public IEnumerator GetEnumerator() => Array.Empty<int>().GetEnumerator();
+            }
+            static class E
+            {
+                public static void Add<T>(this Sack sack, T[] values) { }
+                public static void Add<T>(this Sack sack, ReadOnlySpan<T> values) where T : unmanaged { }
+            }
+            class Holder
+            {
+                public Bag Items { get; } = new();
+                public int Take(Bag bag) => 0;
+            }
+            class C
+            {
+                static Bag Single(ReadOnlySpan<{{typeArgument}}> s) => new Bag { {{Arg(0)}} };
+                static Bag Keyed(ReadOnlySpan<{{typeArgument}}> s) => new Bag { { 1, {{Arg(1)}} } };
+                static Bag TargetTyped(ReadOnlySpan<{{typeArgument}}> s)
+                {
+                    Bag bag = new() { {{Arg(2)}} };
+                    return bag;
+                }
+                static Holder Member(ReadOnlySpan<{{typeArgument}}> s) => new Holder { Items = { {{Arg(3)}} } };
+                static Sack Extension(ReadOnlySpan<{{typeArgument}}> s) => new Sack { {{Arg(4)}} };
+                static int? Conditional(Holder? h, ReadOnlySpan<{{typeArgument}}> s) => h?.Take(new Bag { {{Arg(5)}} });
+            }
+            """;
+        DiagnosticResult[] expected = reports
+            ? [.. Enumerable.Range(0, 6).Select(i => Diagnostic().WithLocation(i).WithArguments("Add", "ReadOnlySpan", typeArgument))]
+            : [];
+        await Verify(source, expected);
+    }
+
+    [Test]
+    public async Task Implicit_call_that_cannot_be_bound_with_constrained_span_overload_no_diagnostic()
+    {
+        // The rewritten AppendFormatted<string>(ReadOnlySpan<string>) call is CS8377.
+        string source = """
+            using System;
+            using System.Runtime.CompilerServices;
+            [InterpolatedStringHandler]
+            ref struct Handler
+            {
+                public Handler(int literalLength, int formattedCount) { }
+                public void AppendLiteral(string value) { }
+                public void AppendFormatted<T>(T[] values) { }
+                public void AppendFormatted<T>(ReadOnlySpan<T> values) where T : unmanaged { }
+            }
+            class C
+            {
+                static void Log(Handler handler) { }
+                static void Use(ReadOnlySpan<string> s) => Log($"{s.ToArray()}");
+            }
+            """;
+        await Verify(source);
+    }
+
     [Test]
     public async Task Inaccessible_span_overload_no_diagnostic()
     {
@@ -290,12 +464,15 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     private static DiagnosticResult Diagnostic() =>
         CSharpAnalyzerVerifier<SpanToArrayAtCallSiteAnalyzer, DefaultVerifier>.Diagnostic(SpanToArrayAtCallSiteAnalyzer.DiagnosticId);
 
-    private static async Task Verify(string source, params DiagnosticResult[] expected)
+    private static Task Verify(string source, params DiagnosticResult[] expected) =>
+        Verify(source, ReferenceAssemblies.Net.Net80, expected);
+
+    private static async Task Verify(string source, ReferenceAssemblies referenceAssemblies, params DiagnosticResult[] expected)
     {
         CSharpAnalyzerTest<SpanToArrayAtCallSiteAnalyzer, DefaultVerifier> test = new()
         {
             TestCode = source,
-            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+            ReferenceAssemblies = referenceAssemblies,
         };
         test.ExpectedDiagnostics.AddRange(expected);
         await test.RunAsync();
