@@ -56,7 +56,7 @@ public sealed class AggregatingBlockProcessor(
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
 
-        bool rebuild = _production.ExcludeAggregated;
+        bool rebuild = _production.Excludes(suggestedBlock.Header);
         void Aggregate(Block block) => TryAggregate(block, spec, token);
         inner.TransactionsExecuted += Aggregate;
         try
@@ -66,7 +66,7 @@ public sealed class AggregatingBlockProcessor(
         finally
         {
             inner.TransactionsExecuted -= Aggregate;
-            if (rebuild) _production.ExcludeAggregated = false;
+            if (rebuild) _production.ExcludeAggregatedFor = null;
         }
     }
 
@@ -115,7 +115,7 @@ public sealed class AggregatingBlockProcessor(
             {
                 if (input is not null) proofCache.Schedule(canonical, depsHash, input);
                 Interlocked.Increment(ref Metrics.LeanRawFallbacks);
-                if (mustAggregate) NotReady();
+                if (mustAggregate) NotReady(block);
                 return;
             }
 
@@ -128,7 +128,7 @@ public sealed class AggregatingBlockProcessor(
                 // The raw proof is already valid, so a prover failure costs only the aggregation, not the block.
                 if (_logger.IsWarn) _logger.Warn($"EIP-8288 aggregation of block {block.ToString(Block.Format.Short)} failed, keeping raw witnesses: {exception.Message}");
                 Interlocked.Increment(ref Metrics.LeanRawFallbacks);
-                if (mustAggregate) NotReady();
+                if (mustAggregate) NotReady(block);
                 return;
             }
 
@@ -172,9 +172,9 @@ public sealed class AggregatingBlockProcessor(
         return best;
     }
 
-    private void NotReady()
+    private void NotReady(Block block)
     {
-        _production.ExcludeAggregated = true;
+        _production.ExcludeAggregatedFor = (block.Header.ParentHash!, block.Header.Timestamp);
         throw new AggregatedProofNotReadyException();
     }
 }

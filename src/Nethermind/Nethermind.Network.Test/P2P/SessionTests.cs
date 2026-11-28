@@ -732,6 +732,26 @@ public class SessionTests
         Assert.That(((IMessageLimitSession)session).ExceedsMessageLimit(16 + code, length), Is.EqualTo(exceeds));
     }
 
+    // eth/76 bounds announcements (0x18) and wrapper responses (0x1a, 0x1c) before decompression, and only on eth/76.
+    [TestCase(76, 0x18, Network.P2P.Subprotocols.Eth.V76.Eth76Protocol.MaxAnnouncementBytes, false)]
+    [TestCase(76, 0x18, Network.P2P.Subprotocols.Eth.V76.Eth76Protocol.MaxAnnouncementBytes + 1, true)]
+    [TestCase(76, 0x1a, Network.P2P.Subprotocols.Eth.V76.Eth76Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(76, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(74, 0x18, Network.P2P.Subprotocols.Eth.V76.Eth76Protocol.MaxAnnouncementBytes + 1, false)]
+    public void Proof_wrapper_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _packetSender);
+        session.AddProtocolHandler(BuildHandler("p2p", 16));
+        IProtocolHandler eth = BuildHandler("eth", Network.P2P.Subprotocols.Eth.V76.Eth76Protocol.MessageIdSpaceSize);
+        // Resolvers are cached by handler name, as real handlers are named per version.
+        eth.Name.Returns($"eth{version}");
+        eth.ProtocolVersion.Returns((byte)version);
+        session.AddProtocolHandler(eth);
+        Assert.That(((IMessageLimitSession)session).ExceedsMessageLimit(16 + code, length), Is.EqualTo(exceeds));
+    }
+
     [Test]
     public void Can_receive_messages()
     {

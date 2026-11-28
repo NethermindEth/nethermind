@@ -40,7 +40,7 @@ internal sealed class AggregatedTxPicker(
 
         if (blocksConfig.DependencyProofAggregation != DependencyProofAggregation.Mempool || !specProvider.GetSpec(block.Header).IsEip8288Enabled)
             return args.Set(BlockProcessor.TxAction.Skip, NotAggregating);
-        if (production.ExcludeAggregated) return args.Set(BlockProcessor.TxAction.Skip, Excluded);
+        if (production.Excludes(block.Header)) return args.Set(BlockProcessor.TxAction.Skip, Excluded);
         return proofCache.Covers(ProofWrapperCodec.AggregatedDependencies(currentTx)) ? args : args.Set(BlockProcessor.TxAction.Skip, NotCovered);
     }
 }

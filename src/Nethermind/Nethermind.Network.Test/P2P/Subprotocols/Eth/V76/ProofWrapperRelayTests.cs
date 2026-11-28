@@ -328,6 +328,29 @@ public class ProofWrapperRelayTests
         Assert.That(() => context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True.After(5000, 10));
     }
 
+    /// <summary>A wrapper whose announcement the bounded record forgot cannot be checked against it, which is no fault of
+    /// the peer: it is left to another announcer, without disconnection.</summary>
+    [Test]
+    public async Task Fetch_ForgottenAnnouncement_DoesNotBlameThePeer()
+    {
+        using Context context = new();
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+        FakePeer peer = context.Peer(wrapper);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peer.Gate = release.Task;
+        Task fetch = context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+        _ = context.Relay.OnAnnouncement(peer, Announcements(0, 4096));
+
+        release.SetResult();
+        await fetch;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Disconnected, Is.False);
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.False);
+        }
+    }
+
     [Test]
     public async Task Announcement_FromARemovedPeer_RecordsNothing()
     {

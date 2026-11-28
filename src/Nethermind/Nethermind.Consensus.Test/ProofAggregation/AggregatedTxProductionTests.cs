@@ -56,14 +56,14 @@ public class AggregatedTxProductionTests
         Transaction raw = FrameTxTestFrames.LeanSphincsTx(1, false, (TestItem.KeccakC, TestItem.KeccakD));
 
         Assert.That(() => Produce(cache, production, deadline: true, aggregated, raw), Throws.InstanceOf<AggregatedProofNotReadyException>());
-        Assert.That(production.ExcludeAggregated, Is.True, "the rebuild leaves the aggregated transaction out");
+        Assert.That(production.ExcludeAggregatedFor, Is.Not.Null, "the rebuild leaves the aggregated transaction out");
         Assert.That(() => !cache.IsScheduled && verifier.ProofCalls > 1, Is.True.After(5000, 10));
 
         Block produced = Produce(cache, production, deadline: true, aggregated, raw);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(production.ExcludeAggregated, Is.False);
+            Assert.That(production.ExcludeAggregatedFor, Is.Null);
             Assert.That(produced.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated));
         }
     }
@@ -79,11 +79,12 @@ public class AggregatedTxProductionTests
         Assert.That(() => Produce(cache, new AggregatedTxProduction(), deadline: false, aggregated), Throws.InstanceOf<AggregatedProofNotReadyException>());
     }
 
-    public enum Case { Covered, NotCovered, Excluded, NotMempoolMode, Raw }
+    public enum Case { Covered, NotCovered, Excluded, ExcludedOtherBlock, NotMempoolMode, Raw }
 
     [TestCase(Case.Covered, BlockProcessor.TxAction.Add)]
     [TestCase(Case.NotCovered, BlockProcessor.TxAction.Skip)]
     [TestCase(Case.Excluded, BlockProcessor.TxAction.Skip)]
+    [TestCase(Case.ExcludedOtherBlock, BlockProcessor.TxAction.Add)]
     [TestCase(Case.NotMempoolMode, BlockProcessor.TxAction.Skip)]
     [TestCase(Case.Raw, BlockProcessor.TxAction.Add)]
     public void Picker_PicksAnAggregatedTxOnlyWhenAProofCoversIt(Case @case, BlockProcessor.TxAction expected)
@@ -99,7 +100,15 @@ public class AggregatedTxProductionTests
             .ReturnsForAnyArgs(new BlockProcessor.AddingTxEventArgs(0, tx, block, []));
         AggregatedTxPicker picker = new(inner, new TestSingleReleaseSpecProvider(Spec),
             new BlocksConfig { DependencyProofAggregation = @case == Case.NotMempoolMode ? DependencyProofAggregation.BuilderOnly : DependencyProofAggregation.Mempool },
-            cache, new AggregatedTxProduction { ExcludeAggregated = @case == Case.Excluded });
+            cache, new AggregatedTxProduction
+            {
+                ExcludeAggregatedFor = @case switch
+                {
+                    Case.Excluded => (block.Header.ParentHash!, block.Header.Timestamp),
+                    Case.ExcludedOtherBlock => (block.Header.ParentHash!, block.Header.Timestamp + 1),
+                    _ => null,
+                }
+            });
 
         BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
 

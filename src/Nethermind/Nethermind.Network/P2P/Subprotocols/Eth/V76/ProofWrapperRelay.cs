@@ -43,6 +43,9 @@ public sealed class ProofWrapperRelay : IDisposable
 
     private const int MaxHeldWrappers = 256;
     private const long MaxHeldBytes = 64 * 1024 * 1024;
+
+    // The held wrappers' proofs stay remembered for block building, so they must fit the statement cache together.
+    private const long MaxHeldProofBytes = DependencyProofCache.MaxStatementBytes / 2;
     private const int MaxProducedTransactions = 256;
     private const int PeerRecordCapacity = 4096;
     private const int PeerTransactionCapacity = 16384;
@@ -81,6 +84,7 @@ public sealed class ProofWrapperRelay : IDisposable
     private readonly Dictionary<(ValueHash256 Deps, ValueHash256 Txs), int> _heldDigests = [];
     private readonly Dictionary<ValueHash256, int> _coveredTxs = [];
     private long _heldBytes;
+    private long _heldProofBytes;
 
     private readonly Dictionary<ValueHash256, Fetch> _fetches = [];
     private readonly LruKeyCache<ValueHash256> _discarded = new(PeerRecordCapacity, "discarded proof wrappers");
@@ -493,7 +497,8 @@ public sealed class ProofWrapperRelay : IDisposable
     private void Receive(IProofWrapperPeer peer, PeerState state, ServedWrapper served, bool compact,
         Dictionary<ValueHash256, ValueHash256[]>? manifests, List<ValueHash256>? retryFull)
     {
-        state.Announced.TryGet(served.Hash, out WrapperAnnouncement announcement);
+        // An announcement the bounded record forgot cannot be checked, so the wrapper is left to another announcer.
+        if (!state.Announced.TryGet(served.Hash, out WrapperAnnouncement announcement)) return;
         ProofWrapperCodec.Verdict verdict = ProofWrapperCodec.TryDecode(served.Item, compact ? ResolveEncoding : null, announcement.Length,
             out ProofWrapper? wrapper, out string? error, out ValueHash256 canonicalHash);
         switch (verdict)
@@ -574,6 +579,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
             _held[wrapper.Hash.ValueHash256] = _heldOrder.AddLast(wrapper);
             _heldBytes += wrapper.Length;
+            _heldProofBytes += wrapper.Proof.Length;
             _heldDigests[(wrapper.DepsHash, wrapper.TxsHash)] = _heldDigests.GetValueOrDefault((wrapper.DepsHash, wrapper.TxsHash)) + 1;
             foreach (Hash256 txHash in wrapper.Manifest)
             {
@@ -585,7 +591,7 @@ public sealed class ProofWrapperRelay : IDisposable
                 _encodings.Set(ProofWrapperCodec.EncodingHash(wrapper.EncodedTransactions[i]), wrapper.EncodedTransactions[i]);
             }
 
-            while (_heldOrder.Count > MaxHeldWrappers || _heldBytes > MaxHeldBytes) Release(_heldOrder.First!.Value);
+            while (_heldOrder.Count > MaxHeldWrappers || _heldBytes > MaxHeldBytes || _heldProofBytes > MaxHeldProofBytes) Release(_heldOrder.First!.Value);
             return _held.ContainsKey(wrapper.Hash.ValueHash256);
         }
     }
@@ -596,6 +602,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
         _heldOrder.Remove(node);
         _heldBytes -= wrapper.Length;
+        _heldProofBytes -= wrapper.Proof.Length;
         foreach (byte[] encoding in wrapper.EncodedTransactions) _encodings.Remove(ProofWrapperCodec.EncodingHash(encoding));
         Decrement(_heldDigests, (wrapper.DepsHash, wrapper.TxsHash));
         foreach (Hash256 txHash in wrapper.Manifest) Decrement(_coveredTxs, txHash.ValueHash256);
@@ -832,8 +839,10 @@ public sealed class ProofWrapperRelay : IDisposable
 
         List<AggregatedDependency> canonical = Eip8288Dependencies.Canonicalize([.. witnessedDeps, .. unwitnessed]);
         List<RecursiveProofInput> covering = [];
-        if (unwitnessed.Count != 0 && _proofCache.Covering(unwitnessed) is { } statements)
+        if (unwitnessed.Count != 0)
         {
+            // The statements covering them may have been evicted since they were chosen; the next round retries.
+            if (_proofCache.Covering(unwitnessed) is not { } statements) return null;
             foreach (DependencyProofCache.Statement statement in statements) covering.Add(new RecursiveProofInput(statement.Deps, statement.Proof));
         }
 

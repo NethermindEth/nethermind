@@ -20,7 +20,10 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
     private const int MaxVerified = 256;
     // Proof wrappers and received blocks share the statements with this builder's own, so they are bounded by bytes first.
     private const int MaxStatements = 256;
-    private const long MaxStatementBytes = 32 * 1024 * 1024;
+    /// <summary>The proof bytes of the statements held.</summary>
+    /// <remarks>Mempool aggregation keeps the proofs of its held wrappers within half of it, so that they do not evict one
+    /// another, while builds and received blocks share the rest.</remarks>
+    public const long MaxStatementBytes = 96 * 1024 * 1024;
 
     private readonly ILogger _logger = logManager.GetClassLogger<DependencyProofCache>();
     private readonly Lock _cacheLock = new();

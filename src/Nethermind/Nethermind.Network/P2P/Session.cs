@@ -288,15 +288,22 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this:hide}");
         }
 
-        /// <remarks>Caps <c>eth/74</c> DependencyProofs and the <c>eth/76</c> proof wrapper messages; data within the smallest
-        /// cap needs no protocol lookup.</remarks>
+        /// <remarks>Caps <c>eth/74</c> DependencyProofs and the <c>eth/76</c> proof wrapper messages; data within the session's
+        /// smallest cap needs no route lookup.</remarks>
         bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
         {
-            if (uncompressedLength <= Subprotocols.Eth.V76.Eth76Protocol.MaxAnnouncementBytes || _routes is not { } routes) return false;
+            if (uncompressedLength <= Subprotocols.Eth.V76.Eth76Protocol.MaxAnnouncementBytes || _routes is not { } routes
+                || !_protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth) || eth.ProtocolVersion < EthVersions.Eth74)
+            {
+                return false;
+            }
+
+            bool eth76 = eth.ProtocolVersion >= EthVersions.Eth76;
+            if (!eth76 && uncompressedLength <= Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes) return false;
             (string? protocol, int messageId) = routes.Resolver.ResolveProtocol(adaptivePacketType);
-            if (protocol != Protocol.Eth || !_protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)) return false;
-            return (eth.ProtocolVersion >= EthVersions.Eth74 && Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength))
-                || (eth.ProtocolVersion >= EthVersions.Eth76 && Subprotocols.Eth.V76.Eth76Protocol.ExceedsMessageLimit(messageId, uncompressedLength));
+            return protocol == Protocol.Eth
+                && (Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength)
+                    || (eth76 && Subprotocols.Eth.V76.Eth76Protocol.ExceedsMessageLimit(messageId, uncompressedLength)));
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);
