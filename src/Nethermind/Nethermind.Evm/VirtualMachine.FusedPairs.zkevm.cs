@@ -105,8 +105,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             paired = GC.AllocateUninitializedArray<nint>(length, pinned: true);
             paired.AsSpan(0, FollowerHandlersLength).Fill(handlers[(int)Instruction.PUSH1]);
             ReadOnlySpan<nint> byOpcode = RawCalliHelper.CachesHandlers ? RawCalliHelper.TagResolved(handlers) : handlers;
-            for (int block = FollowerHandlersLength; block < paired.Length; block += byte.MaxValue + 1)
-                byOpcode.CopyTo(paired.AsSpan(block));
+            byOpcode.CopyTo(paired.AsSpan(FollowerHandlersLength));
+            // Each copy doubles the blocks filled: few long copies, which a zkVM's memcpy moves a block at a time.
+            for (int filled = byte.MaxValue + 1; filled < PairedHandlersLength; filled *= 2)
+                paired.AsSpan(FollowerHandlersLength, filled).CopyTo(paired.AsSpan(FollowerHandlersLength + filled));
         }
 
         RawCalliHelper.ConfigurePairs(handlers, paired);
