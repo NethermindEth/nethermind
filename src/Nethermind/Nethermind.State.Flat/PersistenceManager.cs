@@ -173,6 +173,10 @@ public class PersistenceManager(
         // Seed from the committed head so the forced persist follows the canonical chain rather than an
         // arbitrary/longest fork (which RemoveSiblingAndDescendents would then orphan); fall back to the
         // longest chain, then the latest state, only when nothing was committed this session.
+        // The strict `>` fires one block past the backstop and FindSnapshotToPersist advances the base by
+        // up to CompactSize, so the retained reconstructable depth dips to ~_backstopReorgDepth - CompactSize
+        // right after a forced persist. That ~CompactSize (default 32) slack is within EIP-8252 tolerance:
+        // the window is the inactivity-leak upper bound on non-finality, not an exact retention target.
         if (!held && snapshotsDepth > _backstopReorgDepth)
         {
             (PersistedSnapshot? persisted, Snapshot? inMemory) =

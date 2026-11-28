@@ -762,6 +762,48 @@ public class PersistenceManagerTests
         toPersist?.Dispose();
     }
 
+    // EIP-8252: under the default long-finality config the force-persist backstop depth IS the
+    // REORG_RETENTION_WINDOW. MinReorgDepth + CompactSize (128 + 32) stays far below it, so the effective
+    // backstop is the window itself (the strict `>` in DetermineSnapshotAction): a depth equal to the
+    // window does not force-persist, one block past it does.
+    [TestCase(0UL, false, TestName = "DetermineSnapshotAction_BackstopAtRetentionWindow_AtWindow_NoForce")]
+    [TestCase(1UL, true, TestName = "DetermineSnapshotAction_BackstopAtRetentionWindow_PastWindow_Forces")]
+    public void DetermineSnapshotAction_BackstopUsesReorgRetentionWindow(ulong pastWindow, bool expectForcedPersist)
+    {
+        FlatDbConfig config = new()
+        {
+            CompactSize = 32,
+            MinReorgDepth = 128,
+            MaxReorgDepth = 256,
+            LongFinalityMaxReorgDepth = FlatDbConfig.ReorgRetentionWindow,
+            EnableLongFinality = true,
+            MaxInMemoryBaseSnapshotCount = 160,
+        };
+        using PersistenceManager pm = new(
+            config,
+            ScheduleHelper.CreateWithOffset(config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        // Finalized far below the next boundary so only the backstop (not the finalized trigger) can fire;
+        // a registered base at tierTip gives FindSnapshotToPersist a candidate to return.
+        StateId tierTip = CreateStateId(config.CompactSize);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        // The persisted base sits at Block0, so snapshotsDepth == the latest block number.
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(FlatDbConfig.ReorgRetentionWindow + pastWindow));
+
+        Assert.That(toPersist is not null, Is.EqualTo(expectForcedPersist));
+        toPersist?.Dispose();
+    }
+
     [TestCase(0UL, 40UL, false, TestName = "DetermineSnapshotAction_ByteBudgetDisabled_FinalizedBelowFloor_ReturnsNull")]
     [TestCase(1UL, 40UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedBelowFloor_ReturnsNull")]
     [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedOneBelowFloor_ReturnsNull")]
