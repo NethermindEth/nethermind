@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,7 +23,8 @@ internal sealed class FakeLeanProofVerifier : ILeanProofVerifier
     /// <summary>Fails verification instead of reaching a verdict, as a native fault does.</summary>
     public bool Fault { get; set; }
     public int ProofCalls => Volatile.Read(ref _proofCalls);
-    public int LargestRawInput { get; private set; }
+    /// <summary>Every input proven, in call order.</summary>
+    public List<AggregationInput> ProvingInputs { get; } = [];
     public ManualResetEventSlim? ProvingGate { get; set; }
 
     public void EnsureAvailable() { }
@@ -37,7 +39,7 @@ internal sealed class FakeLeanProofVerifier : ILeanProofVerifier
         if (Fault) throw new InvalidOperationException("native fault");
         ProvingGate?.Wait();
         Interlocked.Increment(ref _proofCalls);
-        LargestRawInput = Math.Max(LargestRawInput, input.Deps.Count);
+        lock (ProvingInputs) ProvingInputs.Add(input);
         return ProofOf(depsHash);
     }
 

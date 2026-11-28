@@ -15,14 +15,23 @@ public static class DependencyProofAggregator
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
 
-    /// <summary>Recursive inputs folded per step: the pinned guest folds two at a time, so wider sets fold over a binary tree.</summary>
-    private const int MaxRecursiveChildren = 2;
+    /// <summary>Recursive inputs a call proving direct witnesses also folds.</summary>
+    /// <remarks>A wide merge shares no call with a direct leaf, so the peak stays that of the larger of the two.</remarks>
+    private const int MaxLeafRecursiveChildren = 2;
 
-    /// <summary>Signatures folded into one direct leaf, so one native call.</summary>
-    /// <remarks>A recursive merge costs about nine signatures, so fewer, wider leaves cost less than more, narrower ones; on the
-    /// pinned backend sixteen signatures take about as long as one merge, which keeps the longest single native call, and so
-    /// the longest wait for the proving gate, at about one merge.</remarks>
-    internal const int DirectBatchSize = 16;
+    /// <summary>Recursive inputs one merge folds together.</summary>
+    /// <remarks>The pinned guest takes up to <see cref="Eip8288Constants.MaxRecursiveInputsPerStep"/>. Merging sixteen proofs of
+    /// sixteen signatures on 8 arm64 vCPUs took 5.7 s pairwise (15 calls), 3.4 s four at a time, 3.0 s eight at a time and
+    /// 2.6 s sixteen at once, while the prover's peak memory, which its allocator keeps for the life of the process, rose from
+    /// 1.2 to 2.3, 3.4 and 4.9 GiB. Eight takes most of that gain at about the 3.1 GiB a full <see cref="MaxLeafSignatures"/>
+    /// leaf already needs.</remarks>
+    internal const int FanIn = 8;
+
+    /// <summary>Signatures one direct leaf takes at most: the native step bound.</summary>
+    /// <remarks>The builder proves its own statement, so no other prover waits behind its longest call. Its signatures are
+    /// split into the fewest equal leaves within this bound: on 8 arm64 vCPUs 200 signatures took 1.2 s in one call where 13
+    /// leaves of 16 and their merges took 6.3 s, and 500 took 3.1 s in three calls against 16.4 s in 63.</remarks>
+    internal const int MaxLeafSignatures = Eip8288Constants.MaxRawWitnessesPerStep;
 
     // Relative native proving costs that rank alternative inputs: on the pinned backend a merge of two proofs takes about as
     // long as a leaf of sixteen signatures, so a merge costs well over nine signatures.
@@ -30,11 +39,13 @@ public static class DependencyProofAggregator
     internal const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
-    /// <remarks>Only ranks alternative inputs for the same statement.</remarks>
+    /// <remarks>Signatures fold <see cref="MaxLeafSignatures"/> to a leaf and every node beyond the first needs a merge;
+    /// <see cref="FanIn"/>-way merges are counted as pairwise ones, which over-states them but only ranks alternative inputs
+    /// for the same statement.</remarks>
     public static long EstimatedCost(AggregationInput input)
     {
         int signatures = input.Deps.Count;
-        long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + input.RecursiveProofs.Count;
+        long nodes = (signatures + MaxLeafSignatures - 1) / MaxLeafSignatures + input.RecursiveProofs.Count;
         long calls = Math.Max(0, nodes - 1);
         if (input.Discards.Count != 0) calls = Math.Max(calls, 1);
         return (long)signatures * SignatureCost + calls * MergeCost;
@@ -99,7 +110,7 @@ public static class DependencyProofAggregator
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
 
-        if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
+        if (input.RecursiveProofs.Count <= (input.Deps.Count == 0 ? FanIn : MaxLeafRecursiveChildren) && input.Deps.Count <= MaxLeafSignatures
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
@@ -122,6 +133,9 @@ public static class DependencyProofAggregator
             else if (!removed.IsSupersetOf(child.InnerDeps)) children.Add(ProveChild(new() { RecursiveProofs = [child] }, child.InnerDeps));
         }
 
+        // The fewest equal leaves within the native bound.
+        int leaves = Math.Max(1, (input.Deps.Count + MaxLeafSignatures - 1) / MaxLeafSignatures);
+        int leafSize = Math.Max(1, (input.Deps.Count + leaves - 1) / leaves);
         for (int offset = 0; offset < input.Deps.Count;)
         {
             List<AggregatedDependency> deps = [];
@@ -131,7 +145,7 @@ public static class DependencyProofAggregator
             {
                 ReadOnlyMemory<byte> witness = input.Witnesses[offset];
                 long entrySize = Eip8288Constants.DependencyTripleLength + 4L + witness.Length;
-                if (deps.Count > 0 && (bytes + entrySize > MaxProductionWitnessBytes || deps.Count >= DirectBatchSize)) break;
+                if (deps.Count > 0 && (bytes + entrySize > MaxProductionWitnessBytes || deps.Count >= leafSize)) break;
                 deps.Add(input.Deps[offset]);
                 witnesses.Add(witness);
                 bytes += entrySize;
@@ -141,7 +155,7 @@ public static class DependencyProofAggregator
             children.Add(ProveChild(new() { Deps = deps, Witnesses = witnesses }, deps));
         }
 
-        while (children.Count > MaxRecursiveChildren || InputSize(new() { RecursiveProofs = children }) > Eip8288Constants.MaxAggregationInputBytes)
+        while (children.Count > FanIn || InputSize(new() { RecursiveProofs = children }) > Eip8288Constants.MaxAggregationInputBytes)
         {
             List<RecursiveProofInput> next = [];
             for (int offset = 0; offset < children.Count;)
@@ -158,7 +172,7 @@ public static class DependencyProofAggregator
                     deps.AddRange(child.InnerDeps);
                     bytes += entrySize;
                     offset++;
-                } while (offset < children.Count && batch.Count < MaxRecursiveChildren);
+                } while (offset < children.Count && batch.Count < FanIn);
 
                 next.Add(batch.Count == 1 ? batch[0] : ProveChild(new() { RecursiveProofs = batch }, deps));
             }

@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
@@ -181,27 +182,47 @@ public class AggregatedDependencyProofTests
         Assert.That(produced.DependencyProof, Is.EqualTo(raw));
     }
 
-    [Test]
-    public void Prove_FoldsMoreWitnessesThanOneLeafTakes()
+    /// <summary>Signatures fold in the fewest equal leaves within the native bound, and recursive inputs merge
+    /// <see cref="DependencyProofAggregator.FanIn"/> at a time in calls of their own.</summary>
+    [TestCase(1, 0, new[] { 1 })]
+    [TestCase(16, 0, new[] { 16 })]
+    [TestCase(256, 0, new[] { 256 })]
+    [TestCase(257, 0, new[] { 129, 128 })]
+    [TestCase(500, 0, new[] { 250, 250 })]
+    [TestCase(500, 3, new[] { 250, 250 })]
+    [TestCase(17, 9, new[] { 17 })]
+    [TestCase(20, 5, new[] { 20 })]
+    public void Prove_FoldsSignaturesInTheFewestEqualLeaves(int signatures, int recursive, int[] leaves)
     {
         FakeLeanProofVerifier verifier = new();
         List<AggregatedDependency> deps = [];
         List<ReadOnlyMemory<byte>> witnesses = [];
-        for (int i = 0; i < 3 * DependencyProofAggregator.DirectBatchSize + 1; i++)
+        for (int i = 0; i < signatures; i++)
         {
-            deps.Add(new AggregatedDependency(Keccak.Compute([(byte)i]).ValueHash256, TestItem.KeccakA.ValueHash256));
+            deps.Add(Eip8288Dependencies.Map(TestItem.KeccakA.ValueHash256, Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256));
             witnesses.Add(new byte[Eip8288Constants.LeanSphincsWitnessBytes]);
         }
 
-        List<AggregatedDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(canonical);
-        byte[] proof = DependencyProofAggregator.Prove(DependencyProofAggregator.Combine(deps, witnesses, canonical), verifier, depsHash);
+        List<RecursiveProofInput> children = [];
+        for (int i = 0; i < recursive; i++)
+        {
+            List<AggregatedDependency> inner = [Eip8288Dependencies.Map(TestItem.KeccakB.ValueHash256, Keccak.Compute(BitConverter.GetBytes(-1 - i)).ValueHash256)];
+            children.Add(new RecursiveProofInput(inner, verifier.ProveDependencyProof(Eip8288Dependencies.ComputeDepsHash(inner), Eip8288Constants.AggregatedVk, new AggregationInput())));
+        }
+
+        verifier.ProvingInputs.Clear();
+        List<AggregatedDependency> all = [.. deps];
+        foreach (RecursiveProofInput child in children) all.AddRange(child.InnerDeps);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize(all));
+        byte[] proof = DependencyProofAggregator.Prove(new AggregationInput { Deps = deps, Witnesses = witnesses, RecursiveProofs = children }, verifier, depsHash);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.VerifyDependencyProof(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
-            Assert.That(verifier.LargestRawInput, Is.LessThanOrEqualTo(DependencyProofAggregator.DirectBatchSize));
-            Assert.That(verifier.ProofCalls, Is.GreaterThan(4), "four leaves and the merges above them");
+            Assert.That(verifier.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.Deps.Count), Is.EqualTo(leaves));
+            Assert.That(verifier.ProvingInputs.Select(static i => i.RecursiveProofs.Count), Has.All.LessThanOrEqualTo(DependencyProofAggregator.FanIn));
+            Assert.That(verifier.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.RecursiveProofs.Count),
+                Has.All.LessThanOrEqualTo(2), "a leaf never shares a call with a wide merge");
         }
     }
 
