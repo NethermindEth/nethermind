@@ -99,7 +99,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 // As in Geth, overrides are validated before the call's fee fields.
-                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, GetSpec(_blockOverride?.ApplyTo(header) ?? header))) is { } overrideError)
+                if (BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) is { } blockOverrideError)
+                    return ResultWrapper<TResult>.Fail(blockOverrideError, ErrorCodes.InvalidParams);
+                if (StateOverrideValidation.GetError(stateOverride, GetSpec(_blockOverride?.ApplyTo(header) ?? header)) is { } overrideError)
                     return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
 
                 Result<Transaction> prepareResult = Prepare(transactionCall, header);

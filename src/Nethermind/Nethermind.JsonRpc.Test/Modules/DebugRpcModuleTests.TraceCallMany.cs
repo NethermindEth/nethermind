@@ -445,7 +445,12 @@ public partial class DebugRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ErrorCode, Is.EqualTo(expectedError is null ? 0 : ErrorCodes.InvalidInput));
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedError switch
+            {
+                null => 0,
+                BlockOverride.BeaconRootNotSupported or BlockOverride.WithdrawalsNotSupported => ErrorCodes.InvalidParams,
+                _ => ErrorCodes.InvalidInput
+            }));
             Assert.That(result.Result.Error, Is.EqualTo(expectedError));
             Assert.That(result.Data?.Select(static r => r.Select(static t => t.Failed).ToArray()).ToArray(), Is.EqualTo(expectedError is null ? new[] { new[] { false }, new[] { false } } : null));
         }
@@ -456,10 +461,10 @@ public partial class DebugRpcModuleTests
         static Withdrawal[] Withdrawals() => [new Withdrawal { Address = TestItem.AddressC, AmountInGwei = 1 }];
         (string Name, BlockOverride Bundle, BlockOverride? Options, ulong? Block, string? Error, int Code)[] cases =
         [
-            ("empty_withdrawals", new() { Withdrawals = [] }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
-            ("withdrawals", new() { Withdrawals = Withdrawals() }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
-            ("bundle_beaconRoot_and_withdrawals", new() { BeaconRoot = Keccak.Zero, Withdrawals = [] }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
-            ("options_beaconRoot_comes_before_bundle_withdrawals", new() { Withdrawals = [] }, new() { BeaconRoot = Keccak.Zero }, null, BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
+            ("empty_withdrawals", new() { Withdrawals = [] }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("withdrawals", new() { Withdrawals = Withdrawals() }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("bundle_beaconRoot_and_withdrawals", new() { BeaconRoot = Keccak.Zero, Withdrawals = [] }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("options_beaconRoot_comes_before_bundle_withdrawals", new() { Withdrawals = [] }, new() { BeaconRoot = Keccak.Zero }, null, BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidParams),
             ("unknown_block_comes_before_bundle_withdrawals", new() { Withdrawals = Withdrawals() }, null, 1000, "header not found", ErrorCodes.ResourceNotFound),
             ("no_withdrawals", new() { GasLimit = 50_000_000 }, null, null, null, 0),
             ("bundle_beaconRoot", new() { BeaconRoot = Keccak.Zero }, null, null, null, 0),
@@ -468,7 +473,7 @@ public partial class DebugRpcModuleTests
             yield return new TestCaseData(bundle, options, block, error, code).SetName($"{{m}}({name})");
     }
 
-    // As in debug_traceCall, an unsupported override is an invalid input reported after the block and its state resolve.
+    // As in debug_traceCall, an unsupported override is an invalid params error reported after the block and its state resolve.
     [TestCaseSource(nameof(TraceCallManyBundleBlockOverrideCases))]
     public async Task Debug_traceCallMany_validates_bundle_block_overrides(BlockOverride bundleOverride, BlockOverride? optionsOverride, ulong? block, string? expectedError, int expectedCode)
     {

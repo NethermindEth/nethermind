@@ -206,7 +206,7 @@ public partial class EthRpcModuleTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(expectedMessage is BlockOverride.BeaconRootNotSupported or BlockOverride.WithdrawalsNotSupported ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput), response);
             Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(expectedMessage), response);
         }
     }
