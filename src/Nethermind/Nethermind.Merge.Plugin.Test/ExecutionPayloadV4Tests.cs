@@ -14,7 +14,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -286,6 +289,16 @@ public class ExecutionPayloadV4Tests
             Assert.That(payloadV5.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V7),
                 Is.EqualTo(accepted == EngineApiVersions.NewPayload.V7));
         }
+    }
+
+    // Only ExecutionPayloadV5 carries the dependency proof, so newPayloadV4 refuses a frame fork without Amsterdam too.
+    [Test]
+    public void NewPayloadV4_refuses_a_frame_fork_without_Amsterdam()
+    {
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(Osaka.Instance) { IsEip8141Enabled = true });
+        ExecutionPayloadV3 payload = new() { BlockNumber = 1, Timestamp = 15 };
+
+        Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V4), Is.False);
     }
 
     [TestCase(typeof(ExecutionPayloadV4), null, null)]
