@@ -315,7 +315,7 @@ public sealed class ProofWrapperRelay : IDisposable
                     }
                     else
                     {
-                        if (state.Budget.Requests >= MaxRequestsPerPeer || _requests >= MaxRequests) continue;
+                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, state.Budget.Requests, MaxRequests)) continue;
                         state.Budget.Requests++;
                         _requests++;
                         batch = [];
@@ -428,6 +428,12 @@ public sealed class ProofWrapperRelay : IDisposable
         if (++budget.Failures == MaxFailuresPerPeer) DropAnnouncer(peer);
     }
 
+    /// <summary>Whether a node may take one more of a globally capped resource: below the cap anyone may, and at it a node
+    /// without failures still may within its fair share, so that many nodes together cannot shut out an honest one.</summary>
+    /// <remarks>Called under <see cref="_lock"/>.</remarks>
+    private bool WithinGlobalCap(NodeBudget budget, int used, int usedByNode, int cap) =>
+        used < cap || (budget.Failures == 0 && usedByNode < cap / Math.Max(1, _peers.Count));
+
     /// <summary>Takes one verification from <paramref name="budget"/>'s window, and from the global one.</summary>
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
     private bool TryTakeVerification(NodeBudget budget)
@@ -435,7 +441,8 @@ public sealed class ProofWrapperRelay : IDisposable
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         budget.Roll(now);
         _global.Roll(now);
-        if (budget.Verifications >= MaxVerificationsPerNode || _global.Verifications >= MaxVerifications) return false;
+        if (budget.Verifications >= MaxVerificationsPerNode
+            || !WithinGlobalCap(budget, _global.Verifications, budget.Verifications, MaxVerifications)) return false;
         budget.Verifications++;
         _global.Verifications++;
         return true;

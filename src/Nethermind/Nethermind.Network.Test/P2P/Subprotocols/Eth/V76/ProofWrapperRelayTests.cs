@@ -404,7 +404,28 @@ public class ProofWrapperRelayTests
             for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(peer, [Announcement(context.Wrapper(Tx((ulong)(p * 10 + i), TestItem.KeccakA)))]);
         }
 
-        Assert.That(peers.Sum(peer => peer.Requests), Is.EqualTo(64));
+        // The last node arrives at the cap and still gets its fair share of it.
+        Assert.That(peers.Sum(peer => peer.Requests), Is.EqualTo(64 + 64 / 17));
+    }
+
+    /// <summary>At the global cap, a node without failures still gets its fair share, so many nodes cannot shut it out.</summary>
+    [Test]
+    public void Requests_AtTheGlobalCap_StillServeANodeWithinItsFairShare()
+    {
+        using Context context = new();
+        Task gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        for (int p = 0; p < 16; p++)
+        {
+            FakePeer flooder = context.Peer();
+            flooder.Gate = gate;
+            for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(flooder, [Announcement(context.Wrapper(Tx((ulong)(p * 10 + i), TestItem.KeccakA)))]);
+        }
+
+        FakePeer honest = context.Peer();
+        honest.Gate = gate;
+        _ = context.Relay.OnAnnouncement(honest, [Announcement(context.Wrapper(Tx(500, TestItem.KeccakA)))]);
+
+        Assert.That(honest.Requests, Is.EqualTo(1));
     }
 
     /// <summary>Proofs not verified before take from the sender's verification budget; a proof verified before is free.</summary>
