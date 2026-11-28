@@ -13,7 +13,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
-// The native cache holds 512k entries by default or 32k in compact hosts. Everything is aligned both to
+// The native cache holds 512k entries by default, 32k in compact hosts, or 64k to 64M as NETHERMIND_KECCAK_CACHE_BITS sets. Everything is aligned both to
 // cache lines and to its own boundaries, so there are no misaligned or torn reads. Reads are
 // lock-free through a seqlock — read the sequence, speculatively read the entry, then verify the
 // sequence has not moved — and a write takes a single CAS to lock plus a Volatile.Write to unlock.
@@ -28,6 +28,13 @@ public static unsafe partial class KeccakCache
     internal static nuint Count => BucketMask + 1;
 
     internal const string CompactCacheSwitch = "Nethermind.Core.KeccakCache.Compact";
+
+    /// <summary>
+    /// The bucket index width, 16 to 26 bits, of a host cache that is not compact, in place of the default 19: a node whose
+    /// calls hash a large working set, such as DEX quoting over many pools and ticks, gains from a larger cache. Read from
+    /// the environment because the cache is static and sized before any configuration is.
+    /// </summary>
+    internal const string BitsVariable = "NETHERMIND_KECCAK_CACHE_BITS";
     private const uint DefaultBucketMask = (1u << 19) - 1;
     private const uint CompactBucketMask = (1u << 15) - 1;
     // The hash tag must stay outside the length and sequence fields at either capacity.
@@ -48,7 +55,9 @@ public static unsafe partial class KeccakCache
     {
         BucketMask = AppContext.TryGetSwitch(CompactCacheSwitch, out bool compact) && compact
             ? CompactBucketMask
-            : DefaultBucketMask;
+            : int.TryParse(Environment.GetEnvironmentVariable(BitsVariable), out int bits) && bits is >= 16 and <= 26
+                ? (1u << bits) - 1
+                : DefaultBucketMask;
         nuint size = Count * Entry.Size;
 
         // Aligned, so that no torn reads if fields of Entry are properly aligned.

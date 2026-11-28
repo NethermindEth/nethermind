@@ -21,14 +21,14 @@ namespace Nethermind.Core.Test
     {
         [Test]
         [CancelAfter(60_000)]
-        public async Task Native_cache_preserves_hashes_at_both_capacities(CancellationToken token)
+        public async Task Native_cache_preserves_hashes_at_each_capacity(CancellationToken token)
         {
             const string ChildMode = "NETHERMIND_KECCAK_CACHE_TEST";
             string? mode = Environment.GetEnvironmentVariable(ChildMode);
-            if (mode is "default" or "compact")
+            if (mode is "default" or "compact" or "bits17")
             {
                 bool compact = mode == "compact";
-                AssertNativeCache(compact ? 1 << 15 : 1 << 19);
+                AssertNativeCache(compact ? 1 << 15 : mode == "bits17" ? 1 << 17 : 1 << 19);
                 if (compact) AssertBucketCollisions();
                 return;
             }
@@ -52,12 +52,14 @@ namespace Nethermind.Core.Test
             start.ArgumentList.Add(runtimeConfig);
             start.ArgumentList.Add(assembly);
             start.ArgumentList.Add("--filter");
-            start.ArgumentList.Add($"FullyQualifiedName~{nameof(Native_cache_preserves_hashes_at_both_capacities)}");
+            start.ArgumentList.Add($"FullyQualifiedName~{nameof(Native_cache_preserves_hashes_at_each_capacity)}");
             try
             {
-                foreach (string variant in new[] { "default", "compact" })
+                foreach (string variant in new[] { "default", "compact", "bits17" })
                 {
                     properties[KeccakCache.CompactCacheSwitch] = variant == "compact";
+                    if (variant == "bits17") start.Environment[KeccakCache.BitsVariable] = "17";
+                    else start.Environment.Remove(KeccakCache.BitsVariable);
                     await File.WriteAllTextAsync(runtimeConfig, config.ToJsonString(), token);
                     start.Environment[ChildMode] = variant;
                     using Process child = Process.Start(start)!;
