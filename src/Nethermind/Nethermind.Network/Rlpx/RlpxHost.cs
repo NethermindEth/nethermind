@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,11 +21,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -34,7 +30,7 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxHost : IRlpxHost, ISessionActivityObserver, IStoppableService
+    public class RlpxHost : IRlpxHost, IStoppableService
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup? _bossGroup;
@@ -54,12 +50,10 @@ namespace Nethermind.Network.Rlpx
         private readonly IChannelFactory? _channelFactory;
         private readonly Func<IChannel> _createClientChannel;
         private readonly Action<Task<IChannel>, object?> _disconnectConnectedChannel;
-        private readonly Action<Task, object?> _onChannelCloseCompleted;
-        private readonly Action<Task, object?> _markDisconnectedAfterCloseDelay;
-        private readonly NodeFilter _nodeFilter;
-        private readonly IPrivilegedIpProvider _privilegedIpProvider;
+        private readonly Func<Node, CancellationToken, Task<bool>> _tryConnect;
+        private readonly RlpxDialPolicy _dialPolicy;
+        private readonly RlpxSessionTracker _sessions;
         private readonly NetworkListenerState _listenerState;
-        private readonly ConcurrentDictionary<Guid, Session> _trackedSessions = new();
         private readonly ConcurrentDictionary<IChannel, byte> _activeChannels = new();
         private readonly Lock _activeChannelsLock = new();
         private bool _closingActiveChannels;
@@ -113,18 +107,16 @@ namespace Nethermind.Network.Rlpx
             _channelFactory = channelFactory;
             _createClientChannel = CreateClientChannel;
             _disconnectConnectedChannel = DisconnectConnectedChannel;
-            _onChannelCloseCompleted = OnChannelCloseCompleted;
-            _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
+            _tryConnect = TryConnect;
             _untrackChannel = UntrackChannel;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            _privilegedIpProvider = privilegedIpProvider;
-            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
+            NodeFilter nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
+            _dialPolicy = new RlpxDialPolicy(nodeFilter, privilegedIpProvider, _logger);
+            _sessions = new RlpxSessionTracker(this, sessionMonitor, _dialPolicy, _logger, () => _shutdownCts?.Token ?? CancellationToken.None);
         }
 
-        // Privileged addresses (static and trusted nodes) bypass the recent-IP filter so they can always connect.
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
-            => _privilegedIpProvider.IsPrivileged(ip) || _nodeFilter.TryAccept(ip, exactOnly);
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _dialPolicy.ShouldContact(ip, exactOnly);
 
         public async Task Init()
         {
@@ -161,19 +153,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private async Task<IChannel> BindListenerAsync()
-        {
-            IPAddress bindAddress = _listenerState.PreferredAddress;
-            try
-            {
-                return await BindAsync(bindAddress);
-            }
-            catch (Exception e) when (!bindAddress.Equals(_listenerState.FallbackAddress))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress:hide}:{LocalPort:hide}. Retrying on {_listenerState.FallbackAddress:hide}:{LocalPort:hide}. {e:hide}");
-                return await BindAsync(_listenerState.FallbackAddress);
-            }
-        }
+        private Task<IChannel> BindListenerAsync() => RlpxListener.BindAsync(_listenerState, LocalPort, _logger, nameof(RlpxHost), BindAsync);
 
         private async Task<IChannel> BindAsync(IPAddress address)
         {
@@ -220,79 +200,14 @@ namespace Nethermind.Network.Rlpx
                 return _channelFactory.CreateServer();
             }
 
-            return new TcpServerSocketChannel(CreateServerSocket(address));
-        }
-
-        private static Socket CreateServerSocket(IPAddress address)
-        {
-            Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            try
-            {
-                if (address.AddressFamily == AddressFamily.InterNetworkV6)
-                {
-                    socket.DualMode = DiscoveryAddressSupport.SupportsFamily(address, AddressFamily.InterNetwork);
-                    if (socket.DualMode)
-                    {
-                        // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
-                        socket.ExclusiveAddressUse = true;
-                    }
-                }
-
-                return socket;
-            }
-            catch
-            {
-                socket.Dispose();
-                throw;
-            }
+            return new TcpServerSocketChannel(RlpxListener.CreateSocket(address));
         }
 
         private IChannel CreateClientChannel()
             => _channelFactory?.CreateClient() ?? new TcpSocketChannel();
 
-        public async Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
-        {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} initiating OUT connection");
-
-            bool allowNonRoutable = node.Address.Address.IsLoopbackOrPrivateOrLinkLocal;
-            bool primaryAccepted = IsDialAddressAcceptable(node.Address.Address, allowNonRoutable);
-            if (!primaryAccepted)
-            {
-                if (_logger.IsTrace) TraceRejectedDialEndpoint(node, node.Address);
-            }
-            else if (await TryConnect(node, cancellationToken))
-            {
-                return true;
-            }
-
-            if (!TryCreateAlternateDialNode(node, allowNonRoutable, out Node? alternate))
-            {
-                return false;
-            }
-
-            bool exactOnly = alternate.IsStatic || alternate.IsBootnode;
-            bool privileged = _privilegedIpProvider.IsPrivileged(alternate.Address.Address);
-            if (!privileged && !_nodeFilter.WouldAccept(alternate.Address.Address, exactOnly))
-            {
-                if (_logger.IsTrace) TraceFilteredDialEndpoint(alternate);
-                return false;
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_logger.IsDebug)
-            {
-                string reason = primaryAccepted ? "Failed to connect" : "Rejected dial endpoint";
-                _logger.Debug($"{reason} for {node.ToString("s"):hide} on {node.Address:hide}, retrying on {alternate.Address:hide}");
-            }
-
-            bool connected = await TryConnect(alternate, cancellationToken);
-            if (connected && !privileged)
-            {
-                _nodeFilter.Touch(alternate.Address.Address, exactOnly);
-            }
-
-            return connected;
-        }
+        public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
+            => _dialPolicy.ConnectAsync(node, _tryConnect, cancellationToken);
 
         private async Task<bool> TryConnect(Node node, CancellationToken cancellationToken)
         {
@@ -377,48 +292,6 @@ namespace Nethermind.Network.Rlpx
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
 
-        internal static bool TryCreateAlternateDialNode(Node node, bool allowNonRoutable, [NotNullWhen(true)] out Node? alternate)
-        {
-            NodeRecord? record = node.Enr;
-            AddressFamily alternateFamily = node.Address.AddressFamily switch
-            {
-                AddressFamily.InterNetwork => AddressFamily.InterNetworkV6,
-                AddressFamily.InterNetworkV6 => AddressFamily.InterNetwork,
-                _ => AddressFamily.Unknown
-            };
-            bool familySupported = alternateFamily switch
-            {
-                AddressFamily.InterNetwork => Socket.OSSupportsIPv4,
-                AddressFamily.InterNetworkV6 => Socket.OSSupportsIPv6,
-                _ => false
-            };
-            if (!familySupported || record is null || !node.IsVerifiedEnr(record) ||
-                record.EnrSequence < node.HighestObservedEnrSequence ||
-                !Node.TryFromEnr(record, alternateFamily, out alternate) ||
-                alternate.Id != node.Id || alternate.Address.Equals(node.Address) ||
-                (IPAddress.IsLoopback(alternate.Address.Address) && !IPAddress.IsLoopback(node.Address.Address)) ||
-                !IsDialAddressAcceptable(alternate.Address.Address, allowNonRoutable))
-            {
-                alternate = null;
-                return false;
-            }
-
-            alternate.MergeEnrStateFrom(node);
-            alternate.IsStatic = node.IsStatic;
-            alternate.IsTrusted = node.IsTrusted;
-            alternate.IsBootnode = node.IsBootnode;
-            return true;
-        }
-
-        internal static bool IsDialAddressAcceptable(IPAddress address, bool allowNonRoutable)
-        {
-            ParsedIPAddress parsed = ParsedIPAddress.Parse(address);
-            return !parsed.IsWildcardOrNone &&
-                   !parsed.IsMulticast &&
-                   !parsed.IsSpecialUseAddress &&
-                   (allowNonRoutable || !parsed.IsLoopbackOrPrivateOrLinkLocal);
-        }
-
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceConnectionTimedOut(Node node) =>
             _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} OUT connection timed out");
@@ -427,34 +300,26 @@ namespace Nethermind.Network.Rlpx
         private void TraceConnectionFailure(Node node, Exception exception) =>
             _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} error when OUT connecting {exception:hide}");
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void TraceRejectedDialEndpoint(Node node, IPEndPoint endpoint) =>
-            _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} rejected OUT endpoint {endpoint:hide}");
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void TraceFilteredDialEndpoint(Node node) =>
-            _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} rejected filtered OUT endpoint {node.Address:hide}");
-
-        public event EventHandler<SessionEventArgs> SessionCreated;
-        public event SessionDisconnectedEventHandler SessionDisconnected;
-
-        internal void TrackSessionActivity(Session session)
+        public event EventHandler<SessionEventArgs> SessionCreated
         {
-            ArgumentNullException.ThrowIfNull(session);
-            _trackedSessions[session.SessionId] = session;
-            session.SetActivityObserver(this);
+            add => _sessions.SessionCreated += value;
+            remove => _sessions.SessionCreated -= value;
         }
 
-        /// <summary>
-        /// Rejects inbound connections from IPs already seen within the filter window.
-        /// Primary outgoing endpoints are recorded by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>;
-        /// fallback endpoints are checked without mutation and recorded only after connecting.
-        /// </summary>
+        public event SessionDisconnectedEventHandler SessionDisconnected
+        {
+            add => _sessions.SessionDisconnected += value;
+            remove => _sessions.SessionDisconnected -= value;
+        }
+
+        internal void TrackSessionActivity(Session session) => _sessions.Track(session);
+
+        /// <summary>Closes an inbound connection that the dial policy does not accept.</summary>
         private bool ShouldRejectInbound(ISession session, IChannel channel, IPAddress? inboundRemoteIp)
         {
             if (session.Direction == ConnectionDirection.In && inboundRemoteIp is not null)
             {
-                if (!_privilegedIpProvider.IsPrivileged(inboundRemoteIp) && !_nodeFilter.TryAccept(inboundRemoteIp))
+                if (!_dialPolicy.AcceptsInbound(inboundRemoteIp))
                 {
                     if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {inboundRemoteIp:hide}");
                     _ = channel.CloseAsync();
@@ -580,20 +445,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private void ActivateSession(IChannel channel, Session session)
-        {
-            TrackSessionActivity(session);
-            _sessionMonitor.AddSession(session);
-
-            _ = channel.CloseCompletion.ContinueWith(
-                _onChannelCloseCompleted,
-                session,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-
-            SessionCreated?.Invoke(this, new SessionEventArgs(session));
-        }
+        private void ActivateSession(IChannel channel, Session session) => _sessions.Activate(session, channel.CloseCompletion);
 
         private void SetTcpSocketOptions(IChannel channel)
         {
@@ -624,31 +476,6 @@ namespace Nethermind.Network.Rlpx
             }
 
             _ = connectTask.Result.DisconnectAsync();
-        }
-
-        private void OnChannelCloseCompleted(Task _, object? state)
-        {
-            if (state is Session session)
-            {
-                session.MarkChannelClosed();
-            }
-
-            // The close completion is completed before actual closing or remaining packet is processed.
-            // So usually, we do get a disconnect reason from peer, we just receive it after this. So we need to
-            // add some delay to account for whatever is holding the network pipeline.
-            _ = Task.Delay(TimeSpan.FromSeconds(1), _shutdownCts?.Token ?? CancellationToken.None).ContinueWith(
-                _markDisconnectedAfterCloseDelay,
-                state,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-
-        private void MarkDisconnectedAfterCloseDelay(Task _, object? state)
-        {
-            ISession session = (ISession)state!;
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session:hide} channel disconnected");
-            session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
         }
 
         Task IStoppableService.StopAsync() => Shutdown();
@@ -697,46 +524,9 @@ namespace Nethermind.Network.Rlpx
                 await closingTask;
             }
 
-            // Sessions already disconnected during shutdown were removed by the activity observer.
-            foreach (KeyValuePair<Guid, Session> entry in _trackedSessions)
-            {
-                Session session = entry.Value;
-                try
-                {
-                    session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
-                }
-                catch (InvalidOperationException e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Could not disconnect {session:hide} on shutdown: {e.Message}");
-                }
-            }
+            _sessions.DisconnectRemaining();
 
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
-        }
-
-        void ISessionActivityObserver.OnSessionActivity(Session session)
-        {
-            Node remoteNode = session.Node;
-            _nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
-        }
-
-        void ISessionActivityObserver.OnSessionDisconnected(Session session, DisconnectEventArgs args)
-        {
-            if (!_trackedSessions.TryRemove(session.SessionId, out _))
-            {
-                return;
-            }
-
-            session.SetActivityObserver(null);
-            _sessionMonitor.RemoveSession(session);
-            try
-            {
-                SessionDisconnected?.Invoke(this, session, args);
-            }
-            finally
-            {
-                session.Dispose();
-            }
         }
 
         private sealed class InboundChannelInitializer(RlpxHost rlpxHost) : ChannelInitializer<IChannel>

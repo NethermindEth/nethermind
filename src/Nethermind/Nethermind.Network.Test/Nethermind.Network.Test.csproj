@@ -33,6 +33,9 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Network.Benchmark" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />

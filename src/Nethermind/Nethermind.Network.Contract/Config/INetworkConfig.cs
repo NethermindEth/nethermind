@@ -132,6 +132,9 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "1", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
     int ProcessingThreadCount { get; set; }
 
+    [ConfigItem(DefaultValue = "DotNetty", HiddenFromDocs = true, Description = "[TECHNICAL] The RLPx transport: `DotNetty`, or the experimental `Sockets` on System.IO.Pipelines.")]
+    RlpxTransport RlpxTransport { get; set; }
+
     [ConfigItem(DefaultValue = null, HiddenFromDocs = true, Description = "[TECHNICAL] Only allow peer with clientId matching this regex. Useful for testing. eg: 'besu' to only connect to BeSU")]
     string? ClientIdMatcher { get; set; }
 

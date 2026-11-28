@@ -62,6 +62,9 @@ public class RlpxRoundTripBenchmarks
     private ISyncPeer _serverPeer = null!;
     private ISnapSyncPeer _serverSnapPeer = null!;
 
+    /// <summary>Gets the transport both nodes run on.</summary>
+    protected virtual RlpxTransport Transport => RlpxTransport.DotNetty;
+
     [GlobalSetup]
     public void GlobalSetup() => SetUpAsync().GetAwaiter().GetResult();
 
@@ -166,10 +169,10 @@ public class RlpxRoundTripBenchmarks
         throw new InvalidOperationException($"Responses are still incomplete after {MaxAttempts} requests: {incomplete}.");
     }
 
-    private static IContainer CreateNode(PrivateKey nodeKey)
+    private IContainer CreateNode(PrivateKey nodeKey)
     {
         ConfigProvider configProvider = new(
-            new NetworkConfig { P2PPort = GetAvailablePort(), FilterPeersByRecentIp = false },
+            new NetworkConfig { P2PPort = GetAvailablePort(), FilterPeersByRecentIp = false, RlpxTransport = Transport },
             // Both ends advertise snap, so the session agrees on it.
             new SyncConfig { SnapServingEnabled = true });
 

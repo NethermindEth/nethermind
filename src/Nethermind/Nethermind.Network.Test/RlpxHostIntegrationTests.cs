@@ -639,7 +639,7 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    public async Task ConnectAsync_FallsBackToVerifiedIpv6EndpointWithoutPublishingFailedAttempt()
+    public async Task ConnectAsync_FallsBackToVerifiedIpv6EndpointWithoutPublishingFailedAttempt([Values] RlpxTransport transport)
     {
         if (!Socket.OSSupportsIPv6)
         {
@@ -651,8 +651,8 @@ public class RlpxHostIntegrationTests
         int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
         using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
         int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
-        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
-        RlpxHost host = container.Resolve<RlpxHost>();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort(), transport: transport);
+        IRlpxHost host = container.Resolve<IRlpxHost>();
         TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int sessionCount = 0;
         host.SessionCreated += (_, args) =>
@@ -664,7 +664,7 @@ public class RlpxHostIntegrationTests
         IPEndPoint originalAddress = node.Address;
         int originalDiscoveryPort = node.DiscoveryPort;
 #pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
 #pragma warning restore NUnit2045
         Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
 
@@ -971,7 +971,7 @@ public class RlpxHostIntegrationTests
         string address,
         bool allowNonRoutable,
         bool expected) =>
-        Assert.That(RlpxHost.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable), Is.EqualTo(expected));
+        Assert.That(RlpxDialPolicy.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable), Is.EqualTo(expected));
 
     [Test]
     public void Alternate_dial_requires_current_verified_record()
@@ -983,7 +983,7 @@ public class RlpxHostIntegrationTests
         unverified.IsStatic = true;
         unverified.IsTrusted = true;
         unverified.IsBootnode = true;
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(unverified, allowNonRoutable: false, out _), Is.False,
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(unverified, allowNonRoutable: false, out _), Is.False,
             "peer role flags must not authenticate an ENR");
 
         Node stale = CreateDualStackNode(
@@ -992,7 +992,7 @@ public class RlpxHostIntegrationTests
             verified: true,
             sequence: 1);
         stale.ObserveEnrSequence(2);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
     }
 
     [TestCase("10.0.0.1", "::1", false)]
@@ -1015,7 +1015,7 @@ public class RlpxHostIntegrationTests
 #pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
     }
 
     [Test]
@@ -1025,20 +1025,20 @@ public class RlpxHostIntegrationTests
             IPAddress.Parse("8.8.8.8"), 30303,
             IPAddress.Parse("fc00::1"), 30304,
             verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
 
         Node privateToPrivate = CreateDualStackNode(
             IPAddress.Parse("10.0.0.1"), 30303,
             IPAddress.Parse("fc00::1"), 30304,
             verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: true, out _), Is.True);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: true, out _), Is.True);
 
         NodeRecord mappedRecord = CreateDualStackRecord(
             IPAddress.Parse("8.8.8.8"), 30303,
             IPAddress.Parse("::ffff:8.8.4.4"), 30304,
             sequence: 0);
         Node mapped = CreateNode(mappedRecord, verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(mapped, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(mapped, allowNonRoutable: false, out _), Is.False);
 
         NodeRecord withdrawal = CreateDualStackRecord(
             IPAddress.Parse("8.8.8.8"), 30303,
@@ -1047,7 +1047,7 @@ public class RlpxHostIntegrationTests
 #pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(publicToPrivate.SetVerifiedEnr(withdrawal), Is.True);
 #pragma warning restore NUnit2045
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
     }
 
     private static Node CreateDualStackNode(int ipv4Port, int ipv6Port)
@@ -1096,8 +1096,8 @@ public class RlpxHostIntegrationTests
         return node!;
     }
 
-    private static IContainer CreateFilterContainer(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
-        IPrivilegedIpProvider? privilegedIpProvider = null)
+    internal static IContainer CreateFilterContainer(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
+        IPrivilegedIpProvider? privilegedIpProvider = null, RlpxTransport transport = RlpxTransport.DotNetty, int connectTimeoutMs = 2000)
     {
         NetworkConfig networkConfig = new()
         {
@@ -1106,7 +1106,9 @@ public class RlpxHostIntegrationTests
             FilterPeersByRecentIp = filterEnabled,
             FilterPeersBySameSubnet = subnetBucketing,
             ExternalIp = externalIp,
-            MaxActivePeers = 50
+            MaxActivePeers = 50,
+            RlpxTransport = transport,
+            ConnectTimeoutMs = connectTimeoutMs
         };
 
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
@@ -1116,7 +1118,7 @@ public class RlpxHostIntegrationTests
         return CreateContainer(networkConfig, ipResolver, privilegedIpProvider: privilegedIpProvider);
     }
 
-    private static IContainer CreateListenerContainer(
+    internal static IContainer CreateListenerContainer(
         string? localIpConfig,
         IPAddress resolvedLocalIp,
         int port,
@@ -1124,7 +1126,8 @@ public class RlpxHostIntegrationTests
         IChannelFactory? channelFactory = null,
         IPrivilegedIpProvider? privilegedIpProvider = null,
         ILogManager? logManager = null,
-        long shutdownCloseTimeoutMs = 100)
+        long shutdownCloseTimeoutMs = 100,
+        RlpxTransport transport = RlpxTransport.DotNetty)
     {
         NetworkConfig networkConfig = new()
         {
@@ -1132,7 +1135,8 @@ public class RlpxHostIntegrationTests
             P2PPort = port,
             LocalIp = localIpConfig,
             MaxActivePeers = 50,
-            RlpxHostShutdownCloseTimeoutMs = shutdownCloseTimeoutMs
+            RlpxHostShutdownCloseTimeoutMs = shutdownCloseTimeoutMs,
+            RlpxTransport = transport
         };
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
@@ -1194,7 +1198,7 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static async Task<bool> CanConnect(AddressFamily addressFamily, int port)
+    internal static async Task<bool> CanConnect(AddressFamily addressFamily, int port)
     {
         if (addressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
         {
@@ -1227,7 +1231,7 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static Socket CreateTcpListenerSocket(IPAddress address, int port, bool exclusiveAddressUse = true)
+    internal static Socket CreateTcpListenerSocket(IPAddress address, int port, bool exclusiveAddressUse = true)
     {
         Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
@@ -1389,14 +1393,14 @@ public class RlpxHostIntegrationTests
     /// listener port, can be the same one and turn the dial that should be refused into a connection. Exclusive, so no
     /// address-reusing bind can share it either.
     /// </remarks>
-    private static Socket ReserveRefusedPort(IPAddress address)
+    internal static Socket ReserveRefusedPort(IPAddress address)
     {
         Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { ExclusiveAddressUse = true };
         socket.Bind(new IPEndPoint(address, 0));
         return socket;
     }
 
-    private static int GetAvailablePort()
+    internal static int GetAvailablePort()
     {
         using System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
