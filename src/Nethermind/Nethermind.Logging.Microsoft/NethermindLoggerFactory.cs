@@ -94,6 +94,8 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
 
         private static MsLogLevel LowerLogLevel(MsLogLevel logLevel, MsLogLevel? maxLogLevel)
         {
+            if (logLevel == MsLogLevel.None) return logLevel;
+
             // DotNetty outputs Trace level data at Info.
             MsLogLevel loweredLogLevel = logLevel switch
             {
