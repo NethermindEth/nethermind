@@ -175,8 +175,8 @@ while (lineIdx < lines.Length)
                     foreach (string h in handleLines)
                         current.Entries.Add(h);
 
-                    if (hasNonNull) histogramsKept++;
-                    else histogramsAllNull++;
+                    if (hasNonNull) current.HistogramsWithTypes++;
+                    else current.HistogramsAllNull++;
 
                     lineIdx += 1 + count;
                     break;
@@ -238,6 +238,8 @@ foreach (MethodRecord method in methods)
         continue;
 
     keptMethods++;
+    histogramsKept += method.HistogramsWithTypes;
+    histogramsAllNull += method.HistogramsAllNull;
 
     // Count schema entries to rewrite the records field in the header
     int schemaCount = 0;
@@ -323,6 +325,8 @@ class MethodRecord
     public List<string> Entries = [];
     public long MaxBlockCount;
     public long TotalEdgeCount;
+    public int HistogramsWithTypes;
+    public int HistogramsAllNull;
 
     // Pending kind-177 entry waiting for its paired 195/196
     public (string Schema, string Value)? PendingHistogramCount;
