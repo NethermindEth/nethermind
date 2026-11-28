@@ -163,6 +163,9 @@ internal sealed class SocketRlpxConnection(
     /// </remarks>
     internal long MaxQueuedReceiveBytes { get; init; } = DefaultMaxQueuedReceiveBytes;
 
+    /// <summary>Gets the bytes of received packets queued for the processing thread or being handled there.</summary>
+    internal long QueuedReceiveBytes => Volatile.Read(ref _queuedReceiveBytes);
+
     /// <summary>Starts the handshake and the loops of a connection whose session has been created.</summary>
     public void Start(ISession session)
     {

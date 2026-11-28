@@ -71,7 +71,7 @@ public class SocketRlpxConnectionTests
 
         await test.Peer.SendAsync(frames);
         Assert.That(() => test.Socket.Received, Is.EqualTo(received + frames.Length).After(5000, 10));
-        await Task.Delay(100);
+        Assert.That(() => test.Connection.QueuedReceiveBytes, Is.GreaterThan(hello.Length).After(5000, 10), "the compressed packet is queued behind the hello");
         queued.SetResult();
         await test.WaitForEventsAsync(2);
 
@@ -288,12 +288,15 @@ public class SocketRlpxConnectionTests
         // Declares 5 bytes, then copies from before the start of the output.
         byte[] invalidSnappy = [0x05, 0xFF, 0xFF];
 
+        byte[] first = Content(10, 1);
+        byte[] last = Content(10, 2);
+        int queuedBytes = Snappy.CompressToArray(first).Length + invalidSnappy.Length + Snappy.CompressToArray(last).Length;
+
         await test.Peer.SendAsync([
-            .. test.Peer.Encode(0x20, Content(10, 1), EncodingMode.Snappy),
+            .. test.Peer.Encode(0x20, first, EncodingMode.Snappy),
             .. test.Peer.Encode(0x21, invalidSnappy, EncodingMode.Framed),
-            .. test.Peer.Encode(0x22, Content(10, 2), EncodingMode.Snappy)]);
-        Assert.That(() => test.Socket.Received, Is.GreaterThan(FakeHandshakeService.Message.Length).After(5000, 10));
-        await Task.Delay(100);
+            .. test.Peer.Encode(0x22, last, EncodingMode.Snappy)]);
+        Assert.That(() => test.Connection.QueuedReceiveBytes, Is.EqualTo(queuedBytes).After(5000, 10), "the next two packets are queued");
         held.SetResult();
         await test.WaitForEventsAsync(3);
 

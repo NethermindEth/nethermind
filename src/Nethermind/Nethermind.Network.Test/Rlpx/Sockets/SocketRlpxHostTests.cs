@@ -313,6 +313,7 @@ public class SocketRlpxHostTests
         // A private address that answers nothing, so the dial stays pending until it is canceled.
         Task<bool> dial = host.ConnectAsync(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Parse("10.255.255.1"), 30303)));
         await Task.Delay(100);
+        Assume.That(dial.IsCompleted, Is.False, "the network refused the address at once, so there is no pending dial to test");
         await host.Shutdown();
 
         using (Assert.EnterMultipleScope())
