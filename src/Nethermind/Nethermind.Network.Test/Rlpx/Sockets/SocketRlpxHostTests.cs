@@ -285,6 +285,23 @@ public class SocketRlpxHostTests
     }
 
     [Test]
+    public async Task Closes_a_listener_bound_after_shutdown_started()
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets);
+        SocketRlpxHost host = (SocketRlpxHost)container.Resolve<IRlpxHost>();
+
+        await host.Shutdown();
+        await host.Init();
+
+        using Socket probe = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(host.ListenerEndPoint, Is.Null, "the listener isn't published");
+            Assert.That(() => probe.Bind(new IPEndPoint(IPAddress.Any, host.LocalPort)), Throws.Nothing, "the port is free");
+        }
+    }
+
+    [Test]
     public async Task Shutdown_waits_for_a_pending_dial_which_publishes_nothing()
     {
         await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets);

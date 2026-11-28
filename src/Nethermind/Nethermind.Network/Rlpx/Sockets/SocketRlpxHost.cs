@@ -146,24 +146,47 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
         }
 
         _isInitialized = true;
-        _processingThreads = new RlpxProcessingThreads(_processingThreadCount, _logger);
+        RlpxProcessingThreads processingThreads = new(_processingThreadCount, _logger);
+        lock (_lock)
+        {
+            _processingThreads = processingThreads;
+        }
+
+        Socket listener;
         try
         {
-            _listener = await RlpxListener.BindAsync(_listenerState, LocalPort, _logger, nameof(SocketRlpxHost), Bind);
+            listener = await RlpxListener.BindAsync(_listenerState, LocalPort, _logger, nameof(SocketRlpxHost), Bind);
         }
         catch (Exception ex)
         {
             _logger.Error($"{nameof(Init)} failed.", ex);
-            await _processingThreads.StopAsync();
+            await processingThreads.StopAsync();
             throw;
         }
 
-        if (_listener.LocalEndPoint is IPEndPoint endpoint)
+        // A shutdown that started meanwhile has already looked for the listener, so it is closed here instead.
+        bool shuttingDown;
+        lock (_lock)
+        {
+            shuttingDown = _shuttingDown;
+            if (!shuttingDown)
+            {
+                _listener = listener;
+                _acceptLoop = Task.Run(AcceptLoopAsync);
+            }
+        }
+
+        if (shuttingDown)
+        {
+            listener.Dispose();
+            await processingThreads.StopAsync();
+            return;
+        }
+
+        if (listener.LocalEndPoint is IPEndPoint endpoint)
         {
             _ = _listenerState.TrackRlpxAddress(endpoint.Address, _listenerClosed.Task);
         }
-
-        _acceptLoop = Task.Run(AcceptLoopAsync);
     }
 
     private Task<Socket> Bind(IPAddress address)
@@ -445,16 +468,20 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
     private async Task ShutdownAsync()
     {
         Task[] dials;
+        Socket? listener;
+        Task acceptLoop;
         lock (_lock)
         {
             _shuttingDown = true;
             dials = [.. _pendingDials];
+            listener = _listener;
+            acceptLoop = _acceptLoop;
         }
 
         // Ends the accept loop and the pending dials, and the close delays of the sessions.
         _shutdown.Cancel();
-        _listener?.Dispose();
-        await _acceptLoop;
+        listener?.Dispose();
+        await acceptLoop;
         await Task.WhenAll(dials);
         if (_logger.IsDebug) _logger.Debug("Closed the RLPx listener");
 
