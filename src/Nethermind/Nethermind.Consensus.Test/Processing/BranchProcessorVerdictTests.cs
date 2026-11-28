@@ -357,6 +357,22 @@ public class BranchProcessorVerdictTests
         Assert.That(thrown, Is.TypeOf(expected));
     }
 
+    /// <summary>A block whose dependency proof is unavailable, as on a block synced over devp2p, reaches no verdict
+    /// and is expected, so it is not reported as a processing failure.</summary>
+    [Test]
+    public void Process_UnavailableDependencyProof_IsNotWarnedAbout()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        BranchProcessor branchProcessor = CreateBranchProcessor(logManager: new OneLoggerLogManager(new ILogger(logger)));
+        branchProcessor.BlockProcessing += (_, _) => throw new FrameTxDependencyProof.UnavailableException(FrameTxDependencyProof.Unavailable);
+
+        Assert.That(() => branchProcessor.Process(parent, [block], ProcessingOptions.None, NullBlockTracer.Instance),
+            Throws.TypeOf<FrameTxDependencyProof.UnavailableException>());
+        Assert.That(logger.LogList, Is.Empty);
+    }
+
     [TestCase(0UL, 0, TestName = "Process_BeforeEip7709_PrefetchesEveryBlock")]
     [TestCase(1UL, 2, TestName = "Process_WithEip7709_SkipsBlockhashPrefetch")]
     [TestCase(2UL, 1, TestName = "Process_BranchCrossingEip7709_PrefetchesOnlyBeforeTheFork")]
@@ -378,7 +394,7 @@ public class BranchProcessorVerdictTests
         blockhashProvider.Received(2 - expectedSkipped).Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
     }
 
-    private static BranchProcessor CreateBranchProcessor(ISpecProvider specProvider = null, IBlockhashProvider blockhashProvider = null)
+    private static BranchProcessor CreateBranchProcessor(ISpecProvider specProvider = null, IBlockhashProvider blockhashProvider = null, ILogManager logManager = null)
     {
         IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
         blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
@@ -388,6 +404,6 @@ public class BranchProcessorVerdictTests
             .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
 
         return new BranchProcessor(blockProcessor, specProvider ?? Substitute.For<ISpecProvider>(), worldState, blockhashProvider ?? Substitute.For<IBlockhashProvider>(),
-            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance, Substitute.For<IWorldStateManager>());
+            Substitute.For<IInclusionListSatisfactionChecker>(), logManager ?? LimboLogs.Instance, Substitute.For<IWorldStateManager>());
     }
 }

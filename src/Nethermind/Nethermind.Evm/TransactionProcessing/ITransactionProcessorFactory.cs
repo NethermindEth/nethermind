@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -27,7 +28,8 @@ public interface ITransactionProcessorFactory
 }
 
 /// <summary>Default factory producing a plain <see cref="TransactionProcessor{TGasPolicy}"/>.</summary>
-public class TransactionProcessorFactory<TGasPolicy> : ITransactionProcessorFactory
+/// <param name="leanSphincsVerifier">The node's leanSPHINCS verifier, which the processors it builds verify claims with.</param>
+public class TransactionProcessorFactory<TGasPolicy>(ILeanSphincsVerifier? leanSphincsVerifier = null) : ITransactionProcessorFactory
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public virtual ITransactionProcessor Create(
@@ -40,5 +42,5 @@ public class TransactionProcessorFactory<TGasPolicy> : ITransactionProcessorFact
         bool parallel)
         => new TransactionProcessor<TGasPolicy>(
             blobBaseFeeCalculator, specProvider, worldState, (IVirtualMachine<TGasPolicy>)virtualMachine,
-            codeInfoRepository, logManager, parallel);
+            codeInfoRepository, logManager, parallel, leanSphincsVerifier);
 }

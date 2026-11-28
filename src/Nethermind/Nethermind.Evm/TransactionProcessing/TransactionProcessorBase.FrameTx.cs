@@ -1095,6 +1095,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         // Claims are verified against the block's pre-state, outside any transaction, so nothing the verifier reads
         // enters the block access list (EIP-7928).
+        using IDisposable? undeclaredReads = WorldState.BeginUndeclaredAccountReads();
         IBlockAccessListSource? accessListSource = WorldState as IBlockAccessListSource;
         BlockAccessListAtIndex? recording = accessListSource?.GeneratedBlockAccessList;
         if (recording is null) return ExecutePureVerifierCore(claim, in key, in msg, witness, spec);

@@ -464,7 +464,7 @@ public class BlockchainProcessorTests
         private const int ProcessingWait = 10_000;
         private const int MockRecheckInterval = 200;
 
-        public ProcessingTestContext(bool startProcessor, int blockProcessingTimeoutMs = 0, TimeProvider? timeProvider = null, bool startProcessorOnThreadPool = false)
+        public ProcessingTestContext(bool startProcessor, int blockProcessingTimeoutMs = 0, TimeProvider? timeProvider = null, bool startProcessorOnThreadPool = false, ILogManager? processorLogManager = null)
         {
             _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
@@ -474,7 +474,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance,
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, processorLogManager ?? LimboLogs.Instance,
                 new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock(), new BlockProcessingTracker());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
@@ -1327,6 +1327,43 @@ public class BlockchainProcessorTests
 
         Assert.That(result, Is.EqualTo(ProcessingResult.Exception));
         context.IsInTree(_block1D2);
+        Task retry = Task.Run(() => context.EnqueuedAgain(_block1D2));
+        context.Processed(_block1D2).BecomesNewHead();
+        await retry;
+    }
+
+    /// <summary>
+    /// A block whose dependency proof is unavailable, as on a block synced over devp2p, leaves the queue without a
+    /// verdict and without a warning: it stays in the tree, and is processed once queued again.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Block_without_its_dependency_proof_is_dropped_quietly_without_a_verdict()
+    {
+        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        bool proofAvailable = false;
+        await using ProcessingTestContext context = new ProcessingTestContext(true, processorLogManager: new OneLoggerLogManager(new ILogger(logger)))
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnBlockProcessing(block =>
+            {
+                if (block.Hash == _block1D2.Hash && !proofAvailable)
+                    throw new FrameTxDependencyProof.UnavailableException(FrameTxDependencyProof.Unavailable);
+            });
+        ProcessingResult? result = null;
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash) result ??= args.ProcessingResult;
+        });
+
+        Task removed = context.Suggested(_block1D2).Recovered(_block1D2).WaitUntilRemoved(_block1D2);
+        await removed.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(ProcessingResult.Exception));
+            Assert.That(logger.LogList, Has.None.Contains(FrameTxDependencyProof.Unavailable));
+        }
+        context.IsInTree(_block1D2);
+        proofAvailable = true;
         Task retry = Task.Run(() => context.EnqueuedAgain(_block1D2));
         context.Processed(_block1D2).BecomesNewHead();
         await retry;

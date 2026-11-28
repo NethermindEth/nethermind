@@ -275,7 +275,8 @@ public class BranchProcessor(
         {
             processingException = ex;
             // Cancelling the token is reported by whoever cancelled it: a processing timeout or shutdown.
-            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested)) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested) && ex is not FrameTxDependencyProof.UnavailableException)
+                _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 

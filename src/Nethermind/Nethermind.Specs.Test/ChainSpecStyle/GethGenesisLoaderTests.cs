@@ -687,6 +687,16 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase(14UL, false)]
+    [TestCase(15UL, true)]
+    public void Genesis_commits_to_the_empty_dependency_proof_when_eip8141_is_active(ulong genesisTimestamp, bool active)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(
+            configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 0, \"eip8141PrototypeTime\": 15", timestamp: genesisTimestamp);
+
+        Assert.That(chainSpec.Genesis!.Header.DependencyProofHash, Is.EqualTo(active ? Keccak.OfAnEmptyString : null));
+    }
+
     [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {

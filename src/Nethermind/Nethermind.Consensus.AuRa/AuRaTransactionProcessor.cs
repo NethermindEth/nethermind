@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -22,8 +23,9 @@ public sealed class AuRaEthereumTransactionProcessor(
     IVirtualMachine? virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager,
-    bool parallel = false)
-    : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+    bool parallel = false,
+    ILeanSphincsVerifier? leanSphincsVerifier = null)
+    : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel, leanSphincsVerifier)
 {
     protected override SystemTransactionProcessor<EthereumGasPolicy> CreateSystemTransactionProcessor() =>
         new AuRaSystemTransactionProcessor<EthereumGasPolicy>(
@@ -31,7 +33,7 @@ public sealed class AuRaEthereumTransactionProcessor(
 }
 
 /// <summary>Builds AuRa-aware worker tx processors for the BAL pool.</summary>
-public sealed class AuRaTransactionProcessorFactory : ITransactionProcessorFactory
+public sealed class AuRaTransactionProcessorFactory(ILeanSphincsVerifier? leanSphincsVerifier = null) : ITransactionProcessorFactory
 {
     public ITransactionProcessor Create(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
@@ -43,5 +45,5 @@ public sealed class AuRaTransactionProcessorFactory : ITransactionProcessorFacto
         bool parallel)
         => new AuRaEthereumTransactionProcessor(
             blobBaseFeeCalculator, specProvider, worldState, virtualMachine,
-            codeInfoRepository, logManager, parallel);
+            codeInfoRepository, logManager, parallel, leanSphincsVerifier);
 }
