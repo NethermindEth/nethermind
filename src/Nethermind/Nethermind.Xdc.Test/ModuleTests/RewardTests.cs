@@ -21,7 +21,6 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
@@ -441,13 +440,13 @@ public class RewardTests
     }
 
     [Test]
-    public void TestHookRewardAfterUpgrade()
+    public void TestHookRewardAfterUpgrade([Values] bool rewardedCheckpointIsSwitchBlock)
     {
         const ulong epochLength = 900;
         const ulong mergeSignRange = 15;
         const ulong checkpointNumber = 2700;
 
-        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(9);
+        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(11);
         PrivateKey[] masternodeKeys = [keys[0], keys[1], keys[2], keys[3], keys[4]];
         PrivateKey signer1 = masternodeKeys.First();
         PrivateKey signer2 = masternodeKeys.Last();
@@ -455,6 +454,8 @@ public class RewardTests
         PrivateKey protector2 = keys[6];
         PrivateKey observer1 = keys[7];
         PrivateKey observer2 = keys[8];
+        PrivateKey candidateAfterRewardedEpoch = keys[9];
+        PrivateKey standbyBeyondObserverCap = keys[10];
 
         Address[] masternodes = masternodeKeys.Select(key => key.Address).ToArray();
 
@@ -469,11 +470,12 @@ public class RewardTests
         xdcSpec.EpochLength.Returns(epochLength);
         xdcSpec.FoundationWallet.Returns(foundationWalletAddr);
         xdcSpec.BlockSignerContract.Returns(blockSignerContract);
-        xdcSpec.SwitchBlock.Returns(0UL);
+        ulong switchBlock = rewardedCheckpointIsSwitchBlock ? epochLength : 0;
+        xdcSpec.SwitchBlock.Returns(switchBlock);
         xdcSpec.MergeSignRange.Returns(mergeSignRange);
         xdcSpec.IsTipUpgradeRewardEnabled.Returns(true);
         xdcSpec.MaxProtectorNodes.Returns(2);
-        xdcSpec.MaxObserverNodes.Returns(2);
+        xdcSpec.MaxObserverNodes.Returns(1);
         xdcSpec.MasternodeReward.Returns((UInt256)500);
         xdcSpec.ProtectorReward.Returns((UInt256)400);
         xdcSpec.ObserverReward.Returns((UInt256)300);
@@ -491,7 +493,7 @@ public class RewardTests
             XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader()
                 .WithNumber(i)
                 .WithValidators(masternodes);
-            if (i == 0)
+            if (i <= switchBlock)
             {
                 builder.WithExtraData(XdcTestHelper.BuildV1ExtraData(masternodes));
             }
@@ -523,6 +525,8 @@ public class RewardTests
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, protector2, nonce: 6),
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, observer1, nonce: 7),
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, observer2, nonce: 8),
+            BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, candidateAfterRewardedEpoch, nonce: 9),
+            BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, standbyBeyondObserverCap, nonce: 10),
         ];
 
         blocks[916] = new Block(blockHeaders[916], new BlockBody(txsAt916, null, null));
@@ -533,22 +537,27 @@ public class RewardTests
         tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => blocks[(int)ci.ArgAt<ulong?>(1)!]);
 
+        // The rewarded epoch's standby nodes, which the current candidates no longer match.
+        XdcBlockHeader rewardedCheckpoint = blockHeaders[epochLength];
+        epochSwitchManager.GetEpochSwitchInfo(rewardedCheckpoint).Returns(new EpochSwitchInfo(
+            masternodes,
+            [protector1.Address, protector2.Address, observer1.Address, standbyBeyondObserverCap.Address],
+            [observer2.Address],
+            new BlockRoundInfo(rewardedCheckpoint.Hash!, epochLength, epochLength)));
+
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<IWorldState>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
-        Address[] rewardCandidates =
+        Address[] currentCandidates =
         [
             ..masternodes,
+            candidateAfterRewardedEpoch.Address,
             protector1.Address,
             protector2.Address,
             observer1.Address,
             observer2.Address,
         ];
-        votingContract.GetCandidates(Arg.Any<BlockHeader>())
-            .Throws(new InvalidOperationException("Readonly candidates lookup should not be used for block-processing rewards."));
-        votingContract.GetCandidates(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>()).Returns(rewardCandidates);
-        votingContract.GetCandidateStake(Arg.Any<BlockHeader>(), Arg.Any<Address>())
-            .Throws(new InvalidOperationException("Readonly stake lookup should not be used for block-processing rewards."));
+        votingContract.GetCandidates(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>()).Returns(currentCandidates);
         votingContract.GetCandidateStake(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>()).Returns(UInt256.One);
 
         IWorldState worldState = TestWorldStateFactory.CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
@@ -574,17 +583,24 @@ public class RewardTests
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rewards, Has.Length.EqualTo(6));
-            Assert.That(rewards.Single(r => r.Address == signer1.Address).Value, Is.EqualTo((UInt256)450));
-            Assert.That(rewards.Single(r => r.Address == signer2.Address).Value, Is.EqualTo((UInt256)450));
-            Assert.That(rewards.Single(r => r.Address == protector1.Address).Value, Is.EqualTo((UInt256)360));
-            Assert.That(rewards.Single(r => r.Address == protector2.Address).Value, Is.EqualTo((UInt256)360));
-            Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)270));
-            Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)210));
-            Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
-        }
+        // A V1 checkpoint has no standby nodes, so only its masternodes are paid.
+        Dictionary<Address, UInt256> expectedRewards = rewardedCheckpointIsSwitchBlock
+            ? new()
+            {
+                [signer1.Address] = 450,
+                [signer2.Address] = 450,
+                [foundationWalletAddr] = 100,
+            }
+            : new()
+            {
+                [signer1.Address] = 450,
+                [signer2.Address] = 450,
+                [protector1.Address] = 360,
+                [protector2.Address] = 360,
+                [observer1.Address] = 270,
+                [foundationWalletAddr] = 210,
+            };
+        Assert.That(rewards.ToDictionary(r => r.Address, r => r.Value), Is.EquivalentTo(expectedRewards));
 
         // Validate minted-record accounting side effects produced by the reward upgrade path.
         UInt256 epochNumber = 3;
@@ -600,7 +616,7 @@ public class RewardTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(totalMinted, Is.EqualTo((UInt256)2100));
+            Assert.That(totalMinted, Is.EqualTo((UInt256)(rewardedCheckpointIsSwitchBlock ? 1000 : 2100)));
             Assert.That(rewardBlock, Is.EqualTo((UInt256)checkpointNumber));
             Assert.That(onsetBlock, Is.EqualTo((UInt256)checkpointNumber));
             Assert.That(totalBurned, Is.EqualTo(UInt256.Zero));
