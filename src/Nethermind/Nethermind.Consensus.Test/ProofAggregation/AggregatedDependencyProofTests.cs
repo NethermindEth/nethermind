@@ -165,8 +165,7 @@ public class AggregatedDependencyProofTests
         tx.ClaimWitnesses = [Filled(Eip8141Constants.LeanSphincsSignatureSize, 1), Filled(Eip8141Constants.LeanSphincsSignatureSize, 3)];
         tx.Hash = tx.CalculateHash();
         // Proven off the payload deadline, as a scheduled statement is, so the deadline-bound build uses it.
-        List<AggregatedDependency> deps = Eip8288Dependencies.Canonicalize(
-            AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(Build.A.Block.WithTransactions(tx).TestObject)));
+        List<AggregatedDependency> deps = AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(Build.A.Block.WithTransactions(tx).TestObject));
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
         cache.Remember(deps, depsHash, verifier.ProveDependencyProof(depsHash, Eip8288Constants.AggregatedVk, new AggregationInput()));
 
@@ -245,14 +244,24 @@ public class AggregatedDependencyProofTests
     }
 
     /// <summary>A payload built once over a quiet pool ships raw witnesses, and is rebuilt with the aggregated proof
-    /// once the proof its build scheduled is ready.</summary>
+    /// once the proof its build scheduled is ready, not when an unrelated statement proven before it completes.</summary>
     [Test]
     [CancelAfter(30000)]
-    public async Task Production_BuilderOnly_QuietPool_GetPayloadCarriesTheProofOnceReady()
+    public async Task Production_BuilderOnly_QuietPool_GetPayloadCarriesTheProofOnceReady([Values] bool anotherStatementProving)
     {
-        using ManualResetEventSlim provingGate = new();
-        FakeLeanProofVerifier verifier = new() { ProvingGate = provingGate };
+        using ManualResetEventSlim ownGate = new(), otherGate = new();
+        FakeLeanProofVerifier verifier = new();
+        verifier.ProvingGates[DepsHash(MixedTx())] = ownGate;
         DependencyProofCache cache = new(verifier, LimboLogs.Instance);
+        if (anotherStatementProving)
+        {
+            Transaction other = FrameTxWith(TestItem.AddressB, LeanSphincsClaim(TestItem.KeccakD, TestItem.KeccakE));
+            List<AggregatedDependency> otherDeps = AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(Build.A.Block.WithTransactions(other).TestObject));
+            ValueHash256 otherHash = Eip8288Dependencies.ComputeDepsHash(otherDeps);
+            verifier.ProvingGates[otherHash] = otherGate;
+            cache.Schedule(otherDeps, otherHash, new AggregationInput());
+        }
+
         AggregatingProducer producer = new(verifier, cache);
         TimeSpan slot = TimeSpan.FromSeconds(12);
         CapturingImprovementContextFactory factory = new(new AggregatingBlockImprovementContextFactory(
@@ -263,7 +272,15 @@ public class AggregatedDependencyProofTests
         string payloadId = service.StartPreparingPayload(Build.A.BlockHeader.TestObject, new PayloadAttributes { Timestamp = 100 });
         Assert.That(() => factory.Last?.ImprovementTask.IsCompleted == true && cache.IsScheduled, Is.True.After(5000, 10));
         byte[] first = factory.Last!.Best.CurrentBestBlock!.DependencyProof!;
-        provingGate.Set();
+        if (anotherStatementProving)
+        {
+            otherGate.Set();
+            // The first build's own statement waits behind the unrelated one, which must not spend the rebuild.
+            await Task.Delay(500);
+            Assert.That(producer.Builds, Is.EqualTo(1), "no rebuild for a statement the payload does not need");
+        }
+
+        ownGate.Set();
         Assert.That(() => factory.Last.Best.CurrentBestBlock!.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated).After(5000, 10));
         IBlockProductionContext? payload = await service.GetPayload(payloadId);
 
@@ -372,6 +389,9 @@ public class AggregatedDependencyProofTests
         Commit(received, AggregatedDependencyProof.Encode(Stark(received), [mixed.ClaimWitnesses![1]]));
         return (received, mixed);
     }
+
+    private static ValueHash256 DepsHash(Transaction tx) =>
+        Eip8288Dependencies.ComputeDepsHash(AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(Build.A.Block.WithTransactions(tx).TestObject)));
 
     private static byte[] Stark(Block block)
     {

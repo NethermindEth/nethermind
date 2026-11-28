@@ -26,7 +26,8 @@ internal sealed class FakeLeanProofVerifier : ILeanProofVerifier, ILeanSphincsVe
     public int ProofCalls => Volatile.Read(ref _proofCalls);
     /// <summary>Every input proven, in call order.</summary>
     public List<AggregationInput> ProvingInputs { get; } = [];
-    public ManualResetEventSlim? ProvingGate { get; set; }
+    /// <summary>Holds the proving of each statement keyed here until its gate is set.</summary>
+    public Dictionary<ValueHash256, ManualResetEventSlim> ProvingGates { get; } = [];
 
     public void EnsureAvailable() { }
 
@@ -40,7 +41,7 @@ internal sealed class FakeLeanProofVerifier : ILeanProofVerifier, ILeanSphincsVe
     public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         if (Fault) throw new InvalidOperationException("native fault");
-        ProvingGate?.Wait();
+        if (ProvingGates.TryGetValue(depsHash, out ManualResetEventSlim? gate)) gate.Wait();
         Interlocked.Increment(ref _proofCalls);
         lock (ProvingInputs) ProvingInputs.Add(input);
         return ProofOf(depsHash);

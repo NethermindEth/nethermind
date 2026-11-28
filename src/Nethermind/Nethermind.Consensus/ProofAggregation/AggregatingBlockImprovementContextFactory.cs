@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
@@ -46,7 +48,7 @@ public sealed class AggregatingBlockImprovementContextFactory(
         private readonly IBlockImprovementContext _first;
         private readonly Func<IBlockImprovementContext> _rebuild;
         private readonly DependencyProofCache _proofCache;
-        private readonly TaskCompletionSource _proven = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private ValueHash256? _awaited;
         private IBlockImprovementContext? _second;
         private volatile BlockProductionSnapshot? _best;
         private volatile bool _disposed;
@@ -57,8 +59,17 @@ public sealed class AggregatingBlockImprovementContextFactory(
             _proofCache = proofCache;
             // Subscribed before the build starts, so a proof its build schedules cannot complete unseen.
             proofCache.ScheduledProofCompleted += OnProven;
-            _first = start();
-            Task.WhenAll(_first.ImprovementTask, _proven.Task).ContinueWith(_ => Rebuild(), TaskContinuationOptions.OnlyOnRanToCompletion);
+            try
+            {
+                _first = start();
+            }
+            catch
+            {
+                proofCache.ScheduledProofCompleted -= OnProven;
+                throw;
+            }
+
+            _first.ImprovementTask.ContinueWith(_ => OnFirstBuilt(), TaskContinuationOptions.OnlyOnRanToCompletion);
         }
 
         public BlockProductionSnapshot Best => _best ?? _first.Best;
@@ -79,19 +90,36 @@ public sealed class AggregatingBlockImprovementContextFactory(
             }
 
             _proofCache.ScheduledProofCompleted -= OnProven;
-            _proven.TrySetCanceled();
             _first.Dispose();
             second?.Dispose();
         }
 
-        private void OnProven() => _proven.TrySetResult();
+        /// <summary>Awaits the statement of the first build's raw leanSPHINCS witnesses, rebuilding at once if it is proven already.</summary>
+        private void OnFirstBuilt()
+        {
+            if (_first.Best.CurrentBestBlock is not { DependencyProof: [Eip8141Constants.DependencyProofVersionRaw, ..] } block) return;
+
+            List<AggregatedDependency> dependencies = AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(block));
+            if (dependencies.Count == 0) return;
+
+            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+            lock (_lock) _awaited = depsHash;
+            if (_proofCache.TryGetProof(depsHash, out _)) Rebuild();
+        }
+
+        private void OnProven(ValueHash256 depsHash)
+        {
+            bool awaited;
+            lock (_lock) awaited = _awaited == depsHash;
+            if (awaited) Rebuild();
+        }
 
         private void Rebuild()
         {
             IBlockImprovementContext second;
             lock (_lock)
             {
-                if (_disposed || !ShippedRawLeanSphincsWitnesses(_first.Best.CurrentBestBlock)) return;
+                if (_disposed || _second is not null) return;
                 second = _second = _rebuild();
             }
 
@@ -112,9 +140,5 @@ public sealed class AggregatingBlockImprovementContextFactory(
                 if (!_disposed) _best = rebuilt;
             }
         }
-
-        private static bool ShippedRawLeanSphincsWitnesses(Block? block) =>
-            block?.DependencyProof is [Eip8141Constants.DependencyProofVersionRaw, ..]
-            && AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(block)).Count > 0;
     }
 }
