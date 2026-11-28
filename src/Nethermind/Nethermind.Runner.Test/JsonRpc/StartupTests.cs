@@ -1349,6 +1349,8 @@ public class StartupTests
     [TestCase("10.1.2.3", "10.1.0.0/16", "unknown", "unknown", true, TestName = "Unparsable X-Forwarded-For counts against the proxy address")]
     [TestCase("127.0.0.1", null, "127.0.0.1", "127.0.0.1", true, TestName = "Loopback X-Forwarded-For counts against the proxy address")]
     [TestCase("10.1.2.3", "10.1.0.0/16", "198.51.100.1, 127.0.0.1", "198.51.100.2, 127.0.0.1", true, TestName = "Loopback X-Forwarded-For entries of a remote proxy are not skipped")]
+    [TestCase("127.0.0.1", "10.1.0.0/16", "198.51.100.1, 127.0.0.1, 10.1.2.3", "198.51.100.2, 127.0.0.1, 10.1.2.3", true, TestName = "Loopback X-Forwarded-For entries behind a remote proxy are not skipped")]
+    [TestCase("10.1.2.3", "10.1.0.0/16", "[2001:db8::1]:65536", "[2001:db8:0:1::1]:65536", true, TestName = "Forwarded IPv6 address with an invalid port counts against the proxy address")]
     public Task ProcessJsonRpcRequest_AppliesTheAddressShareToTheForwardedClient(string peer, string? trustedProxyNetwork, string? firstForwardedFor, string? secondForwardedFor, bool secondRefused) =>
         AssertAddressShareOfSecondResponse(peer, trustedProxyNetwork, firstForwardedFor, secondForwardedFor, secondRefused);
 
@@ -1362,6 +1364,14 @@ public class StartupTests
     [Test]
     public Task ProcessJsonRpcRequest_ReadsRepeatedXForwardedForHeaderLinesFromTheLastOne() =>
         AssertAddressShareOfSecondResponse("10.1.2.3", "10.1.0.0/16", new StringValues(["198.51.100.9", "198.51.100.1", "10.1.2.4"]), new StringValues(["198.51.100.9", "198.51.100.2", "10.1.2.4"]), secondRefused: false);
+
+    [Test]
+    public Task ProcessJsonRpcRequest_CountsTheSeparatorBetweenXForwardedForHeaderLines()
+    {
+        string trustedHops = string.Join(", ", Enumerable.Repeat("10.1.2.4", 49)) + ", 10.1.22.44";
+        Assert.That("198.51.100.1".Length + trustedHops.Length, Is.EqualTo(UnsentResponseCounter.MaxForwardedForLength), "precondition: the lines fit only without the separator");
+        return AssertAddressShareOfSecondResponse("10.1.2.3", "10.1.0.0/16", new StringValues(["198.51.100.1", trustedHops]), new StringValues(["198.51.100.2", trustedHops]), secondRefused: true);
+    }
 
     private static async Task AssertAddressShareOfSecondResponse(string peer, string? trustedProxyNetwork, StringValues firstForwardedFor, StringValues secondForwardedFor, bool secondRefused)
     {

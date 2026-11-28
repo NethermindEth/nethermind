@@ -148,29 +148,33 @@ internal sealed class HttpJsonRpcResponseSink(
             return true;
         }
 
-        ReportLimitExceeded(hitLimit, written, method);
+        ReportLimitExceeded(hitLimit, written, method, isBatch, limit);
         _overLimit = true;
         StopRequested = true;
         return false;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ReportLimitExceeded(UnsentResponseLimit hitLimit, long written, string method)
+    private void ReportLimitExceeded(UnsentResponseLimit hitLimit, long written, string method, bool isBatch, long nodeLimit)
     {
         Metrics.JsonRpcHttpUnsentLimitAborts.AddOrUpdate(GetMetricLabel(hitLimit), 1, static (_, count) => count + 1);
         if (!logger.IsWarn || !unsentResponses!.TryStartWarning(out long suppressed)) return;
 
+        long batchAllowance = GetBatchLimitAllowance(isBatch, nodeLimit);
         string limit = hitLimit switch
         {
-            UnsentResponseLimit.Node => $"the node limit JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize} bytes",
-            UnsentResponseLimit.AddressSize => $"the share of one address, 1/{UnsentResponseCounter.CallerShareDivisor} of JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize} bytes",
+            UnsentResponseLimit.Node => $"the node limit JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {nodeLimit} bytes",
+            UnsentResponseLimit.AddressSize when batchAllowance > 0 => $"the share of one address for a batch, {UnsentResponseCounter.CallerLimit(nodeLimit) + batchAllowance} bytes (1/{UnsentResponseCounter.CallerShareDivisor} of JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {nodeLimit} plus JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {batchAllowance})",
+            UnsentResponseLimit.AddressSize => $"the share of one address, {UnsentResponseCounter.CallerLimit(nodeLimit)} bytes (1/{UnsentResponseCounter.CallerShareDivisor} of JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {nodeLimit})",
             _ => $"JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesPerAddress)} = {jsonRpcConfig.MaxUnsentResponsesPerAddress} responses over 1 MiB"
         };
         string caller = _clientAddress is null ? $"connection {context.Connection.Id}"
             : _forwarded ? $"{_clientAddress} via {context.Connection.RemoteIpAddress}"
             : _clientAddress.ToString();
+        string methodText = JsonRpcRequest.EncodeLogText(method);
+        string response = isBatch ? $"the batch response of {written} bytes, last method {methodText}," : $"the response to {methodText} of {written} bytes";
         string skipped = suppressed > 0 ? $" {suppressed} more were closed since the last warning." : string.Empty;
-        logger.Warn($"Closed the HTTP JSON-RPC connection of {caller}: the response to {method} of {written} bytes would take its unsent responses above {limit}.{skipped}");
+        logger.Warn($"Closed the HTTP JSON-RPC connection of {caller:hide} because {response} would take its unsent responses above {limit}.{skipped}");
     }
 
     private static string GetMetricLabel(UnsentResponseLimit hitLimit) => hitLimit switch

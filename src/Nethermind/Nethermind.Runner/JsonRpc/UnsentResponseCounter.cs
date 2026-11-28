@@ -45,9 +45,8 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
             return new CallerKey(default, connection.Id ?? string.Empty);
         }
 
-        IPAddress normalizedPeer = peer.IsIPv4MappedToIPv6 ? peer.MapToIPv4() : peer;
-        bool loopback = IPAddress.IsLoopback(normalizedPeer);
-        if (!loopback && !IsInTrustedNetworks(normalizedPeer))
+        bool loopback = IsLoopback(peer);
+        if (!loopback && !IsInTrustedNetworks(peer))
         {
             return new CallerKey(GetAddressKey(peer), null);
         }
@@ -68,6 +67,11 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
         int remaining = MaxForwardedForLength;
         for (int i = forwardedFor.Count - 1; i >= 0 && remaining > 0; i--)
         {
+            if (i < forwardedFor.Count - 1 && --remaining == 0)
+            {
+                break;
+            }
+
             ReadOnlySpan<char> value = forwardedFor[i];
             if (value.Length > remaining)
             {
@@ -91,7 +95,13 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
                     return null;
                 }
 
-                if (!IsInTrustedNetworks(address) && !(skipLoopback && IsLoopback(address)))
+                if (IsInTrustedNetworks(address))
+                {
+                    skipLoopback = skipLoopback && IsLoopback(address);
+                    continue;
+                }
+
+                if (!skipLoopback || !IsLoopback(address))
                 {
                     return address;
                 }
@@ -103,7 +113,8 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
 
     private static bool TryParseForwardedAddress(ReadOnlySpan<char> entry, [NotNullWhen(true)] out IPAddress? address)
     {
-        if (IPAddress.TryParse(entry, out address))
+        address = null;
+        if (!entry.StartsWith('[') && IPAddress.TryParse(entry, out address))
         {
             return true;
         }
@@ -128,8 +139,13 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
         return false;
     }
 
-    private static bool IsLoopback(IPAddress address) =>
-        IPAddress.IsLoopback(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address);
+    private static bool IsLoopback(IPAddress address)
+    {
+        if (!address.IsIPv4MappedToIPv6) return IPAddress.IsLoopback(address);
+
+        Span<byte> bytes = stackalloc byte[16];
+        return address.TryWriteBytes(bytes, out _) && bytes[12] == 127;
+    }
 
     private static UInt128 GetAddressKey(IPAddress address)
     {

@@ -425,13 +425,11 @@ public class Startup : IStartup
 
         public bool Contains(IPAddress address)
         {
-            IPAddress ipv4 = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
-            if (ipv4.AddressFamily != AddressFamily.InterNetwork) return false;
+            Span<byte> bytes = stackalloc byte[16];
+            if (!address.TryWriteBytes(bytes, out int written)) return false;
 
-            Span<byte> bytes = stackalloc byte[4];
-            if (!ipv4.TryWriteBytes(bytes, out _)) return false;
-            uint ip = BinaryPrimitives.ReadUInt32BigEndian(bytes);
-            return (ip & _mask) == _network;
+            int offset = written == 4 ? 0 : address.IsIPv4MappedToIPv6 ? 12 : -1;
+            return offset >= 0 && (BinaryPrimitives.ReadUInt32BigEndian(bytes[offset..]) & _mask) == _network;
         }
 
         public static bool TryParse(string cidr, out TrustedCidr network)
