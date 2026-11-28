@@ -539,7 +539,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IProfile2EligibilityReplayer? replayer, (ulong Execution, ulong State)[]? gasUsedBefore) =>
         spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
             ? EvaluateWithUnknownGasDimensions(block, inclusionLists, claims, state, spec, replayer, gasUsedBefore)
-            : InclusionListValidator.IsSatisfied(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore);
+            : InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore);
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
@@ -552,13 +552,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore)) return false;
+            bool? atMaximum = InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore);
+            if (atMaximum is not true) return atMaximum;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore)) return null;
+            if (InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore) is not true) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore) ? true : null;
+            return InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore) is true ? true : null;
         }
         finally
         {
@@ -573,7 +574,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => inner.AreSignaturesValid(transaction, spec);
 
-        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        public bool?[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
         {
             List<(Transaction Transaction, int Index)> missing = [];
             foreach ((Transaction transaction, int index) in requests)
@@ -581,12 +582,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
             if (missing.Count > 0)
             {
-                bool[] evaluated = inner.AreEligible(block, missing, spec);
-                for (int i = 0; i < missing.Count; i++) _verdicts[missing[i]] = evaluated[i];
+                bool?[] evaluated = inner.AreEligible(block, missing, spec);
+                for (int i = 0; i < missing.Count; i++)
+                    if (evaluated[i] is { } verdict) _verdicts[missing[i]] = verdict;
             }
 
-            bool[] verdicts = new bool[requests.Count];
-            for (int i = 0; i < requests.Count; i++) verdicts[i] = _verdicts[requests[i]];
+            bool?[] verdicts = new bool?[requests.Count];
+            for (int i = 0; i < requests.Count; i++)
+                verdicts[i] = _verdicts.TryGetValue(requests[i], out bool known) ? known : null;
             return verdicts;
         }
     }

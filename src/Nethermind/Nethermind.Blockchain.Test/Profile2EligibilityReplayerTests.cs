@@ -185,14 +185,14 @@ public class Profile2EligibilityReplayerTests
         Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
     }
 
-    /// <summary>With no access list there is no state to reconstruct, and EIP-8369 makes that no excuse.</summary>
+    /// <summary>With no access list there is no state to reconstruct, which neither excuses the omission nor decides it.</summary>
     [Test]
-    public async Task A_block_without_an_access_list_leaves_the_candidate_enforced()
+    public async Task A_block_without_an_access_list_leaves_the_candidate_undecided()
     {
         using BasicTestBlockchain chain = await CreateChain(slot: (byte)Eip8369Constants.AaVopsSlotCount);
         IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
 
-        Assert.That(IsEligible(replayer, ChildOfHead(chain, null), FrameTx(), 0), Is.True);
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, null), FrameTx(), 0), Is.Null);
     }
 
     /// <summary>Several candidates at several indices, in no particular order, reconstruct the block's state
@@ -206,13 +206,13 @@ public class Profile2EligibilityReplayerTests
         Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList(
             [Changes(storage: [new ReadOnlySlotChanges(0, [new StorageChange(2, 1), new StorageChange(3, 0)])])], 1));
 
-        bool[] eligible = replayer.AreEligible(block,
+        bool?[] eligible = replayer.AreEligible(block,
             [(FrameTx(), 2), (FrameTx(), 0), (FrameTx(), 1), (FrameTx(), 0), (FrameTx(), 2), (FrameTx(), 1), (FrameTx(), 3)], Spec);
 
         using (Assert.EnterMultipleScope())
         {
             // Slot 0 is set by transaction 1 and cleared by transaction 2, so only index 2 sees it set.
-            Assert.That(eligible, Is.EqualTo(new[] { false, true, true, true, false, true, true }));
+            Assert.That(eligible, Is.EqualTo(new bool?[] { false, true, true, true, false, true, true }));
             Assert.That(envFactory.ScopesBuilt, Is.EqualTo(1));
         }
     }
@@ -238,7 +238,7 @@ public class Profile2EligibilityReplayerTests
         }
     }
 
-    private static bool IsEligible(IProfile2EligibilityReplayer replayer, Block block, Transaction tx, int index) =>
+    private static bool? IsEligible(IProfile2EligibilityReplayer replayer, Block block, Transaction tx, int index) =>
         replayer.AreEligible(block, [(tx, index)], Spec)[0];
 
     private static Task<BasicTestBlockchain> CreateChain(byte slot) => CreateChain(ApproveWhileSlotIsZero(slot));

@@ -297,6 +297,28 @@ public class InclusionListValidatorTests
         }
     }
 
+    [TestCase(null, false, null, TestName = "An undecided replay with no candidate proved unjustified leaves the verdict undecided")]
+    [TestCase(null, null, null, TestName = "Only undecided replays leave the verdict undecided")]
+    [TestCase(null, true, false, TestName = "A candidate proved unjustified condemns the block whatever else is undecided")]
+    [TestCase(false, false, true, TestName = "Candidates proved ineligible excuse the omissions")]
+    public void An_undecided_replay_is_not_taken_as_eligibility(bool? first, bool? second, bool? expected)
+    {
+        Transaction[] candidates = [Candidate(1, 100_000), Candidate(2, 100_000)];
+        Profile2Case profile2 = Profile2Block(candidates, blockTxCount: 0);
+        FakeReplayer replayer = new((tx, _) => ReferenceEquals(tx, candidates[0]) ? first : second);
+        Block block = profile2.Block;
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
+
+        bool? verdict = InclusionListValidator.Evaluate(block, profile2.Lists, StateWith(TestItem.AddressA, 10.Ether, 0), spec,
+            _txValidator, Eip8369Constants.MaxVerifyGasPerTx, profile2.Claims, replayer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict, Is.EqualTo(expected));
+            Assert.That(IsSatisfied(profile2, replayer), Is.EqualTo(expected is true));
+        }
+    }
+
     private static readonly Transaction _candidate = Candidate(1, 100_000);
 
     /// <summary>EIP-7805 § Evaluation index: the one index an omitted Profile 2 candidate is replayed at, and how a
@@ -519,7 +541,7 @@ public class InclusionListValidatorTests
         return positions;
     }
 
-    private sealed class FakeReplayer(Func<Transaction, int, bool> eligible, Func<Transaction, bool>? signaturesValid = null)
+    private sealed class FakeReplayer(Func<Transaction, int, bool?> eligible, Func<Transaction, bool>? signaturesValid = null)
         : IProfile2EligibilityReplayer
     {
         public List<int> ReplayedAt { get; } = [];
@@ -534,10 +556,10 @@ public class InclusionListValidatorTests
             return signaturesValid?.Invoke(transaction) ?? true;
         }
 
-        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        public bool?[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
         {
             Batches++;
-            bool[] verdicts = new bool[requests.Count];
+            bool?[] verdicts = new bool?[requests.Count];
             for (int i = 0; i < requests.Count; i++)
             {
                 ReplayedAt.Add(requests[i].Index);

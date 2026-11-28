@@ -17,11 +17,12 @@ public interface IProfile2EligibilityReplayer
     /// <summary>Whether each Profile 2 candidate is eligible when inserted at its index of <paramref name="block"/>.</summary>
     /// <remarks>
     /// A verdict is <c>false</c> only when the replay proves the candidate ineligible. A replay this node cannot
-    /// run answers <c>true</c>: EIP-8369 makes local data availability no omission excuse. The block's state is
-    /// reconstructed once for the whole batch, so callers should pass every request for a block together.
+    /// run answers <c>null</c>: EIP-8369 makes local data availability no omission excuse, so the caller must
+    /// neither excuse the omission nor settle on a verdict, and asks again once the state is available. The block's
+    /// state is reconstructed once for the whole batch, so callers should pass every request for a block together.
     /// </remarks>
     /// <param name="requests">Each candidate with the number of <paramref name="block"/>'s transactions that
     /// precede its insertion point, in <c>[0, len(block.transactions)]</c>.</param>
-    /// <returns>One verdict per request, in order.</returns>
-    bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec);
+    /// <returns>One verdict per request, in order; <c>null</c> where the replay could not run.</returns>
+    bool?[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec);
 }

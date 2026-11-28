@@ -31,7 +31,15 @@ public static class InclusionListValidator
         FrameTxNonceKeysTxValidator.Instance);
 
     /// <summary>Whether <paramref name="block"/> honours EIP-7805's separate inclusion lists under the builder's
+    /// omission claims, an undecided check counting as not honoured.</summary>
+    /// <seealso cref="Evaluate"/>
+    public static bool IsSatisfied(Block block, IReadOnlyList<Transaction[]> inclusionLists, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
+        ulong maxVerifyGasPerTx, OmissionClaim[]? claims, IProfile2EligibilityReplayer? replayer = null, IReadOnlyList<(ulong Execution, ulong State)>? gasUsedBefore = null) =>
+        Evaluate(block, inclusionLists, state, spec, txValidator, maxVerifyGasPerTx, claims, replayer, gasUsedBefore) is true;
+
+    /// <summary>Whether <paramref name="block"/> honours EIP-7805's separate inclusion lists under the builder's
     /// omission claims.</summary>
+    /// <returns><c>null</c> when the replayer could not decide a candidate and no other omission already condemns the block.</returns>
     /// <remarks>Checks appendability against state after transactions, before withdrawals and request system calls.</remarks>
     /// <param name="inclusionLists">One decoded list per committee position, each in its original order with its
     /// duplicates; the per-IL VERIFY budget is filled over each independently.</param>
@@ -43,7 +51,7 @@ public static class InclusionListValidator
     /// <param name="gasUsedBefore">EIP-8037 execution and state gas the block used before each transaction index,
     /// one entry per transaction, which a Profile 2 candidate claimed before the end of the payload must fit;
     /// <c>null</c> judges that fit against the whole block's gas, which only excuses more.</param>
-    public static bool IsSatisfied(Block block, IReadOnlyList<Transaction[]> inclusionLists, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
+    public static bool? Evaluate(Block block, IReadOnlyList<Transaction[]> inclusionLists, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
         ulong maxVerifyGasPerTx, OmissionClaim[]? claims, IProfile2EligibilityReplayer? replayer = null, IReadOnlyList<(ulong Execution, ulong State)>? gasUsedBefore = null)
     {
         if (!spec.InclusionListsEnabled) return true;
@@ -69,7 +77,7 @@ public static class InclusionListValidator
             if (gasUsedBefore is not null && gasUsedBefore.Count != block.Transactions.Length) gasUsedBefore = null;
             Profile2Inputs profile2 = new(profile2Active, maxVerifyGasPerTx, inclusionLists,
                 ClaimedIndices(claims, block.Transactions.Length), replayer, gasUsedBefore);
-            return IsSatisfied(block, il, included, state, spec, txValidator, in profile2);
+            return Evaluate(block, il, included, state, spec, txValidator, in profile2);
         }
         finally
         {
@@ -77,7 +85,7 @@ public static class InclusionListValidator
         }
     }
 
-    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, in Profile2Inputs profile2)
+    private static bool? Evaluate(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, in Profile2Inputs profile2)
     {
         // Index the first copy of each hash; included copies satisfy every occurrence in the IL.
         Dictionary<Hash256, int> ilByHash = [with(il.Length)];
@@ -120,7 +128,8 @@ public static class InclusionListValidator
             if (il[i].SupportsBlobs) continue;
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
         }
-        return toReplay is null || !AnyUnjustified(block, toReplay, spec, in profile2);
+        if (toReplay is null) return true;
+        return AnyUnjustified(block, toReplay, spec, in profile2) switch { true => false, false => true, null => null };
     }
 
     /// <summary>The inputs EIP-8369 Profile 2 enforcement takes beyond the list itself.</summary>
@@ -153,18 +162,21 @@ public static class InclusionListValidator
     }
 
     /// <summary>EIP-7805 § VERIFY budget: whether omitting any of <paramref name="candidates"/>, each admitted by some position, is unjustified.</summary>
+    /// <returns><c>null</c> when none is proved unjustified and the replayer could not decide some.</returns>
     /// <remarks>
     /// Each is replayed once, at its evaluation index: EIP-7805 judges a claimed candidate at its claim alone, so a
     /// claim at an index where the candidate is valid condemns the omission even if it is invalid at the end. Every
     /// replay goes to the replayer in one batch, so it reconstructs the block's state once.
     /// </remarks>
-    private static bool AnyUnjustified(Block block, List<(Transaction Transaction, int Index)> candidates, IReleaseSpec spec, in Profile2Inputs profile2)
+    private static bool? AnyUnjustified(Block block, List<(Transaction Transaction, int Index)> candidates, IReleaseSpec spec, in Profile2Inputs profile2)
     {
-        foreach (bool eligible in profile2.Replayer!.AreEligible(block, candidates, spec))
+        bool undecided = false;
+        foreach (bool? eligible in profile2.Replayer!.AreEligible(block, candidates, spec))
         {
-            if (eligible) return true;
+            if (eligible is true) return true;
+            if (eligible is null) undecided = true;
         }
-        return false;
+        return undecided ? null : false;
     }
 
     /// <summary>The index each claimed hash commits to, built once per check; <c>null</c> for a hash claimed more than once.</summary>

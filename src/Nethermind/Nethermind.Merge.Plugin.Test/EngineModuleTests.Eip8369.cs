@@ -313,10 +313,47 @@ public partial class EngineModuleTests
     {
         public int Batches { get; set; }
         public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => true;
-        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        public bool?[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
         {
             Batches++;
-            return new bool[requests.Count];
+            return [.. requests.Select(_ => (bool?)false)];
+        }
+    }
+
+    private sealed class UndecidedOnceReplayer : IProfile2EligibilityReplayer
+    {
+        public int Batches { get; private set; }
+        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => true;
+        public bool?[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        {
+            Batches++;
+            return Batches == 1 ? new bool?[requests.Count] : [.. requests.Select(_ => (bool?)false)];
+        }
+    }
+
+    [Test]
+    public async Task An_undecided_replay_is_not_kept_as_a_verdict_and_the_check_is_asked_again()
+    {
+        UndecidedOnceReplayer replayer = new();
+        using MergeTestBlockchain chain = await CreateProfile2Blockchain(
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = 0 },
+            builder => builder.AddSingleton<IProfile2EligibilityReplayer>(replayer));
+        (GetPayloadV7Result built, byte[] frameTx, byte[] enabler, _) = await BuildProfile2Payload(chain);
+        ExecutionPayloadV4 payload = built.ExecutionPayload;
+        byte[][][] inclusionLists = AtPositions([frameTx, enabler]);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.ExecutionRequests, inclusionLists, []);
+        bool? undecided = await InclusionVerdict(rpc, first.Data);
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), null);
+        ResultWrapper<PayloadStatusV2> asked = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.ExecutionRequests, inclusionLists, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(undecided, Is.Null);
+            Assert.That(asked.Data.InclusionCheckId, Is.EqualTo(first.Data.InclusionCheckId));
+            Assert.That(await InclusionVerdict(rpc, asked.Data), Is.True);
+            Assert.That(replayer.Batches, Is.EqualTo(2));
         }
     }
 

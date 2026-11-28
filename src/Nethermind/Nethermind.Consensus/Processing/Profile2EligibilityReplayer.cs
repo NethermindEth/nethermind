@@ -78,9 +78,9 @@ public sealed class Profile2EligibilityReplayer(
         return FrameTxSignatureValidator.Validate(transaction, ecdsa, p256Precompile, spec, out _);
     }
 
-    public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+    public bool?[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
     {
-        bool[] eligible = new bool[requests.Count];
+        bool?[] eligible = new bool?[requests.Count];
         if (requests.Count == 0) return eligible;
         if (block.BlockAccessList is not { } blockAccessList) return Undecided(eligible, 0, "the block carries no access list");
 
@@ -117,8 +117,8 @@ public sealed class Profile2EligibilityReplayer(
             catch (Exception e) when (e is IInternalNethermindException or StateUnavailableException or ObjectDisposedException or IOException)
             {
                 // A fault this node is answerable for leaves every verdict not yet reached undecided.
-                for (int i = next; i < order.Length; i++) eligible[order[i]] = true;
-                if (_logger.IsDebug) _logger.Debug($"EIP-8369 replay undecided, enforcing the omissions: {e.Message}.");
+                for (int i = next; i < order.Length; i++) eligible[order[i]] = null;
+                if (_logger.IsDebug) _logger.Debug($"EIP-8369 replay undecided: {e.Message}.");
             }
         }
         return eligible;
@@ -219,10 +219,10 @@ public sealed class Profile2EligibilityReplayer(
             ? KeyedNonceManager.IsNonceSetValid(state, sender, nonceKeys, transaction.Nonce)
             : state.GetNonce(sender) == transaction.Nonce;
 
-    private bool[] Undecided(bool[] eligible, int from, string reason)
+    private bool?[] Undecided(bool?[] eligible, int from, string reason)
     {
-        if (_logger.IsDebug) _logger.Debug($"EIP-8369 replay undecided, enforcing the omissions: {reason}.");
-        Array.Fill(eligible, true, from, eligible.Length - from);
+        if (_logger.IsDebug) _logger.Debug($"EIP-8369 replay undecided: {reason}.");
+        Array.Fill(eligible, null, from, eligible.Length - from);
         return eligible;
     }
 
