@@ -154,7 +154,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return flatDbConfig.EnableCarryForwardCache
-                    ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader))
+                    ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader),
+                        new NamedParameter("slotCapacity", flatDbConfig.CarryForwardSlotCapacity))
                     : cachedReader;
             })
             ;

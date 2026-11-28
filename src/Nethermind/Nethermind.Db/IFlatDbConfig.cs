@@ -150,6 +150,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
     bool EnableCarryForwardCache { get; set; }
 
+    [ConfigItem(Description = "Slots the carry-forward cache's slot table holds, rounded up to a power of two; each takes 128 bytes. A read-heavy RPC node whose calls touch many slots, such as DEX quoting, gains from a larger table.", DefaultValue = "524288")]
+    int CarryForwardSlotCapacity { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
