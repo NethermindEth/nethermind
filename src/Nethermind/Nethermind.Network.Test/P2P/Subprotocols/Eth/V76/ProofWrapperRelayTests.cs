@@ -206,24 +206,41 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>A peer at its concurrency limit keeps the hashes it announced, which are fetched from it once a fetch ends.</summary>
     [Test]
-    public async Task Fetch_ConcurrentFetchesFromOnePeer_AreCapped()
+    public async Task Fetch_ConcurrentFetchesFromOnePeer_AreCappedThenDeferred()
     {
         using Context context = new();
         FakePeer peer = context.Peer();
+        peer.ServeAll = true;
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         peer.Gate = release.Task;
-        List<Task> fetches = [];
+        List<ProofWrapper> wrappers = [];
         for (int i = 0; i < 6; i++)
         {
             ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, TestItem.KeccakA));
-            fetches.Add(context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]));
+            wrappers.Add(wrapper);
+            peer.Held.Add(wrapper);
+            _ = context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
         }
 
         Assert.That(() => peer.Requests, Is.EqualTo(4).After(5000, 10));
         release.SetResult();
-        await Task.WhenAll(fetches);
-        Assert.That(peer.Requests, Is.EqualTo(4));
+
+        Assert.That(() => wrappers.TrueForAll(w => context.Relay.TryGetHeld(w.Hash.ValueHash256, out _)), Is.True.After(5000, 10));
+    }
+
+    /// <summary>A hash whose announcers are all exhausted is forgotten, so a later announcement fetches it again.</summary>
+    [Test]
+    public async Task Fetch_HashOutOfAnnouncers_IsFetchedOnALaterAnnouncement()
+    {
+        using Context context = new();
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+
+        await context.Relay.OnAnnouncement(context.Peer(), [Announcement(wrapper)]);
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
     }
 
     [Test]
@@ -469,6 +486,11 @@ public class ProofWrapperRelayTests
 
         public ProofWrapper? Served { get; set; } = served;
 
+        /// <summary>Serves every requested wrapper of <see cref="Held"/>.</summary>
+        public bool ServeAll { get; set; }
+
+        public List<ProofWrapper> Held { get; } = [];
+
         /// <summary>An item served in place of <see cref="Served"/>'s, under its hash.</summary>
         public byte[]? Substitute { get; set; }
 
@@ -486,6 +508,18 @@ public class ProofWrapperRelayTests
             Interlocked.Increment(ref _requests);
             CompactFlags.Add(compact);
             await Gate;
+            if (ServeAll)
+            {
+                List<ServedWrapper> all = [];
+                foreach (ValueHash256 hash in hashes)
+                {
+                    ProofWrapper? held = Held.Find(w => w.Hash.ValueHash256 == hash);
+                    if (held is not null) all.Add(new ServedWrapper(hash, held.Encoded));
+                }
+
+                return all;
+            }
+
             if (Served is not { } wrapper || !System.Linq.Enumerable.Contains(hashes, wrapper.Hash.ValueHash256)) return [];
             byte[] item = Substitute ?? (compact && CompactReferencesEverything
                 ? ProofWrapperCodec.Encode(wrapper.EncodedTransactions, wrapper.Deps, wrapper.Proof, static _ => true)

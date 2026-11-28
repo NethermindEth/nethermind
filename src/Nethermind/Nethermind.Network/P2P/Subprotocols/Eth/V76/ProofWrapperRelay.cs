@@ -244,11 +244,18 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         if (!_peers.TryGetValue(peer, out PeerState? state)) return;
 
-        // Every path to a peer passes here, failover included, so the per-peer limits hold on all of them.
-        if (Interlocked.Increment(ref state.Fetches) > MaxFetchesPerPeer || Volatile.Read(ref state.ProofFailures) >= MaxProofFailuresPerPeer)
+        // Every path to a peer passes here, failover included, so the per-peer limits hold on all of them. A peer that sent
+        // too many invalid proofs is dropped as an announcer; a busy one keeps the hashes until one of its fetches ends.
+        if (Volatile.Read(ref state.ProofFailures) >= MaxProofFailuresPerPeer)
+        {
+            foreach (ValueHash256 hash in hashes) TryNextAnnouncer(hash, peer);
+            return;
+        }
+
+        if (Interlocked.Increment(ref state.Fetches) > MaxFetchesPerPeer)
         {
             Interlocked.Decrement(ref state.Fetches);
-            foreach (ValueHash256 hash in hashes) TryNextAnnouncer(hash, peer);
+            Defer(peer, state, hashes);
             return;
         }
 
@@ -280,7 +287,44 @@ public sealed class ProofWrapperRelay : IDisposable
         finally
         {
             Interlocked.Decrement(ref state.Fetches);
+            FetchDeferred(peer, state);
         }
+    }
+
+    private void Defer(IProofWrapperPeer peer, PeerState state, List<ValueHash256> hashes)
+    {
+        List<ValueHash256> overflow = [];
+        lock (state.Deferred)
+        {
+            foreach (ValueHash256 hash in hashes)
+            {
+                if (state.Deferred.Count < PeerRecordCapacity) state.Deferred.Enqueue(hash);
+                else overflow.Add(hash);
+            }
+        }
+
+        foreach (ValueHash256 hash in overflow) TryNextAnnouncer(hash, peer);
+        // A fetch may have ended between the check and the queueing, leaving nothing to pick the hashes up.
+        if (Volatile.Read(ref state.Fetches) < MaxFetchesPerPeer) FetchDeferred(peer, state);
+    }
+
+    /// <summary>Fetches the hashes deferred while <paramref name="peer"/> was at its concurrency limit, those it is still the
+    /// fetching announcer of.</summary>
+    private void FetchDeferred(IProofWrapperPeer peer, PeerState state)
+    {
+        List<ValueHash256> batch = [];
+        lock (state.Deferred)
+        {
+            while (batch.Count < Eth76Protocol.MaxRequestedWrappers && state.Deferred.TryDequeue(out ValueHash256 hash))
+            {
+                lock (_lock)
+                {
+                    if (_fetches.TryGetValue(hash, out Fetch? fetch) && fetch.Announcers.Count != 0 && fetch.Announcers[0] == peer) batch.Add(hash);
+                }
+            }
+        }
+
+        if (batch.Count != 0) _ = FetchFrom(peer, batch);
     }
 
     /// <summary>Fetches the manifests of large wrappers while wrappers are held, and drops each whose transactions held
@@ -810,6 +854,7 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         public int Fetches;
         public int ProofFailures;
+        public Queue<ValueHash256> Deferred { get; } = [];
 
         public LruCache<ValueHash256, WrapperAnnouncement> Announced { get; } = new(PeerRecordCapacity, "announced proof wrappers");
         public LruKeyCache<ValueHash256> AnnouncedTo { get; } = new(PeerRecordCapacity, "proof wrappers announced to a peer");
