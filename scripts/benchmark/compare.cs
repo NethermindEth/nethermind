@@ -6,10 +6,15 @@
 //
 //   compare.cs <base artifacts directory> <head artifacts directory>
 //
+// Use a dedicated artifacts root for each benchmark campaign. Read runner-job/results and
+// own-job/results only when results contains no matching reports, regardless of report age.
+//
 // Reads BASE_SHA, HEAD_SHA, BASE_OUTCOME, HEAD_OUTCOME and RUNNER_NAME from the environment.
 // Benchmarks are listed in the head run's order; one missing from the base run shows dashes.
 // Exits with 1 when the head run has no results or any of its benchmarks failed: the benchmark runner
 // itself exits with 0 regardless.
+
+#:property PublishAot=false
 
 using System.Globalization;
 using System.Text.Json;
@@ -64,10 +69,7 @@ return 0;
 static Dictionary<string, Result?> Load(string artifactsDirectory)
 {
     Dictionary<string, Result?> results = [];
-    var resultsDirectory = Path.Combine(artifactsDirectory, "results");
-    if (!Directory.Exists(resultsDirectory)) return results;
-
-    foreach (var path in Directory.EnumerateFiles(resultsDirectory, "*-report-full-compressed.json"))
+    foreach (var path in ReportPaths(artifactsDirectory))
     {
         using var document = JsonDocument.Parse(File.ReadAllBytes(path));
         foreach (var benchmark in document.RootElement.GetProperty("Benchmarks").EnumerateArray())
@@ -98,6 +100,28 @@ static Dictionary<string, Result?> Load(string artifactsDirectory)
     }
 
     return results;
+}
+
+static IEnumerable<string> ReportPaths(string artifactsDirectory)
+{
+    var hasFlatReports = false;
+    foreach (var path in ReportsIn(artifactsDirectory))
+    {
+        hasFlatReports = true;
+        yield return path;
+    }
+
+    if (hasFlatReports) yield break;
+    foreach (var path in ReportsIn(Path.Combine(artifactsDirectory, "runner-job"))) yield return path;
+    foreach (var path in ReportsIn(Path.Combine(artifactsDirectory, "own-job"))) yield return path;
+}
+
+static IEnumerable<string> ReportsIn(string artifactsDirectory)
+{
+    var resultsDirectory = Path.Combine(artifactsDirectory, "results");
+    return Directory.Exists(resultsDirectory)
+        ? Directory.EnumerateFiles(resultsDirectory, "*-report-full-compressed.json")
+        : [];
 }
 
 static bool TryGetObject(JsonElement element, string property, out JsonElement value) =>
