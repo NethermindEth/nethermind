@@ -200,4 +200,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();
+
+    public virtual IDisposable? BeginUndeclaredAccountReads()
+        => State.BeginUndeclaredAccountReads();
 }
