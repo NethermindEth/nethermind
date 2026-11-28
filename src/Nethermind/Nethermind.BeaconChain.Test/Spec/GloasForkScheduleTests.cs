@@ -46,21 +46,19 @@ public class GloasForkScheduleTests
         Assert.Throws<BeaconStateException>(() => SyntheticGloasSpec().ForkAtEpoch(0));
 
     [Test]
-    public void ForkAtEpoch_on_mainnet_and_hoodi_never_reaches_gloas_since_it_is_unscheduled()
-    {
-        using IDisposable scope = Assert.EnterMultipleScope();
+    public void ForkAtEpoch_on_mainnet_never_reaches_gloas_since_it_is_unscheduled() =>
         Assert.That(BeaconChainSpec.Mainnet.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu),
             "GloasForkEpoch is the far-future sentinel until a real date is confirmed");
-        Assert.That(BeaconChainSpec.Hoodi.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu));
-    }
 
-    [Test]
-    public void ForkAtEpoch_on_sepolia_selects_gloas_at_its_confirmed_epoch_and_fulu_immediately_before_it()
+    // Sepolia: ethereum/pm#2205, lodestar#10119. Hoodi: eth-clients/hoodi#35.
+    [TestCase("Sepolia", 353024ul)]
+    [TestCase("Hoodi", 143616ul)]
+    public void ForkAtEpoch_selects_gloas_at_the_confirmed_epoch_and_fulu_immediately_before_it(string network, ulong gloasEpoch)
     {
+        BeaconChainSpec spec = network == "Hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353024), Is.EqualTo(BeaconFork.Gloas),
-            "Sepolia's confirmed GLOAS_FORK_EPOCH (ethereum/pm#2205, lodestar#10119)");
-        Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353023), Is.EqualTo(BeaconFork.Fulu));
+        Assert.That(spec.ForkAtEpoch(gloasEpoch), Is.EqualTo(BeaconFork.Gloas));
+        Assert.That(spec.ForkAtEpoch(gloasEpoch - 1), Is.EqualTo(BeaconFork.Fulu));
     }
 
     // Expected digest reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
@@ -82,20 +80,22 @@ public class GloasForkScheduleTests
 
     // Expected digests reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
     // genesis_validators_root)[:4], XOR-masked per EIP-7892 with sha256(le64(blob_epoch) ++
-    // le64(max_blobs_per_block))[:4] using Sepolia's own confirmed genesis validators root and its
-    // published BPO2 blob params (275712, 21), which are still the params in effect at the Gloas
+    // le64(max_blobs_per_block))[:4] using the network's own confirmed genesis validators root and its
+    // published BPO2 blob params (Sepolia 275712, Hoodi 54016; 21 blobs each), which are still the params in effect at the Gloas
     // boundary since BPO and hard-fork rotation are orthogonal (see ForkDigest's own remarks).
-    [Test]
-    public void Sepolia_fork_digest_rotates_at_the_gloas_boundary_and_matches_an_independent_computation()
+    [TestCase("Sepolia", 353024ul, "0x74d01459", "0x669e6c11")]
+    [TestCase("Hoodi", 143616ul, "0xc6ecb76c", "0x5ad30129")]
+    public void Fork_digest_rotates_at_the_gloas_boundary_and_matches_an_independent_computation(string network, ulong gloasEpoch, string expectedFuluDigest, string expectedGloasDigest)
     {
-        byte[] fuluDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353023);
-        byte[] gloasDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353024);
+        BeaconChainSpec spec = network == "Hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
+        byte[] fuluDigest = ForkDigest.Compute(spec, gloasEpoch - 1);
+        byte[] gloasDigest = ForkDigest.Compute(spec, gloasEpoch);
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString("0x74d01459")));
+        Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString(expectedFuluDigest)));
         Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
             "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
-        Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0x669e6c11")));
+        Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString(expectedGloasDigest)));
     }
 
     // ForkAtEpoch reads scalar epochs; VersionForEpoch reads Forks. They must agree or signatures and advertised digests diverge.
