@@ -138,7 +138,7 @@ public sealed class Profile2EligibilityReplayer(
         try
         {
             // Prefix-only simulation restores its own snapshot, so the reconstructed state serves the next candidate.
-            TransactionResult result = processor.Process(transaction, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+            TransactionResult result = processor.Process(transaction, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FramePrefixAtBlockBaseFee);
             return !tracer.Violated && result && tracer.Payer is not null;
         }
         catch (OperationCanceledException) when (tracer.Violated)

@@ -74,6 +74,38 @@ public class Profile2EligibilityReplayerTests
         Assert.That(IsEligible(replayer, block, FrameTx(), index), Is.EqualTo(eligible));
     }
 
+    /// <summary>The payer is held to the <c>max_cost</c> execution escrows at the block's base fee, not to <c>max_fee</c>,
+    /// so a candidate the block could have included at this index is never judged ineligible.</summary>
+    [TestCase(0, true, TestName = "Payer holding exactly the escrow at the block's base fee is eligible")]
+    [TestCase(-1, false, TestName = "Payer one wei short of the escrow at the block's base fee is ineligible")]
+    public async Task Payer_is_bounded_by_the_escrow_at_the_blocks_base_fee(int offset, bool eligible)
+    {
+        using BasicTestBlockchain chain = await CreateChain(0);
+        IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
+        Transaction tx = FrameTx();
+        BlockHeader header = ChildOfHead(chain, null).Header;
+        FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas);
+        FrameTxFeeBudget.TryCalculate(tx.MaxFee, tx.MaxPriorityFeePerGas, maxGas, header.BaseFeePerGas, UInt256.Zero, out _, out UInt256 escrow);
+        UInt256 balance = offset < 0 ? escrow - 1 : escrow;
+        Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes(balances: [new BalanceChange(1, balance)])], 1));
+
+        Assume.That(escrow, Is.LessThan(tx.MaxFee));
+        Assert.That(IsEligible(replayer, block, tx, 1), Is.EqualTo(eligible));
+    }
+
+    [Test]
+    public async Task Max_fee_below_the_required_max_fee_at_the_blocks_base_fee_is_ineligible()
+    {
+        using BasicTestBlockchain chain = await CreateChain(0);
+        IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
+        Transaction tx = FrameTx();
+        Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1));
+        FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas);
+        block.Header.BaseFeePerGas = tx.MaxFee / maxGas + 1;
+
+        Assert.That(IsEligible(replayer, block, tx, 0), Is.False);
+    }
+
     /// <summary>EIP-8369 Profile 2 bounds the prefix by <c>MAX_VERIFY_GAS_PER_TX</c>, not EIP-8141's mempool
     /// <c>MAX_VERIFY_GAS</c>, so a prefix spending between the two is ineligible.</summary>
     /// <remarks>The frame declares 290,000, under <c>MAX_VERIFY_GAS</c>; the wide expansion alone runs past

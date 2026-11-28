@@ -57,6 +57,10 @@ public enum ExecutionOptions
     /// <summary>With <see cref="Warmup"/>: charge gas and value in full, so a sender that cannot pay fails the run.</summary>
     StrictWarmup = 256,
 
+    /// <summary>With <see cref="FrameValidationPrefixOnly"/>: bound the payer by the <c>max_cost</c> execution escrows at the
+    /// block's base fees, and reject a <c>max_fee</c> below <c>required_max_fee</c>, instead of the base-fee-free <c>max_fee</c>.</summary>
+    FramePrefixAtBlockBaseFee = 512,
+
     /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
