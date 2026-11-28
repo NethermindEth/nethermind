@@ -36,13 +36,13 @@ public class BasicOptionsTests
     }
 
     [TestCase(new[] { "--Init.Unknown", "123" }, "Unrecognized option '--Init.Unknown'.", ExitCodes.UnrecognizedOption, true)]
-    [TestCase(new[] { "verify-trie", "--bogus" }, "Unrecognized command or argument '--bogus'.", ExitCodes.UnrecognizedOption, true)]
-    [TestCase(new[] { "verify-trie", "extra" }, "Unrecognized command or argument 'extra'.", ExitCodes.UnrecognizedOption, false)]
+    [TestCase(new[] { "verify-trie", "--bogus" }, "Unrecognized option '--bogus'.", ExitCodes.UnrecognizedOption, true)]
+    [TestCase(new[] { "rewrite-db", "receipts", "--Db.Unknown" }, "Unrecognized option '--Db.Unknown'.", ExitCodes.UnrecognizedOption, true)]
     [TestCase(new[] { "--force-resync", "--purge-db" }, "Cannot use --force-resync and --purge-db together. Choose one.", ExitCodes.GeneralError, false)]
     public void Parse_errors_are_reported(string[] args, string firstError, int exitCode, bool releaseNotesHint)
     {
         TestLogger logger = new();
-        ParseResult result = new RootCommand { BasicOptions.Command, BasicOptions.ForceResync, BasicOptions.PurgeDb }.Parse(args);
+        ParseResult result = new RootCommand { BasicOptions.Command, BasicOptions.CommandArguments, BasicOptions.ForceResync, BasicOptions.PurgeDb }.Parse(args);
 
         int code = BasicOptions.ReportParseErrors(result, new ILogger(logger));
 

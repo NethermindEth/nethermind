@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -290,7 +291,9 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         cancellationToken.Register(() => exitSource.Exit(Volatile.Read(ref cancellationExitCode)));
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
-    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
+    string? command = parseResult.GetValue(BasicOptions.Command);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins,
+        command is null ? null : new StepCommandSelection(command, parseResult.GetValue(BasicOptions.CommandArguments) ?? []));
 
     try
     {
@@ -497,6 +500,7 @@ RootCommand CreateRootCommand()
     RootCommand rootCommand =
     [
         BasicOptions.Command,
+        BasicOptions.CommandArguments,
         BasicOptions.Configuration,
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
@@ -594,6 +598,24 @@ static class BasicOptions
         }
     };
 
+    public static Argument<string[]> CommandArguments { get; } = new("arguments")
+    {
+        Description = "Arguments for the command, such as the database to rewrite in `rewrite-db receipts`.",
+        Arity = ArgumentArity.ZeroOrMore,
+        // An unrecognized option is otherwise taken as an argument, which a command may ignore.
+        Validators =
+        {
+            static result =>
+            {
+                foreach (Token token in result.Tokens)
+                {
+                    if (token.Value.StartsWith('-'))
+                        result.AddError($"Unrecognized option '{token.Value}'.");
+                }
+            }
+        }
+    };
+
     /// <summary>Logs the errors of a command line that failed to parse.</summary>
     /// <remarks>
     /// An unrecognized option is logged before the other errors because the value that follows it
@@ -610,7 +632,7 @@ static class BasicOptions
 
         foreach (ParseError error in parseResult.Errors)
         {
-            if (error.SymbolResult is ArgumentResult result && result.Argument == Command)
+            if (error.SymbolResult is ArgumentResult result && (result.Argument == Command || result.Argument == CommandArguments))
                 messages.Insert(unrecognizedOptions++, error.Message);
             else
                 messages.Add(error.Message);

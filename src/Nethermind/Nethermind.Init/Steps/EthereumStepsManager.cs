@@ -226,7 +226,8 @@ namespace Nethermind.Init.Steps
         /// than run as a union.
         /// </remarks>
         /// <exception cref="InvalidConfigurationException">
-        /// The requested command is not registered, or more than one distinct target was selected.
+        /// The requested command is not registered or is given arguments it does not take, or more than one distinct
+        /// target was selected.
         /// </exception>
         private Type? ResolveTarget(IReadOnlyList<StepInfo> resolvedSteps)
         {
@@ -249,6 +250,11 @@ namespace Nethermind.Init.Steps
                     throw new InvalidConfigurationException(
                         $"Command '{selection.Name}' is claimed by more than one step: {string.Join(", ", matches.Select(static s => s.StepType.FullName).Order())}.",
                         ExitCodes.ConflictingConfigurations);
+
+                if (selection.Arguments.Count > 0 && matches[0].StepType.GetCustomAttribute<StepCommandAttribute>() is { TakesArguments: false })
+                    throw new InvalidConfigurationException(
+                        $"Command '{selection.Name}' takes no arguments, but was given: {string.Join(' ', selection.Arguments)}.",
+                        ExitCodes.UnrecognizedOption);
 
                 targets.Add(matches[0].StepBaseType);
             }
