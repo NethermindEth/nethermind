@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,7 @@ using Nethermind.Optimism.CL;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Network.Libp2p;
@@ -400,5 +402,54 @@ public class OptimismGossipSettingsTests
             topic.RecordInvalidMessage();
             Assert.That(score.GetScore([]), Is.Negative);
         }
+    }
+
+    // Mesh peers' writes are held until every copy is queued, as on any real link: a max-size frame takes about 100 ms at 1 Gbit/s.
+    [Test]
+    public async Task Largest_block_message_is_forwarded_to_every_mesh_peer_up_to_d_high()
+    {
+        PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings();
+        using PubsubRouter pubsub = new(new PeerStore(), settings);
+        pubsub.VerifyMessage = static (_, _) => MessageValidity.Accepted;
+        pubsub.GetTopic(BlocksTopic);
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MethodInfo onRpc = typeof(PubsubRouter).GetMethod("OnRpcAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        PeerId sender = new Identity().PeerId;
+        PeerId[] mesh = Enumerable.Range(0, settings.HighestDegree).Select(static _ => new Identity().PeerId).ToArray();
+        int[] largeFrames = new int[mesh.Length];
+        Connect(sender, static (_, _) => ValueTask.FromResult(IOResult.Ok));
+        for (int i = 0; i < mesh.Length; i++)
+        {
+            int peer = i;
+            Connect(mesh[peer], async (frame, token) =>
+            {
+                if (frame.Length >= 1024 * 1024) Interlocked.Increment(ref largeFrames[peer]);
+                await released.Task.WaitAsync(token);
+                return IOResult.Ok;
+            });
+        }
+
+        foreach (PeerId peer in mesh.Append(sender))
+        {
+            await Receive(peer, new GossipRpc { Subscriptions = { new GossipRpc.Types.SubOpts { Topicid = BlocksTopic, Subscribe = true } } });
+        }
+
+        ((IRoutingStateContainer)pubsub).Mesh[BlocksTopic].UnionWith(mesh);
+        // As large as a 65-byte signature and the largest snappy encoding of a 10 MiB payload.
+        byte[] data = new byte[65 + Eth2MessageId.MaxCompressedGossipSize];
+        new Random(1).NextBytes(data);
+        await Receive(sender, new GossipRpc { Publish = { new Message { Topic = BlocksTopic, Data = UnsafeByteOperations.UnsafeWrap(data) } } });
+        released.SetResult();
+        await ((Task)typeof(PubsubRouter).GetMethod("FlushOutboundAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub, null)!);
+
+        Assert.That(largeFrames.Count(static frames => frames == 1), Is.EqualTo(settings.HighestDegree));
+
+        void Connect(PeerId peer, Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<IOResult>> write) =>
+            typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
+                [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), PubsubRouter.GossipsubProtocolVersionV12,
+                    new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task, write, (Func<ValueTask>)(static () => ValueTask.CompletedTask),
+                    (Func<Task>)(static () => Task.CompletedTask)]);
+
+        Task Receive(PeerId peer, GossipRpc rpc) => (Task)onRpc.Invoke(pubsub, [peer, rpc, null, true, CancellationToken.None])!;
     }
 }

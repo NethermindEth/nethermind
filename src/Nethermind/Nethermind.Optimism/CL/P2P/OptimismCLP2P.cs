@@ -42,6 +42,7 @@ public class OptimismCLP2P : IDisposable
     private const int MinGossipSize = 66;
     private const int MessageDomainLength = 4;
     private const int MessageIdLength = 20;
+    private const int GossipHighestDegree = 6;
 
     private readonly ServiceProvider _serviceProvider;
     private readonly ILogger _logger;
@@ -128,13 +129,15 @@ public class OptimismCLP2P : IDisposable
         ReconnectionAttempts = int.MaxValue,
         Degree = 3,
         LowestDegree = 2,
-        HighestDegree = 6,
+        HighestDegree = GossipHighestDegree,
         LazyDegree = 3,
         DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
         GetMessageId = CalculateMessageId,
         // rollup-node-p2p.md "Message compression and limits": gossip carries up to 10 MiB, beyond the library's 1 MiB RPC and 512 KiB IWANT bounds.
         MaxRpcBytes = Eth2MessageId.MaxMessageSize,
         MaxOutboundRpcBytesPerPeer = 2L * Eth2MessageId.MaxMessageSize,
+        // One max-size message for every D_high mesh peer, plus the per-peer 2 × MaxMessageSize the router keeps for required control (SUBSCRIBE, GRAFT, PRUNE).
+        MaxOutboundRpcBytes = (GossipHighestDegree + 2L) * Eth2MessageId.MaxMessageSize,
         MaxIwantResponseBytes = MaxGossipSize,
     };
 

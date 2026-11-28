@@ -205,13 +205,13 @@ public sealed class BeaconP2P : IAsyncDisposable
                 AgentVersion = ClientAgentVersion,
             })
             // The eth2 gossipsub parameters (consensus-specs p2p-interface "The gossip domain: gossipsub").
-            .AddSingleton(GossipScoring.Configure(new PubsubSettings
+            .AddSingleton(GossipScoring.Configure(WithBeaconQueueLimits(new PubsubSettings
             {
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
                 GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data)),
                 Degree = 8, // D
                 LowestDegree = 6, // D_low
-                HighestDegree = 12, // D_high
+                HighestDegree = GossipHighestDegree, // D_high
                 LazyDegree = 6, // D_lazy
                 HeartbeatInterval = 700, // heartbeat_interval: 0.7 s
                 FanoutTtl = 60_000, // fanout_ttl: 60 s
@@ -236,7 +236,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 IdontwantTtlHeartbeats = 3,
                 MaxIdontwantLength = IdontwantIdsPerControl,
                 MaxIdontwantMessages = MaxIdontwantControlsPerHeartbeat,
-            }, ScheduledTopics(spec), spec))
+            }, config, lightClientRequests), ScheduledTopics(spec), spec))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
@@ -251,6 +251,27 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal static int PendingValidationBytesBackstop(IBeaconChainConfig config, BeaconChainSpec spec) =>
         (int)Math.Min(int.MaxValue, 2 * (2L * config.GossipMaxPendingValidationBytes + (long)BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes
             + DataColumnSidecarPool.MaxPendingGloasSidecars * (long)Math.Min(DataColumnSidecarGloasSize.ComputeMax(spec), (ulong)Eth2MessageId.MaxGossipSize)));
+
+    /// <summary>Sizes the router's queues for max-size beacon gossip. The light-client host keeps the library's limits: it gossips only light-client updates and lowers <c>MaxRpcBytes</c> to 1 MiB.</summary>
+    private static PubsubSettings WithBeaconQueueLimits(PubsubSettings settings, IBeaconChainConfig config, bool lightClient)
+    {
+        if (lightClient) return settings;
+        // One max-size message for every D_high mesh peer, plus the per-peer 2 × max_message_size() the router keeps for required control (SUBSCRIBE, GRAFT, PRUNE).
+        settings.MaxOutboundRpcBytes = (GossipHighestDegree + 2L) * Eth2MessageId.MaxMessageSize;
+        // Required control that finds a full peer queue disconnects it; 256 frames cover short normal bursts instead of the library's 32.
+        settings.MaxOutboundRpcEntriesPerPeer = GossipOutboundRpcEntriesPerPeer;
+        // Room for every configured peer but one to fill its queue, the last share being kept for required control; the byte limit still bounds retained payload memory.
+        settings.MaxOutboundRpcEntries = Math.Max(4_096, checked(config.MaxPeerCount * GossipOutboundRpcEntriesPerPeer));
+        // A max-size RPC whose id is being computed leaves room for other gossip; an RPC that does not fit is skipped unchecked.
+        settings.MaxIncomingMessageIdRpcBytes = 64L * 1024 * 1024;
+        return settings;
+    }
+
+    /// <summary>gossipsub D_high: the most mesh peers per topic.</summary>
+    private const int GossipHighestDegree = 12;
+
+    /// <summary>Outbound frames queued or being written to one gossip peer before optional ones are dropped and required control disconnects it.</summary>
+    private const int GossipOutboundRpcEntriesPerPeer = 256;
 
     /// <summary>The most message ids in one IDONTWANT control entry.</summary>
     internal const int IdontwantIdsPerControl = 10;

@@ -21,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NSubstitute;
 
@@ -65,6 +66,22 @@ public class BeaconPeerTransportTests
             new LightClientFinalityUpdateProtocol(ConsensusTests.Spec).Id, new LightClientOptimisticUpdateProtocol(ConsensusTests.Spec).Id];
         foreach (string id in ids)
             Assert.That(protocols.Contains(id), Is.EqualTo(lightClient), id);
+    }
+
+    [Test]
+    public async Task Light_client_gossip_keeps_the_library_queue_limits()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        await using BeaconPeerTransport transport = new(ConsensusTests.Spec, LimboLogs.Instance, db, quicPort: 0);
+        BeaconP2P host = (BeaconP2P)typeof(BeaconPeerTransport).GetField("_p2p", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
+        PubsubSettings settings = host.PubsubSettingsForTest;
+        PubsubSettings library = new();
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(settings.MaxOutboundRpcBytes, Is.EqualTo(library.MaxOutboundRpcBytes));
+        Assert.That(settings.MaxOutboundRpcEntriesPerPeer, Is.EqualTo(library.MaxOutboundRpcEntriesPerPeer));
+        Assert.That(settings.MaxOutboundRpcEntries, Is.EqualTo(library.MaxOutboundRpcEntries));
+        Assert.That(settings.MaxIncomingMessageIdRpcBytes, Is.EqualTo(library.MaxIncomingMessageIdRpcBytes));
     }
 
     [TestCase(-1, false)]

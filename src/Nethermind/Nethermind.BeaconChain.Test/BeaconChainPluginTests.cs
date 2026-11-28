@@ -153,6 +153,11 @@ public class BeaconChainPluginTests
         Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(12_234_442));
         // (64 committees * 16 target aggregators + 512 PTC votes + 128 column subnets + 5 single-message topics) per slot, over 64 slots.
         Assert.That(settings.MaxSeenMessageIds, Is.EqualTo(106_816));
+        // One max-size copy for each of 12 mesh peers plus 2 × max_message_size() for required control; 256 frames × the default 80 peers.
+        Assert.That(settings.MaxOutboundRpcBytes, Is.EqualTo(14L * 12_234_442));
+        Assert.That(settings.MaxOutboundRpcEntriesPerPeer, Is.EqualTo(256));
+        Assert.That(settings.MaxOutboundRpcEntries, Is.EqualTo(80 * 256));
+        Assert.That(settings.MaxIncomingMessageIdRpcBytes, Is.EqualTo(64L * 1024 * 1024));
     }
 
     [Test]
