@@ -90,7 +90,13 @@ public partial class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePr
 
         UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
         UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
-        UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
+        // A product that does not fit in 256 bits is far above any gas limit: saturate instead of wrapping.
+        if (UInt256.MultiplyOverflow(complexity, UInt256.Max(adjusted, UInt256.One), out UInt256 product))
+        {
+            return ulong.MaxValue;
+        }
+
+        UInt256 gas = product / 20;
         return gas > ulong.MaxValue ? ulong.MaxValue : (ulong)gas;
     }
 
@@ -113,7 +119,13 @@ public partial class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePr
             return adjustedExponentLength * adjustedExponentLength / 4 + 96 * adjustedExponentLength - 3072;
         }
 
-        return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
+        // The square can exceed 256 bits; when it fits, the length is below 2^128 and the sum cannot overflow.
+        if (UInt256.MultiplyOverflow(adjustedExponentLength, adjustedExponentLength, out UInt256 square))
+        {
+            return UInt256.MaxValue;
+        }
+
+        return square / 16 + 480 * adjustedExponentLength - 199680;
     }
 
     private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, ReadOnlySpan<byte> exponent)
