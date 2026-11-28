@@ -202,6 +202,7 @@ public static class ExecutionFailureText
 
     /// <summary>Describes the failure of <paramref name="tx"/> as it ran in <paramref name="blockContext"/>.</summary>
     /// <param name="error">The failure as the processor described it.</param>
+    /// <param name="extraOptions">Options the failed run added to <see cref="ExecutionOptions.CommitAndRestore"/>, so the rerun follows the same gas rules.</param>
     /// <returns>Whether <paramref name="text"/> holds the text to report; false keeps <paramref name="error"/>.</returns>
     public static bool TryDescribe(
         ITransactionProcessor transactionProcessor,
@@ -210,7 +211,8 @@ public static class ExecutionFailureText
         EvmExceptionType failure,
         string error,
         CancellationToken token,
-        out string text)
+        out string text,
+        ExecutionOptions extraOptions = ExecutionOptions.None)
     {
         text = error;
         if (failure == EvmExceptionType.PrecompileFailure)
@@ -230,7 +232,7 @@ public static class ExecutionFailureText
             case EvmExceptionType.BadInstruction
                 or EvmExceptionType.StackUnderflow
                 or EvmExceptionType.StackOverflow:
-                return TryDescribeFailingOperation(transactionProcessor, tx, in blockContext, failure, token, ref text);
+                return TryDescribeFailingOperation(transactionProcessor, tx, in blockContext, failure, token, extraOptions, ref text);
             default:
                 return false;
         }
@@ -242,13 +244,14 @@ public static class ExecutionFailureText
         in BlockExecutionContext blockContext,
         EvmExceptionType failure,
         CancellationToken token,
+        ExecutionOptions extraOptions,
         ref string text)
     {
         FailingOperationTracer tracer = new();
         TransactionResult result;
         try
         {
-            result = transactionProcessor.CallAndRestore(tx, in blockContext, tracer.WithCancellation(token));
+            result = transactionProcessor.CallAndRestore(tx, in blockContext, tracer.WithCancellation(token), extraOptions);
         }
         catch (InsufficientBalanceException)
         {

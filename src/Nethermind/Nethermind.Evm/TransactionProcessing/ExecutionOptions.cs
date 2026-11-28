@@ -58,6 +58,16 @@ public enum ExecutionOptions
     StrictWarmup = 256,
 
     /// <summary>
+    /// Skip the transaction gas caps, as <c>eth_call</c> and <c>debug_traceCall</c> do: all gas after the intrinsic cost
+    /// is execution gas.
+    /// </summary>
+    /// <remarks>
+    /// Neither EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c> rejects the gas limit, nor EIP-7825's cap moves gas into the
+    /// EIP-8037 state-gas reservoir or limits the intrinsic and floor costs.
+    /// </remarks>
+    SkipTxGasCaps = 512,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

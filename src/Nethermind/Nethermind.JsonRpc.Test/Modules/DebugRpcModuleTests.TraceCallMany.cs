@@ -590,7 +590,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCallMany_enforces_eip8037_total_cap(
+    public async Task Debug_traceCallMany_skips_eip8037_total_cap(
         [Values] bool stream,
         [Values(0UL, 1_000_000_000_000UL)] ulong gasCap,
         [Values(null, Eip8037Constants.TxMaxTotalGasLimit + 1)] ulong? requestGas)
@@ -609,7 +609,7 @@ public partial class DebugRpcModuleTests
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
+        Assert.That((bool)result[0][0]!["failed"]!, Is.False);
     }
 
     [Test]
