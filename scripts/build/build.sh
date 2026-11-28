@@ -31,4 +31,7 @@ done
 mkdir $output_path/ref
 cp ../artifacts/obj/**/$build_config/refint/*.dll $output_path/ref
 
+# Archives record file times, so pin them to the commit time to keep the packages reproducible
+[[ -n "$SOURCE_DATE_EPOCH" ]] && find $output_path -exec touch -h -d @$SOURCE_DATE_EPOCH {} +
+
 echo "Build completed"

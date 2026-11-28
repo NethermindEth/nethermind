@@ -4,6 +4,7 @@
 
 /.agents @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
 /.github @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
+/.github/release-signers @LukaszRozmej @MarekM25 @rubo
 /scripts @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
 
 /src/Nethermind/Ethereum.Test.Base @flcl42
