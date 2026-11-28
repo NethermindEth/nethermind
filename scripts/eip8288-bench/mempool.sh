@@ -28,6 +28,7 @@ helper=eip8288-bench-helper:1
 mkdir -p "$out" "$(dirname "$(realpath -m "$POOL")")"
 
 cleanup() {
+  [[ -z ${sampler:-} ]] || kill "$sampler" 2>/dev/null || true
   for ((i = 0; i < NODES; i++)); do docker rm -f "$prefix-$i" >/dev/null 2>&1 || true; done
   docker rm -f "$prefix-load" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
@@ -108,15 +109,31 @@ for _ in $(seq 60); do
 done
 sleep "$WARMUP_SECONDS"
 
+# Kernels before 5.19 have no memory.peak, so the peak falls back to memory.current sampled during the load.
+sample_memory() {
+  while true; do
+    for ((i = 0; i < NODES; i++)); do
+      current=$(docker exec "$prefix-$i" cat /sys/fs/cgroup/memory.current 2>/dev/null) || continue
+      previous=$(cat "$out/node$i.sampled-peak" 2>/dev/null || echo 0)
+      if (( current > previous )); then echo "$current" > "$out/node$i.sampled-peak"; fi
+    done
+    sleep 2
+  done
+}
+
 snapshot() { # snapshot <phase>
   for ((i = 0; i < NODES; i++)); do
-    docker exec "$prefix-$i" sh -c 'cat /sys/fs/cgroup/cpu.stat; echo "memory_current $(cat /sys/fs/cgroup/memory.current)";
-      echo "memory_peak $(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo 0)"; cat /proc/net/dev' > "$out/node$i.$1.txt"
+    sampled=$(cat "$out/node$i.sampled-peak" 2>/dev/null || echo 0)
+    docker exec -e SAMPLED="$sampled" "$prefix-$i" sh -c 'cat /sys/fs/cgroup/cpu.stat; current=$(cat /sys/fs/cgroup/memory.current);
+      echo "memory_current $current"; peak=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo 0);
+      for value in "$current" "$SAMPLED"; do [ "$value" -gt "$peak" ] && peak=$value; done
+      echo "memory_peak $peak"; cat /proc/net/dev' > "$out/node$i.$1.txt"
     docker run --rm --network "$net" "$helper" curl -s --max-time 10 "http://$prefix-$i:9091/metrics" > "$out/node$i.$1.prom" || true
     rpc "$i" net_peerCount > "$out/node$i.$1.peers.json" || true
   done
 }
 snapshot start
+sample_memory & sampler=$!
 
 rpcs=; wss=
 for ((i = 0; i < NODES; i++)); do rpcs+="${rpcs:+,}http://$prefix-$i:8545"; wss+="${wss:+,}ws://$prefix-$i:8546"; done
@@ -127,6 +144,7 @@ docker run --name "$prefix-load" --network "$net" --cpus "$LOAD_CPUS" -v "$BENCH
   ${DEPS:+--deps=$DEPS} ${DUP_FRACTION:+--dup-fraction=$DUP_FRACTION} \
   ${SHARED_FRACTION:+--shared-fraction=$SHARED_FRACTION} ${SEED:+--seed=$SEED} --sign-parallelism="$total_cpus" | tee "$out/load.txt"
 
+kill "$sampler" 2>/dev/null || true
 snapshot end
 for ((i = 0; i < NODES; i++)); do docker logs "$prefix-$i" > "$out/node$i.log" 2>&1 || true; done
 cat > "$out/network.json" <<EOF
