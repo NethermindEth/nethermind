@@ -1,10 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
+using System.Text;
+using System.Text.Json.Nodes;
+using Autofac;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.IO;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.BeaconChain.Test.Spec;
@@ -129,6 +140,166 @@ public class BeaconChainSpecTests
     [TestCaseSource(nameof(ShippedNetworks))]
     public void Every_shipped_spec_carries_bootnodes(string name, ulong chainId, BeaconChainSpec spec) =>
         Assert.That(spec.Bootnodes, Is.Not.Empty, $"{name} ({chainId}) has no bootnode records");
+
+    // Independent source: a Lighthouse node of the Kurtosis devnet these files were generated for advertised fork digest 0x3b5bd9ca in its ENR.
+    [Test]
+    public void A_network_config_file_defines_a_network_the_chain_id_does_not([Values] bool throughContainer)
+    {
+        BeaconChainSpec spec = ForDevnet(DevnetConfig, writeGenesisState: true, chainspecGenesisTime: null, throughContainer: throughContainer);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(spec.ChainId, Is.EqualTo(DevnetChainId));
+        Assert.That(spec.GenesisTime, Is.EqualTo(DevnetGenesisTime));
+        Assert.That(spec.GenesisValidatorsRoot.ToString(), Is.EqualTo(DevnetGenesisValidatorsRoot));
+        Assert.That(spec.Forks.Select(static f => $"{f.Version.ToHexString(withZeroX: true)}@{f.Epoch}"),
+            Is.EqualTo(new[] { "0x10000038@0", "0x20000038@0", "0x30000038@0", "0x40000038@0", "0x50000038@0", "0x60000038@0", "0x70000038@0" }));
+        Assert.That(spec.GloasForkEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+        Assert.That(spec.GloasForkVersion.ToHexString(withZeroX: true), Is.EqualTo("0x80000038"));
+        Assert.That(spec.GetBlobParameters(0), Is.EqualTo(new BlobScheduleEntry(0, 21)));
+        Assert.That(ForkDigest.Compute(spec, 0), Is.EqualTo(Bytes.FromHexString("0x3b5bd9ca")));
+        Assert.That(spec.Bootnodes, Is.Empty);
+        Assert.That(spec.CheckpointSyncUrl, Is.Null);
+    }
+
+    [Test]
+    public void A_network_config_file_may_carry_unscheduled_blob_schedule_entries() =>
+        Assert.That(ForDevnet(DevnetConfig.Replace("GAS_LIMIT_SCHEDULE: []", "  - EPOCH: 18446744073709551615\n    MAX_BLOBS_PER_BLOCK: 32\nGAS_LIMIT_SCHEDULE: []"), writeGenesisState: true, chainspecGenesisTime: null)
+            .GetBlobParameters(1000), Is.EqualTo(new BlobScheduleEntry(0, 21)));
+
+    [TestCase("PRESET_BASE: 'mainnet'", "PRESET_BASE: 'minimal'", "PRESET_BASE")]
+    [TestCase("SLOT_DURATION_MS: 12000", "SLOT_DURATION_MS: 6000", "SLOT_DURATION_MS")]
+    [TestCase("SHARD_COMMITTEE_PERIOD: 256", "SHARD_COMMITTEE_PERIOD: 64", "SHARD_COMMITTEE_PERIOD")]
+    [TestCase("CONFIRMATION_BYZANTINE_THRESHOLD: 25", "CONFIRMATION_BYZANTINE_THRESHOLD: 33", "CONFIRMATION_BYZANTINE_THRESHOLD")]
+    [TestCase("DEPOSIT_CHAIN_ID: 3151908", "DEPOSIT_CHAIN_ID: 1", "DEPOSIT_CHAIN_ID")]
+    [TestCase("FULU_FORK_EPOCH: 0", "FULU_FORK_EPOCH: 1", "FULU_FORK_EPOCH")]
+    [TestCase("GLOAS_FORK_EPOCH: 18446744073709551615", "GLOAS_FORK_EPOCH: 10", "GLOAS_FORK_EPOCH")]
+    [TestCase("MAX_BLOBS_PER_BLOCK: 21", "MAX_BLOBS_PER_BLOCK: 15", "BLOB_SCHEDULE")]
+    [TestCase("- EPOCH: 0", "- EPOCH: 18446744073709551615", "BLOB_SCHEDULE")]
+    [TestCase("GENESIS_FORK_VERSION: 0x10000038", "", "GENESIS_FORK_VERSION")]
+    [TestCase("ALTAIR_FORK_EPOCH: 0", "ALTAIR_FORK_EPOCH: soon", "ALTAIR_FORK_EPOCH")]
+    [TestCase("MAX_BLOBS_PER_BLOCK_ELECTRA: 9", "MAX_BLOBS_PER_BLOCK_ELECTRA: 9\nMAX_REQUEST_PAYLOADS: 64", "MAX_REQUEST_PAYLOADS")]
+    [TestCase("  - EPOCH: 0\n    MAX_BLOBS_PER_BLOCK: 21", "  - 21", "not a readable consensus config.yaml")]
+    public void A_network_config_file_this_node_cannot_run_fails_startup_naming_the_key(string line, string replacement, string key) =>
+        Assert.That(() => ForDevnet(DevnetConfig.Replace(line, replacement), writeGenesisState: true, chainspecGenesisTime: null),
+            Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains(key));
+
+    [TestCase(false, null, "genesis.ssz")]
+    [TestCase(true, DevnetGenesisTime + 12, "beaconChainGenesisTimestamp")]
+    public void The_genesis_state_beside_a_network_config_file_must_exist_and_match_the_chainspec(bool writeGenesisState, ulong? chainspecGenesisTime, string reason) =>
+        Assert.That(() => ForDevnet(DevnetConfig, writeGenesisState, chainspecGenesisTime),
+            Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains(reason));
+
+    [Test]
+    public void A_network_config_file_accepts_an_uppercase_hex_prefix() =>
+        Assert.That(ForDevnet(DevnetConfig.Replace("0x", "0X"), writeGenesisState: true, chainspecGenesisTime: null).Forks[0].Version,
+            Is.EqualTo(Bytes.FromHexString("0x10000038")));
+
+    [Test]
+    public void A_network_without_a_Gloas_version_accepts_a_Fulu_checkpoint([Values] bool resumed)
+    {
+        BeaconChainSpec spec = ForDevnet(DevnetConfig.Replace("GENESIS_FORK_VERSION: 0x10000038", "GENESIS_FORK_VERSION: 0x00000000")
+            .Replace("GLOAS_FORK_VERSION: 0x80000038", ""), writeGenesisState: true, chainspecGenesisTime: null);
+        ForkedBeaconState state = new ForkedBeaconState.OfFulu(new BeaconStateFulu
+        {
+            Fork = new Fork { CurrentVersion = Bytes.FromHexString("0x70000038") },
+        });
+
+        Assert.That(() => CheckpointSync.ThrowIfUnsupportedFork(state, spec, resumed), Throws.Nothing);
+    }
+
+    [Test]
+    public void A_duplicate_Gloas_version_from_the_file_names_the_fork()
+    {
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => ForDevnet(
+            DevnetConfig.Replace("0x80000038", "0x70000038").Replace("GLOAS_FORK_EPOCH: 18446744073709551615", "GLOAS_FORK_EPOCH: 0"),
+            writeGenesisState: true, chainspecGenesisTime: null, scheduleAmsterdam: true))!;
+
+        Assert.That(ex.Message, Does.Contain("Gloas fork version 0x70000038 repeats").And.Not.Contain("BeaconChain.GloasForkVersion"));
+    }
+
+    private const ulong DevnetChainId = 3151908;
+    private const ulong DevnetGenesisTime = 1795524678;
+    private const string DevnetGenesisValidatorsRoot = "0xba5d167db90ff012d3677f64ff126795260e25aed9487220539c0527dba7de6b";
+
+    /// <summary>The keys of a Kurtosis devnet <c>config.yaml</c> this release reads, and some it ignores even though they differ from mainnet.</summary>
+    private const string DevnetConfig = """
+        PRESET_BASE: 'mainnet'
+        CONFIG_NAME: 'testnet' # ignored
+        MIN_GENESIS_ACTIVE_VALIDATOR_COUNT: 160
+        MIN_GENESIS_TIME: 1795524678
+        GENESIS_FORK_VERSION: 0x10000038
+        GENESIS_DELAY: 0
+        ALTAIR_FORK_VERSION: 0x20000038
+        ALTAIR_FORK_EPOCH: 0
+        BELLATRIX_FORK_VERSION: 0x30000038
+        BELLATRIX_FORK_EPOCH: 0
+        CAPELLA_FORK_VERSION: 0x40000038
+        CAPELLA_FORK_EPOCH: 0
+        DENEB_FORK_VERSION: 0x50000038
+        DENEB_FORK_EPOCH: 0
+        ELECTRA_FORK_VERSION: 0x60000038
+        ELECTRA_FORK_EPOCH: 0
+        FULU_FORK_VERSION: 0x70000038
+        FULU_FORK_EPOCH: 0
+        GLOAS_FORK_VERSION: 0x80000038
+        GLOAS_FORK_EPOCH: 18446744073709551615
+        SLOT_DURATION_MS: 12000
+        SHARD_COMMITTEE_PERIOD: 256
+        INCLUSION_LIST_DUE_BPS: 7500
+        DEPOSIT_CHAIN_ID: 3151908
+        DEPOSIT_CONTRACT_ADDRESS: 0x00000000219ab540356cBB839Cbe05303d7705Fa
+        MAX_BLOBS_PER_BLOCK_ELECTRA: 9
+        BLOB_SCHEDULE:
+          - EPOCH: 0
+            MAX_BLOBS_PER_BLOCK: 21
+        GAS_LIMIT_SCHEDULE: []
+        CONFIRMATION_BYZANTINE_THRESHOLD: 25
+        """;
+
+    /// <summary>The execution side of the devnet: a geth genesis activating every fork, both BPO forks included, at genesis.</summary>
+    private const string DevnetGenesis = """
+        {
+          "config": {
+            "chainId": 3151908, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
+            "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0, "mergeNetsplitBlock": 0,
+            "terminalTotalDifficulty": 0, "shanghaiTime": 0, "cancunTime": 0, "pragueTime": 0, "osakaTime": 0, "bpo1Time": 0, "bpo2Time": 0,
+            "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+            "blobSchedule": {
+              "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+              "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+              "bpo1": { "target": 10, "max": 15, "baseFeeUpdateFraction": 8346193 },
+              "bpo2": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 }
+            }
+          },
+          "alloc": {}, "coinbase": "0x0000000000000000000000000000000000000000", "difficulty": "0x0", "extraData": "", "gasLimit": "0x3938700",
+          "nonce": "0x1234", "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "timestamp": "1795524678"
+        }
+        """;
+
+    private static BeaconChainSpec ForDevnet(string config, bool writeGenesisState, ulong? chainspecGenesisTime, bool throughContainer = false, bool scheduleAmsterdam = false)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string configFile = Path.Combine(directory.Path, "config.yaml");
+        File.WriteAllText(configFile, config);
+        if (writeGenesisState)
+            File.WriteAllBytes(Path.Combine(directory.Path, "genesis.ssz"), Bytes.FromHexString($"0x4688056b00000000{DevnetGenesisValidatorsRoot[2..]}"));
+
+        JsonObject genesis = JsonNode.Parse(DevnetGenesis)!.AsObject();
+        if (chainspecGenesisTime is not null) genesis["config"]!["beaconChainGenesisTimestamp"] = chainspecGenesisTime;
+        if (scheduleAmsterdam) genesis["config"]!["amsterdamTime"] = 0;
+        using MemoryStream genesisJson = new(Encoding.UTF8.GetBytes(genesis.ToJsonString()));
+        ChainSpec chainSpec = new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(genesisJson);
+        if (throughContainer)
+        {
+            using IContainer container = BeaconChainTestContainer.Builder(
+                config: new BeaconChainConfig { NetworkConfigFile = configFile },
+                execution: new ChainSpecBasedSpecProvider(chainSpec), chainSpec: chainSpec).Build();
+            return container.Resolve<BeaconChainSpec>();
+        }
+        return BeaconChainSpec.ForNetworkConfig(configFile, new ChainSpecBasedSpecProvider(chainSpec), null, chainSpec.Parameters.BlobSchedule?.Select(static entry => entry.Timestamp));
+    }
 
     private static IEnumerable<object[]> ShippedNetworks() =>
     [

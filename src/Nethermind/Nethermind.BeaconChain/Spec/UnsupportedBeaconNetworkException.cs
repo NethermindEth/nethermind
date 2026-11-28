@@ -12,7 +12,8 @@ namespace Nethermind.BeaconChain.Spec;
 /// </remarks>
 public sealed class UnsupportedBeaconNetworkException(ulong chainId)
     : Exception($"The embedded beacon chain driver does not support chain id {chainId}. " +
-                "Supported chain ids: mainnet (1), gnosis (100), chiado (10200), hoodi (560048), sepolia (11155111).")
+                "Supported chain ids: mainnet (1), gnosis (100), chiado (10200), hoodi (560048), sepolia (11155111). " +
+                "For another network, set BeaconChain.NetworkConfigFile to its consensus config.yaml.")
 {
     public ulong ChainId { get; } = chainId;
 }

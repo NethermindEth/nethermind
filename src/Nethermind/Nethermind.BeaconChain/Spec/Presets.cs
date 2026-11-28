@@ -17,6 +17,9 @@ public static class Presets
 
     internal static readonly bool IsGnosis = BeaconPresetSelection.IsGnosis;
 
+    /// <summary>The config <c>PRESET_BASE</c> of the selected preset.</summary>
+    internal static readonly string PresetBase = Minimal ? "minimal" : IsGnosis ? "gnosis" : "mainnet";
+
 #if MINIMAL_PRESET
     private const bool Minimal = true;
 #else

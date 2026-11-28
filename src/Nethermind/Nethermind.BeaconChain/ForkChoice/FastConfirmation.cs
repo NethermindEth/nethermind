@@ -26,7 +26,7 @@ internal sealed class FastConfirmation(
     private IReadOnlySet<ulong> Equivocators => equivocators;
     private BalanceSource? _pulledUpHeadBalances;
     private (Hash256 Root, ulong Epoch)? _pulledUpHeadKey;
-    private const ulong ByzantineThreshold = 25;
+    internal const ulong ByzantineThreshold = 25;
     private CheckpointRef _previousObserved = store.FinalizedCheckpoint;
     private CheckpointRef _currentObserved = store.FinalizedCheckpoint;
     private CheckpointRef _greatestUnrealized = store.FinalizedCheckpoint;

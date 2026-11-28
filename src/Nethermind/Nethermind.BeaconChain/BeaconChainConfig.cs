@@ -6,6 +6,7 @@ namespace Nethermind.BeaconChain;
 public class BeaconChainConfig : IBeaconChainConfig
 {
     public bool Enabled { get; set; }
+    public string? NetworkConfigFile { get; set; }
     public bool EnableFastConfirmation { get; set; } = true;
     public string? CheckpointSyncUrl { get; set; }
     public string? CheckpointStateFile { get; set; }
