@@ -59,9 +59,6 @@ public sealed class ProofWrapperRelay : IDisposable
     /// penalizing a peer for proof failures, but allows deprioritizing its fetches.</summary>
     private const int MaxFailuresPerPeer = 8;
 
-    /// <summary>Times a fetch waits on a spent global verification budget before it is forgotten.</summary>
-    private const int MaxDeferrals = 3;
-
     /// <summary>Requests in flight to all peers together.</summary>
     private const int MaxRequests = 64;
 
@@ -413,7 +410,8 @@ public sealed class ProofWrapperRelay : IDisposable
             {
                 if (!_fetches.TryGetValue(hash, out Fetch? fetch) || fetch.Fetcher != peer) continue;
                 fetch.Fetcher = null;
-                if (deferred.Contains(hash) && ++fetch.Deferrals <= MaxDeferrals)
+                // A deferral keeps every announcer: the fetch stays bounded by its opener's share and MaxFetches.
+                if (deferred.Contains(hash))
                 {
                     fetch.DeferredAt = System.Diagnostics.Stopwatch.GetTimestamp();
                     continue;
@@ -624,7 +622,7 @@ public sealed class ProofWrapperRelay : IDisposable
             {
                 // A hash fetched only for its proven statement, from a peer out of budget, that comes with another proof is
                 // the peer's fault; any other refusal is not, and waits or goes to the next announcer.
-                if (_fetches.TryGetValue(served.Hash, out Fetch? fetch) && fetch.Exempted)
+                if (_fetches.TryGetValue(served.Hash, out Fetch? fetch) && fetch.Fetcher == peer && fetch.Exempted)
                 {
                     CountFailure(peer, state.Budget);
                     return;
@@ -731,7 +729,8 @@ public sealed class ProofWrapperRelay : IDisposable
                 : submitted == AcceptTxResult.AlreadyKnown ? Admission.Known : Admission.Rejected, submitted);
         }
 
-        if (_sparseBlobPoolPeerRegistry is null || source.SparsePeer is not { } peer) return (Admission.Skipped, AcceptTxResult.Invalid);
+        // A blob copy this node cannot sample cannot be validated, so it counts against the wrapper.
+        if (_sparseBlobPoolPeerRegistry is null || source.SparsePeer is not { } peer) return (Admission.Rejected, AcceptTxResult.Invalid);
 
         ValueHash256 txHash = transaction.Hash!.ValueHash256;
         ValueHash256 encodingHash = ProofWrapperCodec.EncodingHash(encoding);
@@ -1169,10 +1168,8 @@ public sealed class ProofWrapperRelay : IDisposable
         public bool Exempted { get; set; }
 
         /// <summary>When the spent global verification budget last deferred the fetch, in timestamp ticks; it is scheduled
-        /// again a verification window later, at most <see cref="MaxDeferrals"/> times.</summary>
+        /// again a verification window later.</summary>
         public long DeferredAt { get; set; }
-
-        public int Deferrals { get; set; }
     }
 
     /// <summary>What one connection has exchanged: bounded records, so old entries may be forgotten.</summary>
