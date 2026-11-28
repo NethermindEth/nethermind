@@ -52,6 +52,10 @@ export EIP8288_BENCH_RESULTS="$out" EIP8288_BENCH_PROFILE="$profile" EIP8288_BEN
 EIP8288_BENCH_CLAIMS="${claims// /,}" "${scope[@]}" "$runner" --quick --artifacts "$out/bdn" \
   --filter "*DependencyProofAggregationBenchmarks*"
 
+if ! command -v python3 >/dev/null; then
+  echo "results: $out/builder.jsonl (python3 not found, so no table)"
+  exit 0
+fi
 python3 - "$out/builder.jsonl" "$profile" <<'EOF'
 import json, sys
 rows = [json.loads(l) for l in open(sys.argv[1]) if json.loads(l)["profile"] == sys.argv[2]]
