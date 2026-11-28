@@ -56,7 +56,7 @@ public static class InclusionListValidator
         // No room for even the cheapest possible tx → nothing is appendable, unless a claim moves an
         // evaluation before the end of the payload.
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        if (claims is not { Length: > 0 } && block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
+        if (!spec.IsEip8037Enabled && claims is not { Length: > 0 } && block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
         bool[]? rented = il.Length > StackAllocEntries

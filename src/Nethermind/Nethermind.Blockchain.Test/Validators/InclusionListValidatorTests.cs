@@ -279,6 +279,24 @@ public class InclusionListValidatorTests
         return IsSatisfied(profile2, new FakeReplayer((_, _) => true));
     }
 
+    [Test]
+    public void A_full_state_dimension_does_not_excuse_a_candidate_reserving_no_state_gas()
+    {
+        Transaction candidate = Candidate(1, 100_000);
+        Profile2Case profile2 = Profile2Block([candidate], blockTxCount: 0);
+        Block block = profile2.Block;
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(candidate, spec, out _, out ulong stateReservation), Is.True);
+        block.Header.GasUsed = block.GasLimit;
+        block.Header.GasUsedPerDimension = (1_000_000, block.GasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateReservation, Is.Zero);
+            Assert.That(IsSatisfied(profile2, new FakeReplayer((_, _) => true)), Is.False);
+        }
+    }
+
     private static readonly Transaction _candidate = Candidate(1, 100_000);
 
     /// <summary>EIP-7805 § Evaluation index: the one index an omitted Profile 2 candidate is replayed at, and how a
