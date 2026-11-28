@@ -449,6 +449,8 @@ public class ProofWrapperRelayTests
         ProofWrapper known = context.Wrapper(Tx(100, TestItem.KeccakB));
         context.ProofCache.VerifyDependencyProof(known.DepsHash, Eip8288Constants.AggregatedVk, known.Proof);
         int before = context.Verifier.Verifications;
+        peer.Served = known;
+        await context.Relay.OnAnnouncement(peer, [Announcement(known)]);
         for (int i = 0; i < 31; i++)
         {
             ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, Keccak.Compute([(byte)i])));
@@ -456,15 +458,28 @@ public class ProofWrapperRelayTests
             await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
         }
 
-        peer.Served = known;
-        await context.Relay.OnAnnouncement(peer, [Announcement(known)]);
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Verifier.Verifications - before, Is.EqualTo(30));
             Assert.That(context.Relay.HeldCount, Is.EqualTo(31), "thirty within the budget and the known one");
             Assert.That(peer.Disconnected, Is.False);
         }
+    }
+
+    /// <summary>A node whose verification budget is spent is not fetched from, rather than fetched and dropped.</summary>
+    [Test]
+    public async Task Verification_SpentBudget_StopsFetching()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        for (int i = 0; i < 31; i++)
+        {
+            ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, Keccak.Compute([(byte)i])));
+            peer.Served = wrapper;
+            await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+        }
+
+        Assert.That(peer.Requests, Is.EqualTo(30));
     }
 
     [Test]
@@ -504,8 +519,8 @@ public class ProofWrapperRelayTests
         }
     }
 
-    /// <summary>A blob-carrying transaction awaiting its cells is not admitted: the wrapper is held, as EIP-8518 allows, but
-    /// neither relayed for it nor credited to its sender.</summary>
+    /// <summary>A blob-carrying transaction awaiting its cells is not admitted: the wrapper is held and relayed, as EIP-8518
+    /// lets it circulate before availability, but not credited to its sender.</summary>
     [Test]
     public async Task Fetch_BlobTransactionAwaitingCells_IsNotAdmitted()
     {
@@ -529,7 +544,7 @@ public class ProofWrapperRelayTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
-            Assert.That(other.Announced, Is.Empty);
+            Assert.That(other.Announced.Select(a => a.Hash), Does.Contain(wrapper.Hash.ValueHash256));
             Assert.That(sender.Requests, Is.EqualTo(1), "no reserved slot without an admitted transaction");
         }
     }

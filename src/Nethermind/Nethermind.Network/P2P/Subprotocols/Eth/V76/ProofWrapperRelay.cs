@@ -325,7 +325,9 @@ public sealed class ProofWrapperRelay : IDisposable
                     }
                     else
                     {
-                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, MaxRequests)) continue;
+                        // A node whose verification budget is spent would have its wrappers fetched only to be dropped.
+                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, MaxRequests)
+                            || !CanVerify(state.Budget)) continue;
                         state.Budget.Requests++;
                         _requests++;
                         batch = [];
@@ -442,6 +444,16 @@ public sealed class ProofWrapperRelay : IDisposable
     /// nodes that have served a valid proof, so that fresh nodes, however many, cannot shut out a proven one.</summary>
     private static bool WithinGlobalCap(NodeBudget budget, int used, int cap) =>
         used < cap - cap / 4 || (used < cap && budget.Successes > 0 && budget.Failures == 0);
+
+    /// <summary>Whether <paramref name="budget"/>'s window, and the global one, have a verification left.</summary>
+    /// <remarks>Called under <see cref="_lock"/>.</remarks>
+    private bool CanVerify(NodeBudget budget)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        budget.Roll(now);
+        _global.Roll(now);
+        return budget.Verifications < MaxVerificationsPerNode && WithinGlobalCap(budget, _global.Verifications, MaxVerifications);
+    }
 
     /// <summary>Takes one verification from <paramref name="budget"/>'s window, and from the global one.</summary>
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
@@ -620,13 +632,15 @@ public sealed class ProofWrapperRelay : IDisposable
         int admitted = 0;
         int rejected = 0;
         int known = 0;
+        int pending = 0;
         for (int i = 0; i < wrapper.Transactions.Length; i++)
         {
             Transaction transaction = wrapper.Transactions[i];
             AcceptTxResult result = Admit(transaction, wrapper.EncodedTransactions[i], source);
             if (result == AcceptTxResult.Accepted) admitted++;
-            // A blob-carrying transaction awaiting its cells is not admitted yet; EIP-8518 lets its wrapper be held meanwhile.
-            else if (result == AcceptTxResult.AlreadyKnown || result == AcceptTxResult.IncompleteBlobData) known++;
+            else if (result == AcceptTxResult.AlreadyKnown) known++;
+            // A blob-carrying transaction awaiting its cells is not admitted yet; EIP-8518 lets its wrapper circulate meanwhile.
+            else if (result == AcceptTxResult.IncompleteBlobData) pending++;
             else if (FrameTxClaimVerifier.IsWitnessError(result.Message))
             {
                 Discard(wrapper.Hash.ValueHash256, $"retained witness of {transaction.Hash} failed: {result.Message}");
@@ -636,13 +650,13 @@ public sealed class ProofWrapperRelay : IDisposable
         }
 
         // A wrapper none of whose transactions is pending covers nothing this node can build or relay.
-        if (admitted == 0 && known == 0)
+        if (admitted == 0 && known == 0 && pending == 0)
         {
             Discard(wrapper.Hash.ValueHash256, "no transaction of the wrapper is pending");
             return false;
         }
 
-        bool relay = admitted > 0 && admitted >= rejected;
+        bool relay = admitted + pending > 0 && admitted + pending >= rejected;
         bool held = Hold(wrapper);
         if (held && relay) AnnounceToAll(wrapper);
         Complete(wrapper.Hash.ValueHash256);
