@@ -446,7 +446,7 @@ public class RewardTests
         const ulong mergeSignRange = 15;
         const ulong checkpointNumber = 2700;
 
-        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(10);
+        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(11);
         PrivateKey[] masternodeKeys = [keys[0], keys[1], keys[2], keys[3], keys[4]];
         PrivateKey signer1 = masternodeKeys.First();
         PrivateKey signer2 = masternodeKeys.Last();
@@ -455,6 +455,7 @@ public class RewardTests
         PrivateKey observer1 = keys[7];
         PrivateKey observer2 = keys[8];
         PrivateKey candidateAfterRewardedEpoch = keys[9];
+        PrivateKey standbyBeyondObserverCap = keys[10];
 
         Address[] masternodes = masternodeKeys.Select(key => key.Address).ToArray();
 
@@ -474,7 +475,7 @@ public class RewardTests
         xdcSpec.MergeSignRange.Returns(mergeSignRange);
         xdcSpec.IsTipUpgradeRewardEnabled.Returns(true);
         xdcSpec.MaxProtectorNodes.Returns(2);
-        xdcSpec.MaxObserverNodes.Returns(2);
+        xdcSpec.MaxObserverNodes.Returns(1);
         xdcSpec.MasternodeReward.Returns((UInt256)500);
         xdcSpec.ProtectorReward.Returns((UInt256)400);
         xdcSpec.ObserverReward.Returns((UInt256)300);
@@ -525,6 +526,7 @@ public class RewardTests
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, observer1, nonce: 7),
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, observer2, nonce: 8),
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, candidateAfterRewardedEpoch, nonce: 9),
+            BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, standbyBeyondObserverCap, nonce: 10),
         ];
 
         blocks[916] = new Block(blockHeaders[916], new BlockBody(txsAt916, null, null));
@@ -539,7 +541,7 @@ public class RewardTests
         XdcBlockHeader rewardedCheckpoint = blockHeaders[epochLength];
         epochSwitchManager.GetEpochSwitchInfo(rewardedCheckpoint).Returns(new EpochSwitchInfo(
             masternodes,
-            [protector1.Address, protector2.Address, observer1.Address],
+            [protector1.Address, protector2.Address, observer1.Address, standbyBeyondObserverCap.Address],
             [observer2.Address],
             new BlockRoundInfo(rewardedCheckpoint.Hash!, epochLength, epochLength)));
 

@@ -18,10 +18,11 @@ namespace Nethermind.Xdc.Test;
 
 internal class XdcStateSyncSnapshotManagerTests
 {
+    // Gap blocks start at the epoch before the pivot's: the first checkpoint after the pivot rewards it.
     [
-        TestCase(24UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 15 }),
-        TestCase(25UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
-        TestCase(26UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
+        TestCase(24UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 5, 15 }),
+        TestCase(25UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 5, 15, 25 }),
+        TestCase(26UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 5, 15, 25 }),
         TestCase(26UL, 10UL, 5UL, new int[] { 0, 9, 18, 28 }, new int[] { 5, 15, 25 }),
         TestCase(11UL, 10UL, 5UL, new int[] { 0, 9 }, new int[] { 5 }),
         TestCase(4UL, 10UL, 5UL, new int[] { 0 }, new int[] { }),
