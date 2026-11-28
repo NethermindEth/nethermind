@@ -1713,19 +1713,20 @@ public class Eth72ProtocolHandler(
     private BlobCellMask ExtractAnnouncementMask(NewPooledTransactionHashesMessage72 message, ReadOnlySpan<byte> types)
     {
         bool containsBlobTransaction = false;
-        ReadOnlySpan<ValueHash256> hashes = message.Hashes.AsSpan();
+        bool containsFrameTransaction = false;
         for (int i = 0; i < types.Length; i++)
         {
-            if (SamplesCells((TxType)types[i], hashes[i]))
-            {
-                containsBlobTransaction = true;
-                break;
-            }
+            containsBlobTransaction |= ((TxType)types[i]).SupportsBlobs();
+            containsFrameTransaction |= (TxType)types[i] == TxType.FrameTx;
         }
 
+        // Only blob transactions require a mask, so whether one is required depends on the announced types alone. A frame
+        // transaction's mask is optional, and used only while an EIP-8518 wrapper's elided copy of it awaits cells.
         if (!containsBlobTransaction)
         {
-            return BlobCellMask.Empty;
+            return containsFrameTransaction && message.CellMask.Length == BlobCellMask.FixedByteLength
+                ? BlobCellMask.FromBytes(message.CellMask)
+                : BlobCellMask.Empty;
         }
 
         if (message.CellMask.Length != BlobCellMask.FixedByteLength)

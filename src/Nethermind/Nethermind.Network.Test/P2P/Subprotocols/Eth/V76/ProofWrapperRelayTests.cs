@@ -504,6 +504,53 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>A blob-carrying transaction awaiting its cells is not admitted: the wrapper is held, as EIP-8518 allows, but
+    /// neither relayed for it nor credited to its sender.</summary>
+    [Test]
+    public async Task Fetch_BlobTransactionAwaitingCells_IsNotAdmitted()
+    {
+        using Context context = new();
+        ProofWrapper wrapper = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0));
+        FakePeer sender = context.Peer(wrapper);
+        FakePeer other = context.Peer();
+
+        await context.Relay.OnAnnouncement(sender, [Announcement(wrapper)]);
+        Task gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        for (int p = 0; p < 30; p++)
+        {
+            FakePeer flooder = context.Peer();
+            flooder.Gate = gate;
+            for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(flooder, [Announcement(context.Wrapper(Tx((ulong)(p * 10 + i), TestItem.KeccakA)))]);
+        }
+
+        sender.Gate = gate;
+        _ = context.Relay.OnAnnouncement(sender, [Announcement(context.Wrapper(Tx(500, TestItem.KeccakA)))]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
+            Assert.That(other.Announced, Is.Empty);
+            Assert.That(sender.Requests, Is.EqualTo(1), "no reserved slot without an admitted transaction");
+        }
+    }
+
+    /// <summary>A copy with other blob metadata replaces the one awaiting cells, so the first recorded cannot shadow it; the
+    /// same copy again leaves sampling alone.</summary>
+    [TestCase(1, 0)]
+    [TestCase(2, 1)]
+    public async Task Fetch_BlobTransactionCopy_ReplacesOnlyOnOtherMetadata(byte secondFill, int clears)
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        using Context context = new(registry: registry);
+        ProofWrapper first = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 1));
+        ProofWrapper second = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: secondFill), Tx(1, TestItem.KeccakC));
+        await context.Relay.OnAnnouncement(context.Peer(first), [Announcement(first)]);
+
+        await context.Relay.OnAnnouncement(context.Peer(second), [Announcement(second)]);
+
+        registry.Received(clears).Clear(Arg.Any<ValueHash256>());
+    }
+
     /// <summary>Another wrapper covering the same blob-carrying transaction adds no provider and does not restart sampling.</summary>
     [Test]
     public async Task Fetch_SecondWrapperOfABlobTransaction_AddsNoProvider()
@@ -772,7 +819,7 @@ public class ProofWrapperRelayTests
 
     private sealed class Context : IDisposable
     {
-        public Context(IReleaseSpec? spec = null)
+        public Context(IReleaseSpec? spec = null, ISparseBlobPoolPeerRegistry? registry = null)
         {
             TxPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.Accepted);
             TxPool.ValidateTxForBlobSampling(default!).ReturnsForAnyArgs(AcceptTxResult.Accepted);
@@ -781,7 +828,7 @@ public class ProofWrapperRelayTests
             Registry = new SparseBlobPoolPeerRegistry(TxPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
             Relay = new ProofWrapperRelay(TxPool, ProofCache, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance),
                 Substitute.For<IBlockTree>(), Timestamper.Default, new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.Mempool },
-                LimboLogs.Instance, Registry);
+                LimboLogs.Instance, registry ?? Registry);
         }
 
         public SparseBlobPoolPeerRegistry Registry { get; }

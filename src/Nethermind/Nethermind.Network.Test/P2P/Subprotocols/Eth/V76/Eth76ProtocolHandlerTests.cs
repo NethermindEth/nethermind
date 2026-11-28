@@ -186,6 +186,22 @@ public class Eth76ProtocolHandlerTests
         Assert.That(_registry.GetFullProviderAnnouncementCount(tx.Hash!.ValueHash256), Is.EqualTo(providers));
     }
 
+    /// <summary>Whether a cell mask is required depends on the announced types alone: a frame transaction announced without
+    /// one is a whole-transaction announcement, even while an elided copy of it awaits cells.</summary>
+    [Test]
+    public void Frame_announcement_without_a_cell_mask_is_accepted_while_an_elided_copy_awaits_cells()
+    {
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        Transaction elided = TxDecoder.Instance.DecodeCompleteNotNull(ProofWrapperCodec.Normalize(tx)!, ProofWrapperCodec.TransactionBehaviors);
+        elided.ClaimWitnesses![0] = Nethermind.Evm.TransactionProcessing.FrameTxClaimVerifier.AggregatedWitness;
+        _registry.RecordTransaction(_handler, elided);
+
+        Handle(new NewPooledTransactionHashesMessage72([(byte)TxType.FrameTx], [tx.GetLength()], [tx.Hash!.ValueHash256], BlobCellMask.Empty.ToBytes()),
+            Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(default, default);
+    }
+
     private static ProofWrapper Wrapper()
     {
         Transaction tx = FrameTxTestFrames.LeanSphincsTx(0, false, (TestItem.KeccakA, TestItem.KeccakB));

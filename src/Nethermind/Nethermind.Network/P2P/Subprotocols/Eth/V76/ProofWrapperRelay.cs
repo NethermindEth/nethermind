@@ -103,6 +103,7 @@ public sealed class ProofWrapperRelay : IDisposable
     private readonly Dictionary<ValueHash256, Fetch> _fetches = [];
     private readonly LruKeyCache<ValueHash256> _discarded = new(PeerRecordCapacity, "discarded proof wrappers");
     private readonly EncodingCache _encodings = new(MaxEncodingBytes);
+    private readonly LruCache<ValueHash256, ValueHash256> _sampledEncodings = new(PeerRecordCapacity, "blob transaction encodings awaiting cells");
     private readonly ConcurrentDictionary<IProofWrapperPeer, PeerState> _peers = new();
     private readonly LruCache<PublicKey, NodeBudget> _budgets = new(NodeBudgetCapacity, "proof wrapper node budgets");
     private readonly NodeBudget _global = new();
@@ -603,7 +604,7 @@ public sealed class ProofWrapperRelay : IDisposable
     }
 
     /// <summary>Admits a verified wrapper's transactions, and holds and relays it unless a retained witness fails.</summary>
-    /// <returns>Whether the wrapper was held as new coverage.</returns>
+    /// <returns>Whether the wrapper was held and admitted at least one transaction.</returns>
     private bool Accept(ProofWrapper wrapper, PeerState source)
     {
         // The proof stands for its dependencies whatever the transactions' other witnesses, so the transactions it admits
@@ -614,11 +615,13 @@ public sealed class ProofWrapperRelay : IDisposable
         int admitted = 0;
         int rejected = 0;
         int known = 0;
-        foreach (Transaction transaction in wrapper.Transactions)
+        for (int i = 0; i < wrapper.Transactions.Length; i++)
         {
-            AcceptTxResult result = Admit(transaction, source);
+            Transaction transaction = wrapper.Transactions[i];
+            AcceptTxResult result = Admit(transaction, wrapper.EncodedTransactions[i], source);
             if (result == AcceptTxResult.Accepted) admitted++;
-            else if (result == AcceptTxResult.AlreadyKnown) known++;
+            // A blob-carrying transaction awaiting its cells is not admitted yet; EIP-8518 lets its wrapper be held meanwhile.
+            else if (result == AcceptTxResult.AlreadyKnown || result == AcceptTxResult.IncompleteBlobData) known++;
             else if (FrameTxClaimVerifier.IsWitnessError(result.Message))
             {
                 Discard(wrapper.Hash.ValueHash256, $"retained witness of {transaction.Hash} failed: {result.Message}");
@@ -638,17 +641,24 @@ public sealed class ProofWrapperRelay : IDisposable
         bool held = Hold(wrapper);
         if (held && relay) AnnounceToAll(wrapper);
         Complete(wrapper.Hash.ValueHash256);
-        return held;
+        return held && admitted > 0;
     }
 
     /// <summary>Submits a covered transaction: to the pool, or, carrying blobs whose data the wrapper elides, to EIP-8070 cell
     /// sampling, which submits it once its blobs are available.</summary>
-    /// <remarks>The wrapper's sender is not recorded as a cell provider: only cell announcements are.</remarks>
-    private AcceptTxResult Admit(Transaction transaction, PeerState source)
+    /// <remarks>The wrapper's sender is not recorded as a cell provider: only cell announcements are. A copy whose blob
+    /// metadata differs from the one awaiting cells replaces it, so the first copy recorded cannot shadow a valid one.</remarks>
+    /// <returns><see cref="AcceptTxResult.IncompleteBlobData"/> while the transaction awaits its cells.</returns>
+    private AcceptTxResult Admit(Transaction transaction, byte[] encoding, PeerState source)
     {
         if (!transaction.CarriesBlobs) return _txPool.SubmitTx(transaction, TxHandlingOptions.None);
-        if (_sparseBlobPoolPeerRegistry is null || source.SparsePeer is not { } peer) return AcceptTxResult.IncompleteBlobData;
-        return _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction) ?? AcceptTxResult.Accepted;
+        if (_sparseBlobPoolPeerRegistry is null || source.SparsePeer is not { } peer) return AcceptTxResult.Invalid;
+
+        ValueHash256 txHash = transaction.Hash!.ValueHash256;
+        ValueHash256 encodingHash = ProofWrapperCodec.EncodingHash(encoding);
+        if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash) _sparseBlobPoolPeerRegistry.Clear(txHash);
+        _sampledEncodings.Set(txHash, encodingHash);
+        return _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction) ?? AcceptTxResult.IncompleteBlobData;
     }
 
     private bool Hold(ProofWrapper wrapper)
