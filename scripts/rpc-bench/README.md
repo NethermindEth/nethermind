@@ -880,6 +880,9 @@ dotnet run --file scripts/perf-report.cs -- top perf.folded 30
 dotnet run --file scripts/perf-report.cs -- compare before.folded after.folded 30
 ```
 
+The report ignores padding before sample counts in manually aligned profiles,
+while preserving spaces within frame names.
+
 Small optimized methods (a leaf, or a method with one call) can have no RBP
 frame, so frame-pointer stacks skip their caller. `DOTNET_JitFramed=1` does not
 change this on .NET 10: Tier1 code keeps its RSP-based frames.
