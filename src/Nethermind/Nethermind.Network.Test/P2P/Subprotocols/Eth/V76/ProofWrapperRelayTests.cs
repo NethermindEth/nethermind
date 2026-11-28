@@ -556,6 +556,25 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>A blob-carrying copy this node cannot sample counts as rejected, so it can stop the wrapper being relayed.</summary>
+    [Test]
+    public async Task Relay_BlobCopyThatCannotBeSampled_CountsAsRejected()
+    {
+        using Context context = new(samplesBlobs: false);
+        Transaction refused = Tx(2, TestItem.KeccakD);
+        context.TxPool.SubmitTx(Arg.Is<Transaction>(t => t.Hash == refused.Hash), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.FeeTooLow);
+        ProofWrapper wrapper = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0), Tx(1, TestItem.KeccakC), refused);
+        FakePeer other = context.Peer();
+
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
+            Assert.That(other.Announced, Is.Empty);
+        }
+    }
+
     /// <summary>A blob-carrying transaction an earlier wrapper already sent to sampling counts as known, not as pending.</summary>
     [Test]
     public async Task Relay_BlobTransactionAlreadySampled_IsKnown()
@@ -1068,7 +1087,7 @@ public class ProofWrapperRelayTests
 
     private sealed class Context : IDisposable
     {
-        public Context(IReleaseSpec? spec = null, ISparseBlobPoolPeerRegistry? registry = null)
+        public Context(IReleaseSpec? spec = null, ISparseBlobPoolPeerRegistry? registry = null, bool samplesBlobs = true)
         {
             TxPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.Accepted);
             TxPool.ValidateTxForBlobSampling(default!).ReturnsForAnyArgs(AcceptTxResult.Accepted);
@@ -1077,7 +1096,7 @@ public class ProofWrapperRelayTests
             Registry = new SparseBlobPoolPeerRegistry(TxPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
             Relay = new ProofWrapperRelay(TxPool, ProofCache, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance),
                 Substitute.For<IBlockTree>(), Timestamper.Default, new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.Mempool },
-                LimboLogs.Instance, registry ?? Registry);
+                LimboLogs.Instance, samplesBlobs ? registry ?? Registry : null);
         }
 
         public SparseBlobPoolPeerRegistry Registry { get; }
