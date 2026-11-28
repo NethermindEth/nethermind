@@ -18,13 +18,6 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (tx.Type == TxType.DepositTx)
-        {
-            Metrics.PendingTransactionsNotSupportedTxType++;
-            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, deposit transactions are not supported in the transaction pool.");
-            return AcceptTxResult.NotSupportedTxType;
-        }
-
         if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.CarriesBlobs)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

@@ -3819,9 +3819,6 @@ namespace Nethermind.TxPool.Test
             // Should only add non-blob transactions to local pool when underpaid
             bool expectedResult = txType != TxType.Blob;
 
-            // No need to check for deposit tx
-            if (txType == TxType.DepositTx) return;
-
             // Frame txs are rejected at ingress under Prague; EIP-8141 activates at Bogota
             if (txType == TxType.FrameTx) return;
 
@@ -3888,30 +3885,6 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType), "frame transactions must be rejected at pool ingress");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "no frame transaction may enter the pool");
-            }
-        }
-
-        [Test]
-        public void SubmitTx_DepositTransaction_RejectedAsNotSupported()
-        {
-            TxValidator txValidator = new(_specProvider.ChainId);
-            txValidator.RegisterValidator(TxType.DepositTx, Always.Valid);
-            _txPool = CreatePool(txValidator: txValidator);
-            Transaction depositTx = Build.A.Transaction
-                .WithType(TxType.DepositTx)
-                .WithNonce(0)
-                .WithGasLimit(100_000)
-                .WithTo(TestItem.AddressB)
-                .WithSenderAddress(TestItem.AddressA)
-                .TestObject;
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            AcceptTxResult result = _txPool.SubmitTx(depositTx, TxHandlingOptions.PersistentBroadcast);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }
 
@@ -8439,8 +8412,6 @@ namespace Nethermind.TxPool.Test
                         break;
                     case TxType.FrameTx:
                         //Frame txs are rejected at ingress under Prague; EIP-8141 activates at Bogota
-                        continue;
-                    case TxType.DepositTx:
                         continue;
                 }
                 builder.SignedAndResolved(_ethereumEcdsa, signer);

@@ -23,10 +23,6 @@ on:
           - chiado
           - hoodi
           - plataberget
-          - op-mainnet
-          - op-sepolia
-          - world-sepolia
-          - world-mainnet
           - joc-mainnet
           - joc-testnet
           # - linea-mainnet

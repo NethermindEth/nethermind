@@ -934,7 +934,7 @@ public class Eth70ProtocolHandlerTests
     [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header", true)]
     [TestCase(false, false, 2, 2, null, true)]
     // Deposit receipts are not kept encoded, so the block takes the decoded checks.
-    [TestCase(false, false, 1, 2, "Block gas used exceeds header value", false, TxType.DepositTx)]
+    [TestCase(false, false, 1, 2, "Block gas used exceeds header value", false, (TxType)0x7E)]
     public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
         bool isEip7778Enabled,
         bool isEip8037Enabled,

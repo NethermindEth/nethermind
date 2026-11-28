@@ -26,7 +26,28 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
         _jsonSerializer = jsonSerializer;
 
         InitializeInstances();
+        RejectUnknownEngineParameters();
         SealEngineType = CalculateSealEngineType();
+    }
+
+    private void RejectUnknownEngineParameters()
+    {
+        HashSet<string> knownEngineNames = [with(StringComparer.InvariantCultureIgnoreCase), .. _instances.Values.Select(static parameters => parameters.EngineName)];
+
+        List<string> unknownEngineNames = [];
+        foreach (string engineName in _chainSpecParameters.Keys)
+        {
+            if (!knownEngineNames.Contains(engineName))
+            {
+                unknownEngineNames.Add(engineName);
+            }
+        }
+
+        if (unknownEngineNames.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"No loaded chain spec engine parameters are registered for: {string.Join(", ", unknownEngineNames)}");
+        }
     }
 
     private string CalculateSealEngineType()

@@ -27,14 +27,21 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
     private Hash256? _blockHash;
     private ulong _blockNumber;
     private ulong _blockTimestamp;
+    private ulong? _blockTimestampMs;
 
     // Write is synchronous and never nested, so one entry per thread serves every view.
     [ThreadStatic] private static LogEntryForRpc? _writeEntry;
 
     public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, int logIndexStart) => Reset(receipt, blockTimestamp, logIndexStart);
 
+    public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, ulong? blockTimestampMs, int logIndexStart) =>
+        Reset(receipt, blockTimestamp, blockTimestampMs, logIndexStart);
+
     /// <summary>Points the view at <paramref name="receipt"/>.</summary>
     public void Reset(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
+        => Reset(receipt, blockTimestamp, blockTimestampMs: null, logIndexStart);
+
+    public void Reset(TxReceipt receipt, ulong blockTimestamp, ulong? blockTimestampMs, int logIndexStart)
     {
         _logs = receipt.Logs ?? [];
         Count = _logs.Length;
@@ -44,6 +51,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
         _blockHash = receipt.BlockHash;
         _blockNumber = receipt.BlockNumber;
         _blockTimestamp = blockTimestamp;
+        _blockTimestampMs = blockTimestampMs;
     }
 
     private ReceiptLogsForRpc(ReceiptLogsForRpc source, int offset, int count)
@@ -57,6 +65,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
         _blockHash = source._blockHash;
         _blockNumber = source._blockNumber;
         _blockTimestamp = source._blockTimestamp;
+        _blockTimestampMs = source._blockTimestampMs;
     }
 
     public int Count { get; private set; }
@@ -97,6 +106,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
         entry.Address = null;
         entry.Data = null;
         entry.Topics = null;
+        entry.BlockTimestampMs = null;
         writer.WriteEndArray();
     }
 
@@ -120,6 +130,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
         entry.BlockHash = _blockHash;
         entry.BlockNumber = _blockNumber;
         entry.BlockTimestamp = _blockTimestamp;
+        entry.BlockTimestampMs = _blockTimestampMs;
         return entry;
     }
 

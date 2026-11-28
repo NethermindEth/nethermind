@@ -57,11 +57,8 @@ public class ReceiptFinderKeyingTests
         // (monitoring), which must stay stored-only.
         "Nethermind.Runner.Ethereum.JsonRpcRunner",
         "Nethermind.Blockchain.Receipts.FullInfoReceiptFinder",
-        "Nethermind.Optimism.OptimismReceiptFinder",
         "Nethermind.JsonRpc.Modules.Eth.EthRpcModule",
-        "Nethermind.Optimism.Rpc.OptimismEthRpcModule",
         "Nethermind.JsonRpc.TraceStore.TraceStoreRpcModule",
-        "Nethermind.Optimism.Rpc.OptimismProofRpcModule",
         "Nethermind.JsonRpc.Modules.Trace.TraceRpcModule",
         "Nethermind.Consensus.AuRa.Contracts.DataStore.ContractDataStore",
         "Nethermind.Consensus.AuRa.Contracts.DataStore.ContractDataStoreWithLocalData",

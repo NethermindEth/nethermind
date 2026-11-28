@@ -19,8 +19,7 @@ public class TxTypeExtensionsTests
             TxType.EIP1559,
             TxType.Blob,
             TxType.SetCode,
-            TxType.FrameTx,
-            TxType.DepositTx
+            TxType.FrameTx
         };
 
         TxType[] actualTxTypes = (TxType[])Enum.GetValues(typeof(TxType));
@@ -44,7 +43,8 @@ public class TxTypeExtensionsTests
     [TestCase(TxType.Blob, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.Blob)]
     [TestCase(TxType.SetCode, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.SetCode)]
     [TestCase(TxType.FrameTx, TxFeatureSupport.EIP1559 | TxFeatureSupport.Frames)]
-    [TestCase(TxType.DepositTx, TxFeatureSupport.None)]
+    [TestCase((TxType)0x7E, TxFeatureSupport.None)]
+    [TestCase((TxType)0xFF, TxFeatureSupport.None)]
     public void TxTypes_supported_functionality(TxType txType, TxFeatureSupport expectedFeaturesSupport)
     {
         using (Assert.EnterMultipleScope())

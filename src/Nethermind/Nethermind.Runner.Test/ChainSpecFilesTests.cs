@@ -36,10 +36,6 @@ namespace Nethermind.Runner.Test
             Assert.That(tryLoad, Throws.TypeOf<FileNotFoundException>());
         }
 
-        [TestCase("chainspec/op-mainnet.json.zst", 10UL)]
-        public void Zstandard_Compressed_ChainSpec(string chainSpecPath, ulong chainId) =>
-            Assert.That(_loader.LoadEmbeddedOrFromFile(chainSpecPath).ChainId, Is.EqualTo(chainId));
-
         // SpecProviderBase.LoadTransitions refuses a transition list in which a block-number transition could
         // never activate (#13202), so every shipped chainspec has to be proven to construct a provider - not just
         // the handful Nethermind.Specs.Test names one by one. It lives here because TypeDiscovery resolves plugin

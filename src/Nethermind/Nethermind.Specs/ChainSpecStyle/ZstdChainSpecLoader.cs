@@ -9,20 +9,24 @@ namespace Nethermind.Specs.ChainSpecStyle;
 public class ZstdChainSpecLoader(IChainSpecLoader decompressedLoader, string? dictionaryPath = null)
     : IChainSpecLoader
 {
-    private const string EmbeddedDictionaryPath = "Nethermind.Specs.chainspec.dictionary";
-
     public ChainSpec Load(Stream streamData)
     {
-        using Stream stream = dictionaryPath is null
-            ? typeof(ZstdChainSpecLoader).Assembly.GetManifestResourceStream(EmbeddedDictionaryPath)!
-            : File.OpenRead(dictionaryPath);
-
-        byte[] buffer = new byte[stream.Length];
-        stream.ReadExactly(buffer);
-
         using DecompressionStream decompressedStream = new(streamData);
-        decompressedStream.LoadDictionary(buffer);
+
+        if (dictionaryPath is not null)
+        {
+            using Stream dictionaryStream = File.OpenRead(dictionaryPath);
+            LoadDictionary(decompressedStream, dictionaryStream);
+        }
 
         return decompressedLoader.Load(decompressedStream);
+    }
+
+    private static void LoadDictionary(DecompressionStream decompressedStream, Stream dictionaryStream)
+    {
+        int dictionaryLength = checked((int)dictionaryStream.Length);
+        byte[] buffer = new byte[dictionaryLength];
+        dictionaryStream.ReadExactly(buffer);
+        decompressedStream.LoadDictionary(buffer);
     }
 }

@@ -90,7 +90,7 @@ public class ParityStyleTracerTests
     }
 
     /// <summary>
-    /// The chain pays no block reward (as on Taiko or Optimism, which are always post-merge), so the trace has no reward
+    /// The chain pays no block reward (as on Taiko, which is always post-merge), so the trace has no reward
     /// record.
     /// </summary>
     [Test]

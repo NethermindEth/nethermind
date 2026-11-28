@@ -134,9 +134,8 @@ public static class TestEqualityComparers
             return EqualsIfIncluded(nameof(Transaction.ChainId), actual.ChainId, expected.ChainId) &&
                 EqualsIfIncluded(nameof(Transaction.Type), actual.Type, expected.Type) &&
                 EqualsIfIncluded(nameof(Transaction.IsAnchorTx), actual.IsAnchorTx, expected.IsAnchorTx) &&
-                EqualsIfIncluded(nameof(Transaction.SourceHash), actual.SourceHash, expected.SourceHash) &&
-                EqualsIfIncluded(nameof(Transaction.Mint), actual.Mint, expected.Mint) &&
-                EqualsIfIncluded(nameof(Transaction.IsOPSystemTransaction), actual.IsOPSystemTransaction, expected.IsOPSystemTransaction) &&
+                EqualsIfIncluded(nameof(Transaction.ExtensionData), actual.ExtensionData, expected.ExtensionData) &&
+                EqualsIfIncluded(nameof(Transaction.IsSystemTransaction), actual.IsSystemTransaction, expected.IsSystemTransaction) &&
                 EqualsIfIncluded(nameof(Transaction.Nonce), actual.Nonce, expected.Nonce) &&
                 EqualsIfIncluded(nameof(Transaction.GasPrice), actual.GasPrice, expected.GasPrice) &&
                 EqualsIfIncluded(nameof(Transaction.GasBottleneck), actual.GasBottleneck, expected.GasBottleneck) &&

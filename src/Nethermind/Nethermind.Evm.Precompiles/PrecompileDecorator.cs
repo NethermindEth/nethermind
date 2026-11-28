@@ -9,8 +9,8 @@ namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
 /// Base class for precompile decorators. Every member forwards to <paramref name="inner"/>; override
-/// only what changes. Useful when a chain-specific layer (e.g. an OP-Stack input-size cap) needs to
-/// wrap an existing precompile without re-implementing the unchanged surface.
+/// only what changes. Useful when a chain-specific layer needs to wrap an existing precompile without
+/// re-implementing the unchanged surface.
 /// </summary>
 public abstract class PrecompileDecorator(IPrecompile inner) : IPrecompile
 {

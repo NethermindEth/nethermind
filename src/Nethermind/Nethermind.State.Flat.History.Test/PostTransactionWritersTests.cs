@@ -99,9 +99,9 @@ public class PostTransactionWritersTests
     [TestCase(SealEngineType.BeaconChain, true)]
     [TestCase(SealEngineType.Clique, true)]
     [TestCase(SealEngineType.AuRa, false)]
-    [TestCase(SealEngineType.Optimism, false)]
+    [TestCase("Custom", false)]
     [TestCase(SealEngineType.Taiko, false)]
     public void OnlyTheSealEnginesWhoseBlockProcessingIsDescribedHere_AreChained(string sealEngine, bool described) =>
         Assert.That(PostTransactionWriters.Describes(sealEngine), Is.EqualTo(described),
-            "an AuRa chain credits withdrawals through a chainspec contract whose writes no spec property names, and Optimism and Taiko carry their own block processors");
+            "an AuRa chain credits withdrawals through a chainspec contract whose writes no spec property names, and Taiko carries its own block processor");
 }

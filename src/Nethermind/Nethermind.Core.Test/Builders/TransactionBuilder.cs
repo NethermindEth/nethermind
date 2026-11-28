@@ -292,15 +292,15 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithSourceHash(Hash256? sourceHash)
+        public TransactionBuilder<T> WithExtensionData(object? extensionData)
         {
-            TestObjectInternal.SourceHash = sourceHash;
+            TestObjectInternal.ExtensionData = extensionData;
             return this;
         }
 
-        public TransactionBuilder<T> WithIsOPSystemTransaction(bool isOPSystemTransaction)
+        public TransactionBuilder<T> WithIsSystemTransaction(bool isSystemTransaction)
         {
-            TestObjectInternal.IsOPSystemTransaction = isOPSystemTransaction;
+            TestObjectInternal.IsSystemTransaction = isSystemTransaction;
             return this;
         }
 

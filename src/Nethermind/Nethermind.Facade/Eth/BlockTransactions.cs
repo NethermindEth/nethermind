@@ -40,6 +40,7 @@ public sealed class BlockTransactions
     private readonly Hash256? _blockHash;
     private readonly ulong _blockNumber;
     private readonly ulong _blockTimestamp;
+    private readonly ulong? _blockTimestampMs;
     private readonly UInt256 _baseFee;
     private readonly IReleaseSpec _spec;
     private readonly ulong? _excessBlobGas;
@@ -52,13 +53,14 @@ public sealed class BlockTransactions
 
     private BlockTransactions(ValueHash256[] flatHashes) => _flatHashes = flatHashes;
 
-    private BlockTransactions(Block block, ulong chainId, IReleaseSpec spec)
+    private BlockTransactions(Block block, ulong chainId, IReleaseSpec spec, ulong? blockTimestampMs)
     {
         _source = block.Transactions;
         _chainId = chainId;
         _blockHash = block.Hash;
         _blockNumber = block.Number;
         _blockTimestamp = block.Timestamp;
+        _blockTimestampMs = blockTimestampMs;
         _baseFee = block.BaseFeePerGas;
         _spec = spec;
         _excessBlobGas = block.Header.ExcessBlobGas;
@@ -76,7 +78,11 @@ public sealed class BlockTransactions
 
     /// <summary>Creates the full form as a view over <paramref name="block"/>'s transactions.</summary>
     /// <exception cref="ArgumentException">A transaction has a type with no registered RPC type, as building it eagerly would report.</exception>
-    internal static BlockTransactions FromBlock(Block block, ulong chainId, IReleaseSpec spec)
+    /// <param name="block">The block whose transactions are viewed.</param>
+    /// <param name="chainId">The chain identifier used by transaction RPC conversion.</param>
+    /// <param name="spec">The release spec of the block.</param>
+    /// <param name="blockTimestampMs">The authenticated block timestamp in milliseconds carried to each transaction, or <see langword="null"/>.</param>
+    internal static BlockTransactions FromBlock(Block block, ulong chainId, IReleaseSpec spec, ulong? blockTimestampMs = null)
     {
         Transaction[] transactions = block.Transactions;
         if (transactions.Length == 0) return EmptyInstance;
@@ -87,7 +93,7 @@ public sealed class BlockTransactions
             if (TransactionForRpc.TransactionJsonConverter.GetRegisteredType(transaction.Type) is null) throw new ArgumentException("No converter for transaction type");
         }
 
-        return new BlockTransactions(block, chainId, spec);
+        return new BlockTransactions(block, chainId, spec, blockTimestampMs);
     }
 
     /// <summary>Wraps transaction hashes without an object per hash; the array is written as is and must not change.</summary>
@@ -112,10 +118,19 @@ public sealed class BlockTransactions
     {
         TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, _spec, excessBlobGas: _excessBlobGas);
         Transaction transaction = _source![index];
-        if (reuse is null) return TransactionForRpc.FromTransaction(transaction, context);
+        TransactionForRpc result;
+        if (reuse is null)
+        {
+            result = TransactionForRpc.FromTransaction(transaction, context);
+        }
+        else
+        {
+            reuse.Populate(transaction, context);
+            result = reuse;
+        }
 
-        reuse.Populate(transaction, context);
-        return reuse;
+        result.BlockTimestampMs = _blockTimestampMs;
+        return result;
     }
 
     private Hash256[] MaterializeHashes()

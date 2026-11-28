@@ -39,6 +39,25 @@ public static partial class EvmInstructions
 
         /// <summary>Whether the creation is an EIP-8360 <c>TCREATE</c>, whose account lasts for one transaction.</summary>
         abstract static bool IsTransient { get; }
+
+        /// <summary>Whether the handler consults the opcode hooks of the virtual machine it runs on.</summary>
+        /// <remarks>
+        /// Only <see cref="CreateWithOpcodeHooks{TOpCreate}"/> sets it, and only a machine whose
+        /// <see cref="VirtualMachine{TGasPolicy}.HasOpcodeHooks"/> is set dispatches to it, so the handlers of every other
+        /// machine are compiled without the hooks.
+        /// </remarks>
+        static virtual bool HasOpcodeHooks => false;
+    }
+
+    /// <summary>A creation opcode whose handler consults the opcode hooks of the virtual machine it runs on.</summary>
+    /// <typeparam name="TOpCreate">The creation opcode the handler runs.</typeparam>
+    internal struct CreateWithOpcodeHooks<TOpCreate> : IOpCreate
+        where TOpCreate : struct, IOpCreate
+    {
+        public static ExecutionType ExecutionType => TOpCreate.ExecutionType;
+        public static bool IsSalted => TOpCreate.IsSalted;
+        public static bool IsTransient => TOpCreate.IsTransient;
+        public static bool HasOpcodeHooks => true;
     }
 
     /// <summary>
@@ -107,7 +126,7 @@ public static partial class EvmInstructions
         bool isTransientCreate = TOpCreate.IsTransient;
 
         // EIP-8360: CREATE2 halts in the context of a TCREATE account, before any check that could push zero.
-        if (TSpec.IsEip8360Enabled && typeof(TOpCreate) == typeof(OpCreate2) && vm.VmState.IsTransientCreateContext)
+        if (TSpec.IsEip8360Enabled && TOpCreate.ExecutionType == ExecutionType.CREATE2 && vm.VmState.IsTransientCreateContext)
         {
             goto BadInstruction;
         }
@@ -162,6 +181,25 @@ public static partial class EvmInstructions
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, ref vm.VmState.Memory))
             goto OutOfGas;
+
+        // A machine with opcode hooks sees a value-bearing creation, with the address it derives, before the depth,
+        // balance and nonce checks, so its init code is loaded and its address derived ahead of them. A zero-value
+        // creation raises no precheck and keeps those rejections ahead of the load and the address hashing.
+        if (TOpCreate.HasOpcodeHooks && !value.IsZero)
+        {
+            if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> precheckInitCode))
+                goto OutOfGas;
+
+            Address precheckAddress = GetContractAddress<TOpCreate>(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount), salt, precheckInitCode.Span);
+            if (vm.OnValueTransferCreatePrecheck(env.ExecutingAccount, precheckAddress, in value) is { } precheckRevert)
+            {
+                if (!TEip8037.IsActive && vm.IsTracingActions)
+                    TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, precheckAddress, precheckInitCode, precheckRevert);
+
+                vm.ReturnDataBuffer = precheckRevert;
+                return stack.PushZero<TTracingInst, OnFlag>();
+            }
+        }
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
@@ -420,6 +458,28 @@ public static partial class EvmInstructions
         ulong nonce = TOpCreate.IsSalted ? 0 : vm.WorldState.GetNonce(creator);
         Address contractAddress = GetContractAddress<TOpCreate>(creator, nonce, salt, initCode.Span);
         vm.TxTracer.ReportRejectedAction(callGas, callGas, value, creator, contractAddress, initCode, TOpCreate.ExecutionType, error);
+    }
+
+    /// <summary>
+    /// Reports a creation that <see cref="VirtualMachine{TGasPolicy}.OnValueTransferCreatePrecheck"/> rejected as an
+    /// action that reverted at once with the precheck's revert data and all of the gas it would have forwarded left.
+    /// </summary>
+    /// <param name="gas">A copy of the caller's gas, before any is reserved for the creation.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(
+        VirtualMachine<TGasPolicy> vm,
+        TGasPolicy gas,
+        in UInt256 value,
+        Address contractAddress,
+        ReadOnlyMemory<byte> initCode,
+        byte[] revertData)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+        where TSpec : struct, ICreateSpec
+    {
+        TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
+        vm.TxTracer.ReportAction(callGas, value, vm.VmState.Env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType);
+        vm.TxTracer.ReportActionRevert(callGas, revertData);
     }
 
     private static Address GetContractAddress<TOpCreate>(Address creator, ulong nonce, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)

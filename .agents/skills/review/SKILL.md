@@ -244,7 +244,7 @@ These are the most expensive issues to fix after release and the hardest for aut
 - A new method added to an existing `IPlugin` interface without a default implementation — all existing plugin authors break at compile time
 - Two ways of doing the same thing added without deprecating the old one — creates lasting ambiguity for callers
 - A new JSON-RPC or Engine API parameter that is required but has no backwards-compatible default — breaks existing callers that don't send the new field
-- Chain-specific logic added to `Nethermind.Core`, `Nethermind.Evm`, or `Nethermind.Blockchain` instead of the appropriate chain plugin (`Nethermind.Optimism`, `Nethermind.Merge.Plugin`, etc.) — poisons the shared abstraction
+- Chain-specific logic added to `Nethermind.Core`, `Nethermind.Evm`, or `Nethermind.Blockchain` instead of the appropriate chain plugin (`Nethermind.Taiko`, `Nethermind.Merge.Plugin`, etc.) — poisons the shared abstraction
 
 ### File headers
 

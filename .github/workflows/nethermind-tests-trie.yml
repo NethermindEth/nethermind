@@ -60,7 +60,6 @@ jobs:
               Nethermind.Db.Test
               Nethermind.Init.Test
               Nethermind.Network.Dns.Test
-              Nethermind.Optimism.Test
               Nethermind.State.Test
               Nethermind.Wallet.Test
           - name: Nethermind tests 2

@@ -184,7 +184,7 @@ public class NetworkReceiptTests
     [Test]
     public void Leaves_deposit_receipts_to_the_decoder([Values] bool withBloom)
     {
-        TxReceipt[] receipts = [Build.A.Receipt.WithTxType(TxType.DepositTx).WithStatusCode(1).WithCalculatedBloom().TestObject];
+        TxReceipt[] receipts = [Build.A.Receipt.WithTxType((TxType)0x7E).WithStatusCode(1).WithCalculatedBloom().TestObject];
         byte[] message = RlpTestHelper.EncodeSequence(Encode(receipts, withBloom, eip658: true));
 
         using NetworkBlockReceipts? kept = NetworkBlockReceipts.TryCreate(message, withBloom, static (ref RlpReader _) => [],
@@ -254,7 +254,7 @@ public class NetworkReceiptTests
     [Test]
     [TestCase(-1, TxType.Legacy, TestName = "Fewer transactions")]
     [TestCase(1, TxType.Legacy, TestName = "More transactions")]
-    [TestCase(0, TxType.DepositTx, TestName = "Deposit transaction")]
+    [TestCase(0, (TxType)0x7E, TestName = "Deposit transaction")]
     public void Leaves_stored_receipts_that_do_not_match_the_block_to_the_decoder(int extraTransactions, TxType firstType)
     {
         TxReceipt[] receipts = CreateReceipts(eip658: true);

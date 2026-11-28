@@ -206,6 +206,9 @@ public sealed class ModuleWeaver : BaseModuleWeaver
 
     private static string GetOperationName(TypeReference type)
     {
+        // A CALL or creation handler compiled with the opcode hooks runs, and is named after, the operation it wraps.
+        if (type is GenericInstanceType { Name: "CallWithOpcodeHooks`1" or "CreateWithOpcodeHooks`1" } hooked)
+            type = hooked.GenericArguments[0];
         string name = type.Name.Split('`')[0];
         if (type is GenericParameter || !name.StartsWith("Op", StringComparison.Ordinal))
             throw new WeavingException($"Expected a concrete opcode operation, found {type.FullName}.");

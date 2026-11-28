@@ -25,7 +25,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 public class ChainSpecLoaderTests
 {
     [TestCase("foundation.json")]
-    [TestCase("dictionary")]
     public void Built_in_chain_spec_resource_is_embedded_in_specs_assembly(string fileName)
     {
         using Stream? resource = typeof(ChainSpecFileLoader).Assembly.GetManifestResourceStream($"Nethermind.Specs.chainspec.{fileName}");

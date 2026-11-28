@@ -18,7 +18,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.BeaconChain.Test" />
-    <InternalsVisibleTo Include="Nethermind.Optimism.Test" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />

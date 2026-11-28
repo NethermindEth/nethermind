@@ -9,14 +9,12 @@ using System.Text.Json.Nodes;
 
 #if !SCRIPT_TEST
 var key = "";
-var superchain = false;
 for (var index = 0; index < args.Length; index++)
 {
-    if (args[index] == "--superchain") superchain = true;
-    else if (args[index] is "-k" or "--key" && index + 1 < args.Length) key = args[++index];
+    if (args[index] is "-k" or "--key" && index + 1 < args.Length) key = args[++index];
     else
     {
-        Console.WriteLine("usage: sync-settings.cs [-k|--key API_KEY] [--superchain]");
+        Console.WriteLine("usage: sync-settings.cs [-k|--key API_KEY]");
         return args[index] is "-h" or "--help" ? 0 : 2;
     }
 }
@@ -25,7 +23,7 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 try
 {
-    return await SyncSettings.Update(http, key, superchain, "./src/Nethermind/Nethermind.Runner/configs", Task.Delay, cancellation.Token);
+    return await SyncSettings.Update(http, key, "./src/Nethermind/Nethermind.Runner/configs", Task.Delay, cancellation.Token);
 }
 catch (Exception) when (cancellation.IsCancellationRequested) { return 130; }
 #endif
@@ -38,24 +36,19 @@ internal static class SyncSettings
         ("gnosis", "https://rpc.gnosischain.com", 8192, 10000, true),
         ("chiado", "https://rpc.chiadochain.net", 8192, 10000, true),
         ("sepolia", "https://api.etherscan.io/v2/api?chainid=11155111", 1000, 1000, true),
-        ("op-mainnet", "https://mainnet.optimism.io", 8192, 10000, true),
-        ("op-sepolia", "https://sepolia.optimism.io", 8192, 10000, true),
-        ("worldchain-mainnet", "https://worldchain-mainnet.g.alchemy.com/public", 8192, 10000, true),
-        ("worldchain-sepolia", "https://worldchain-sepolia.g.alchemy.com/public", 8192, 10000, true),
         ("linea-mainnet", "https://rpc.linea.build", 8192, 10000, false),
         ("linea-sepolia", "https://rpc.sepolia.linea.build", 8192, 10000, false),
         ("xdc", "https://erpc.xinfin.network", 8192, 10000, false),
         ("xdc-testnet", "https://rpc.apothem.network", 8192, 10000, false)
     ];
 
-    internal static async Task<int> Update(HttpClient http, string key, bool superchain, string directory, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken cancellationToken)
+    internal static async Task<int> Update(HttpClient http, string key, string directory, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken cancellationToken)
     {
         var indentedJson = new JsonSerializerOptions { WriteIndented = true };
         Console.WriteLine("Fast Sync configuration settings initialization     ✅ ");
         var failed = new List<string>();
         foreach (var (name, url, reduction, multiple, pos) in Configs)
         {
-            if (superchain && name is not ("op-mainnet" or "op-sepolia" or "worldchain-mainnet" or "worldchain-sepolia")) continue;
             Console.WriteLine($"{char.ToUpperInvariant(name[0])}{name[1..]} section                                     ✅ ");
             (long Number, string Hash, BigInteger Difficulty)? pivot = null;
             for (var attempt = 1; attempt <= 5; attempt++)

@@ -87,7 +87,6 @@ jobs:
               Nethermind.Network.Discovery.Test
               Nethermind.Network.Dns.Test
               Nethermind.Network.Enr.Test
-              Nethermind.Optimism.Test
               Nethermind.SendPolicy.Plugin.Test
               Nethermind.Serialization.Ssz.Test
               Nethermind.Taiko.Test

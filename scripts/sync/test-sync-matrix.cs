@@ -10,8 +10,10 @@ using System.Text.RegularExpressions;
 
 var root = Cases.Root();
 var matrix = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "scripts/config/testnet-matrix.json")))!.AsArray();
-foreach (var (filter, expected) in new[] { ("hoodi", "hoodi"), ("taiko-hoodi", "taiko-hoodi"), ("taiko", "taiko-alethia,taiko-hoodi"), ("-sepolia", "op-sepolia,world-sepolia"), ("nope", ""), ("", string.Join(',', matrix.Select(entry => entry!["network"]!.ToString()))) })
+foreach (var (filter, expected) in new[] { ("hoodi", "hoodi"), ("taiko-hoodi", "taiko-hoodi"), ("taiko", "taiko-alethia,taiko-hoodi"), ("nope", ""), ("", string.Join(',', matrix.Select(entry => entry!["network"]!.ToString()))) })
     Cases.Test($"network selection {filter}", () => Cases.Equal(expected, string.Join(',', Sync.Select(matrix, filter).Select(entry => entry!["network"]!.ToString()))));
+var l2Sepolia = JsonNode.Parse("""[{"network":"sepolia"},{"network":"op-sepolia"},{"network":"world-sepolia"}]""")!.AsArray();
+Cases.Test("network selection -sepolia", () => Cases.Equal("op-sepolia,world-sepolia", string.Join(',', Sync.Select(l2Sepolia, "-sepolia").Select(entry => entry!["network"]!.ToString()))));
 Cases.Test("exact selection keeps expanded modes", () => Cases.Equal(2, Sync.Select(JsonNode.Parse("""[{"network":"hoodi","mode":"Flat"},{"network":"hoodi","mode":"HalfPath"},{"network":"taiko-hoodi"}]""")!.AsArray(), "hoodi").Count));
 foreach (var network in new[] { "op-sepolia", "world-sepolia", "op-mainnet", "world-mainnet", "hoodi", "sepolia", "mainnet", "gnosis", "chiado" })
     Cases.Test($"L1 mapping {network}", () => Cases.Equal(network.StartsWith("op-", StringComparison.Ordinal) ? network[3..] : network.StartsWith("world-", StringComparison.Ordinal) ? network[6..] : network, Sync.L1(network)));

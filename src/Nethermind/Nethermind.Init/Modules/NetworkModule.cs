@@ -49,7 +49,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
 
-            // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
+            // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); chain plugins may replace it.
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<NetworkListenerState>()

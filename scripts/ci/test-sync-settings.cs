@@ -31,7 +31,7 @@ foreach (var (failures, invalidResult) in new[] { (1, "json"), (5, "json"), (1, 
         var code = -1;
         try
         {
-            code = await SyncSettings.Update(http, "", false, directory.FullName, (duration, token) => { Require(token == cancellation.Token, "retry delay ignores cancellation"); delays.Add(duration.TotalSeconds); return Task.CompletedTask; }, cancellation.Token);
+            code = await SyncSettings.Update(http, "", directory.FullName, (duration, token) => { Require(token == cancellation.Token, "retry delay ignores cancellation"); delays.Add(duration.TotalSeconds); return Task.CompletedTask; }, cancellation.Token);
             if (failures == 0) throw new InvalidOperationException("broken follower accepted");
             if (invalidResult == "cancel") throw new InvalidOperationException("caller cancellation swallowed");
         }

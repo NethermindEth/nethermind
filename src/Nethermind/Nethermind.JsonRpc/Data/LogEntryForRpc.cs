@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
@@ -17,6 +18,9 @@ namespace Nethermind.JsonRpc.Data
         public Hash256 BlockHash { get; set; }
         public ulong? BlockNumber { get; set; }
         public ulong? BlockTimestamp { get; set; }
+        /// <summary>The optional millisecond timestamp authenticated by the receipt's containing block.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ulong? BlockTimestampMs { get; set; }
         public Address Address { get; set; }
         public byte[] Data { get; set; }
         public Hash256[] Topics { get; set; }

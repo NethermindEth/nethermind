@@ -29,7 +29,6 @@ namespace Nethermind.Core.Test.Json
         [TestCase(TxType.Blob, "\"0x3\"")]
         [TestCase(TxType.SetCode, "\"0x4\"")]
         [TestCase((TxType)16, "\"0x10\"")]
-        [TestCase(TxType.DepositTx, "\"0x7e\"")]
         public void Serializes_as_hex_quantity(TxType type, string expectedJson) =>
             TestConverter(type, expectedJson, new TxTypeConverter(), static (before, after) => before.Equals(after));
     }

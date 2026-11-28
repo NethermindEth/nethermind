@@ -37,6 +37,17 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     /// <summary>Zeros execution gas without changing state-gas accounting.</summary>
     static abstract void ClearExecutionGas(ref TSelf gas);
 
+    /// <summary>Tells a frame's policy that fixed-cost opcodes run on the carried execution gas alone ran out of gas.</summary>
+    /// <param name="gas">The policy of the frame the opcodes ran in.</param>
+    /// <param name="unspentGas">The execution gas left when the failed charge was attempted.</param>
+    /// <remarks>
+    /// Dispatch runs fixed-cost opcodes, alone or fused with their successor, on a local policy holding only the execution
+    /// gas, and drops it when they halt; a policy that records halts learns of this one here. Called only on that
+    /// out-of-gas exit. The default does nothing, so dispatch compiles the call away.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void OnFixedGasOutOfGas(ref TSelf gas, ulong unspentGas) { }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas) => Math.Max(blockExecutionGas, blockStateGas);
 
@@ -277,6 +288,26 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     static abstract bool TryConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref TSelf gas, IReleaseSpec spec)
         where TEip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag;
+
+    /// <summary>Returns the refund for clearing a non-zero storage value.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual long GetStorageClearRefund(IReleaseSpec spec) => (long)spec.GasCosts.SClearRefund;
+
+    /// <summary>Returns the refund for restoring a storage slot to its original value.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual long GetStorageReversalRefund(IReleaseSpec spec, bool originalIsZero) =>
+        (long)spec.GasCosts.RefundFromReversal(originalIsZero);
+
+    /// <summary>Applies policy-specific accounting for a changed persistent storage value.</summary>
+    /// <remarks>The policy may journal separate bookkeeping cells through <paramref name="vm"/>;
+    /// it must not mutate the primary storage cell or perform the primary write.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual EvmExceptionType ApplyStorageTransitionAccounting(
+        ref TSelf gas,
+        VirtualMachine<TSelf> vm,
+        in StorageCell cell,
+        in UInt256 currentValue,
+        in UInt256 newValue) => EvmExceptionType.None;
 
     /// <summary>Charges a storage write using the selected EIP-8038 mode.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

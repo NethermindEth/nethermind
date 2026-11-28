@@ -56,6 +56,10 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? BlockTimestamp { get; set; }
 
+    /// <summary>Authenticated block timestamp in milliseconds, when available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? BlockTimestampMs { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? Gas { get; set; }
 
@@ -83,6 +87,7 @@ public abstract class TransactionForRpc
         BlockHash = extraData.BlockHash;
         BlockNumber = extraData.BlockNumber;
         BlockTimestamp = extraData.BlockTimestamp;
+        BlockTimestampMs = null;
         Gas = null;
         IsTypeDefaulted = false;
     }
