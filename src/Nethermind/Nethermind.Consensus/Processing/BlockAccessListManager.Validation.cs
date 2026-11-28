@@ -210,6 +210,7 @@ public partial class BlockAccessListManager
             {
                 if (!gen.ChangesAtIndexEqual(sug, index))
                 {
+                    if (gen.HasNoChangesAtIndex(index)) ThrowSurplusChanges(block, gen.Address, index);
                     ThrowIncorrectChanges(block, gen.Address, index);
                 }
                 continue;
@@ -252,34 +253,55 @@ public partial class BlockAccessListManager
             ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
         }
 
-        // Pass 1: every account generated touched must match suggested at this row (lane compare)
-        // or be a tolerated generated-only entry.
+        // Membership comes from the suggested bitmap, which never changes: workers indexing later rows keep setting
+        // bits in the generated one, so two passes reading it could both skip an account. This row is final, though,
+        // so its contents decide between incorrect and surplus changes.
+        // Pass 1: every declared account must match suggested at this row.
+        foreach (int ordinal in sug.EnumerateMarkedOrdinals())
+        {
+            if (gen.Lanes.ChangesAtRowEqualForOrdinal(sug.Lanes, row, ordinal)) continue;
+            if (gen.Lanes.HasAt(row, ordinal)) ThrowIncorrectChanges(block, sug.AddressOf(ordinal), index);
+            ThrowSurplusChanges(block, sug.AddressOf(ordinal), index);
+        }
+
+        // Pass 2: accounts only generated touched must be tolerated generated-only entries. Workers only mark
+        // declared accounts, so this set is the in-order validator's alone.
         foreach (int ordinal in gen.EnumerateMarkedOrdinals())
         {
+            if (sug.HasAccount(ordinal)) continue;
+
             Address address = gen.AddressOf(ordinal);
-
-            if (sug.HasAccount(ordinal))
-            {
-                if (!gen.Lanes.ChangesAtRowEqualForOrdinal(sug.Lanes, row, ordinal)) ThrowIncorrectChanges(block, address, index);
-                continue;
-            }
-
             bool hasChargeableReads = index == 0 && address == Address.SystemUser && gen.HasStorageReadsForOrdinal(ordinal);
             if (IsToleratedGeneratedOnlyAccount(address, index, hasNoChangesAtIndex: !gen.Lanes.HasAt(row, ordinal), hasChargeableReads)) continue;
 
             ThrowMissingAccountChanges(block, address, index);
         }
 
-        // Pass 2: accounts only in suggested must carry no changes at this row (else surplus).
-        foreach (int ordinal in sug.EnumerateMarkedOrdinals())
-        {
-            if (gen.HasAccount(ordinal)) continue; // already handled in Pass 1
-            if (sug.Lanes.HasAt(row, ordinal)) ThrowSurplusChanges(block, sug.AddressOf(ordinal), index);
-        }
-
         // Storage-read gas budget — counts already tracked block-cumulative on both sides.
         ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(_generatedChargeableStorageReads);
         ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
+    }
+
+    private bool[] _slicePrecomputed = [];
+
+    private void PrepareSlicePrecompute(int txCount)
+    {
+        int size = txCount + 2;
+        if (_slicePrecomputed.Length < size) _slicePrecomputed = new bool[size];
+        else Array.Clear(_slicePrecomputed, 0, size);
+    }
+
+    /// <summary>Runs on the worker, after it stashed the slice and before it publishes the transaction's gas result.</summary>
+    private void PrecomputeSliceValidation(uint balIndex)
+    {
+        if (_generatedValidationIndex is not { } generated || balIndex >= (uint)_slicePrecomputed.Length) return;
+        if (_parallelTxProcessorWithWorldStateManager!.Value.GetStashedSlice(balIndex) is not { } slice) return;
+        // The validator looks the record up by the slice's own index; a slice filed under another one must not be
+        // indexed here, or the in-order path would index its row a second time.
+        if (slice.Index != balIndex) return;
+        if (!generated.TryAddConcurrent(slice)) return; // the validator takes the full in-order path for this slice
+
+        _slicePrecomputed[balIndex] = true;
     }
 
     /// <summary>
@@ -297,6 +319,15 @@ public partial class BlockAccessListManager
     {
         if (_generatedValidationIndex is null)
         {
+            return;
+        }
+
+        if (slice.Index < (uint)_slicePrecomputed.Length && _slicePrecomputed[slice.Index])
+        {
+            _slicePrecomputed[slice.Index] = default;
+            _generatedChargeableStorageReads += slice.CoveredStorageReads;
+
+            _hasGeneratedValidationIndexUpdates = true;
             return;
         }
 

@@ -128,6 +128,21 @@ internal sealed partial class BlockAccessListValidationIndex
             _storage.SlotsEqualAt(other._storage, row, ordinal);
 
         public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, in value);
+        public bool TryAddBalanceUntracked(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, in value, track: false);
+        public bool TryAddNonceUntracked(int row, int ordinal, ulong value) => _nonce.Add(row, ordinal, value, track: false);
+        public bool TryAddCodeUntracked(int row, int ordinal, in CodeChange change) => _code.Add(row, ordinal, new CodeLaneValue(change), track: false);
+
+        /// <summary>Sorts the scalar lanes of one row written through the untracked adds.</summary>
+        /// <remarks>
+        /// Untracked adds skip the touched-row list, which only the single in-order writer may use; a worker that
+        /// owns a row sorts it itself. Storage is never written this way.
+        /// </remarks>
+        public void SortScalarRow(int row)
+        {
+            _balance.SortFilledRow(row);
+            _nonce.SortFilledRow(row);
+            _code.SortFilledRow(row);
+        }
         public bool TryAddNonce(int row, int ordinal, ulong value) => _nonce.Add(row, ordinal, value);
         public bool TryAddCode(int row, int ordinal, in CodeChange change) => _code.Add(row, ordinal, new CodeLaneValue(change));
         public bool TryAddStorage(int row, int ordinal, in UInt256 key, in UInt256 value) => _storage.Add(row, ordinal, in key, in value);
@@ -223,7 +238,11 @@ internal sealed partial class BlockAccessListValidationIndex
         /// write into, or <c>-1</c> if the row is full (in which case the overflow flag is
         /// latched and the caller must report failure).
         /// </summary>
-        protected int ReserveNextOffset(int row)
+        /// <param name="track">
+        /// False for a writer that owns <paramref name="row"/> and sorts it with <see cref="SortFilledRow"/>; the
+        /// touched-row list is shared, so only the single in-order writer may track.
+        /// </param>
+        protected int ReserveNextOffset(int row, bool track = true)
         {
             if (mutable is not { } book) throw new InvalidOperationException("Cannot append to immutable lane.");
             int count = book.RowFilled[row];
@@ -234,9 +253,11 @@ internal sealed partial class BlockAccessListValidationIndex
             }
             int offset = rowStarts[row] + count;
             book.RowFilled[row] = count + 1;
-            MarkTouched(book, row);
+            if (track) MarkTouched(book, row);
             return offset;
         }
+
+        public void SortFilledRow(int row) => SortRow(row, RowLength(row));
 
         public void SortAllRows()
         {
@@ -453,9 +474,9 @@ internal sealed partial class BlockAccessListValidationIndex
                 if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, select(change));
         }
 
-        public bool Add(int row, int accountOrdinal, in TValue value)
+        public bool Add(int row, int accountOrdinal, in TValue value, bool track = true)
         {
-            int offset = ReserveNextOffset(row);
+            int offset = ReserveNextOffset(row, track);
             if (offset < 0) return false;
             AccountOrdinals[offset] = accountOrdinal;
             _values[offset] = value;

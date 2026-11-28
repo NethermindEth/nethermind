@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -38,6 +39,12 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     private readonly bool _isMutable;
     private readonly LaneStore _lanes;
     private ulong[] _hasAccountWords;
+    // Generated index only: ordinals below this are frozen (declared by the suggested BAL) and live in the
+    // pre-sized _hasAccountWords, which concurrent slice writers set atomically; ordinals added during
+    // validation live in _extraAccountWords, which only the in-order validator touches.
+    private readonly int _sharedAccountBits;
+    private ulong[] _extraAccountWords = [];
+    private readonly Lock _overflowLock = new();
     private bool _disposed;
     private bool _hasOutOfRangeChange;
     // Generated-side accumulators (mutable index only). Flat (ordinal, slot) lists sorted
@@ -49,8 +56,8 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     private bool _generatedStorageWritesSorted = true;
     // First (row, lane) where Add overflowed: row capacity is sized to the suggested side,
     // so an overflow is itself a structural mismatch — HasAt would otherwise drop it.
-    private Address? _generatedOverflowAddress;
-    private uint _generatedOverflowIndex;
+    // One immutable record, so the validator never pairs an address with another record's index.
+    private GeneratedOverflow? _generatedOverflow;
 
     public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested, int storageReadsCapacity, int storageWritesCapacity, bool trackStorageReads = true)
     {
@@ -64,9 +71,12 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = trackStorageReads ? new(WithSlack(storageReadsCapacity)) : null;
         _generatedStorageWrites = trackStorageReads ? new(WithSlack(storageWritesCapacity)) : null;
-        // Start with an empty bitmap; MarkAccount grows it through the pool on first use, so
-        // blocks that never call MarkAccount don't rent anything.
-        _hasAccountWords = [];
+        // Addresses known now are the suggested ones; freezing lets concurrent slice writers look them up while
+        // the in-order validator still adds undeclared ones. The shared bitmap covers exactly those ordinals.
+        addressIndex.Freeze();
+        _sharedAccountBits = addressIndex.Count;
+        int sharedWords = WordCount(_sharedAccountBits);
+        _hasAccountWords = sharedWords == 0 ? [] : RentBitmap(sharedWords);
     }
 
     /// <summary>Capacity hint plus headroom so the lists don't immediately resize on the first
@@ -138,7 +148,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
         {
             int accountOrdinal = _addressIndex.GetOrAdd(accountChanges.Address);
-            MarkAccount(ref _hasAccountWords, accountOrdinal);
+            MarkAccount(accountOrdinal);
 
             if (accountChanges.BalanceChange is { } balance)
             {
@@ -181,10 +191,71 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
 
     private void RecordIfOverflow(bool added, uint index, Address address)
     {
-        if (added || _generatedOverflowAddress is not null) return;
-        _generatedOverflowAddress = address;
-        _generatedOverflowIndex = index;
+        if (added) return;
+        // Slices are indexed by workers out of order, so keep the lowest index: once the validator reaches index i,
+        // every slice up to i has been indexed and any overflow at or below i is recorded.
+        lock (_overflowLock)
+        {
+            if (_generatedOverflow is { } recorded && recorded.Index <= index) return;
+            Volatile.Write(ref _generatedOverflow, new GeneratedOverflow(address, index));
+        }
     }
+
+    private sealed record GeneratedOverflow(Address Address, uint Index);
+
+    /// <summary>
+    /// Indexes <paramref name="slice"/> from the worker that produced it, concurrently with other workers and with
+    /// the in-order validator's <see cref="Add(BlockAccessListAtIndex)"/>.
+    /// </summary>
+    /// <returns>
+    /// False, having written nothing, when the slice needs the in-order <see cref="Add(BlockAccessListAtIndex)"/>:
+    /// it touches an address the suggested BAL does not declare (only the validator may assign ordinals), carries
+    /// storage changes or reads (their accumulators are single-writer), or a change outside its own row.
+    /// </returns>
+    /// <remarks>
+    /// Safe because each transaction slice writes only its own row: per-row lane bookkeeping has a single writer, the
+    /// row is sorted here rather than through the shared touched-row list, and account bits are set atomically.
+    /// The validator reads the row only after the worker publishes the transaction's gas result.
+    /// </remarks>
+    public bool TryAddConcurrent(BlockAccessListAtIndex slice)
+    {
+        if (!_isMutable) throw new InvalidOperationException("Only generated validation indexes can be appended.");
+        uint index = slice.Index;
+        if (index > _lastIndex) return false;
+
+        foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
+        {
+            if (!_addressIndex.TryGetFrozen(accountChanges.Address, out _)) return false;
+            if (accountChanges.StorageChangeCount != 0 || accountChanges.StorageReads.Count != 0) return false;
+            if (accountChanges.BalanceChange is { } b && b.Index != index) return false;
+            if (accountChanges.NonceChange is { } n && n.Index != index) return false;
+            if (accountChanges.CodeChange is { } c && c.Index != index) return false;
+        }
+
+        int row = (int)index;
+        foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
+        {
+            _addressIndex.TryGetFrozen(accountChanges.Address, out int accountOrdinal);
+            SetSharedAccountBit(accountOrdinal);
+
+            if (accountChanges.BalanceChange is { } balance)
+                RecordIfOverflow(_lanes.TryAddBalanceUntracked(row, accountOrdinal, balance.Value), index, accountChanges.Address);
+            if (accountChanges.NonceChange is { } nonce)
+                RecordIfOverflow(_lanes.TryAddNonceUntracked(row, accountOrdinal, nonce.Value), index, accountChanges.Address);
+            if (accountChanges.CodeChange is { } code)
+                RecordIfOverflow(_lanes.TryAddCodeUntracked(row, accountOrdinal, in code), index, accountChanges.Address);
+        }
+
+        _lanes.SortScalarRow(row);
+        return true;
+    }
+
+    /// <summary>
+    /// <see cref="HasAccount(Address)"/> restricted to frozen addresses, for concurrent callers. On a suggested index it
+    /// answers the same: every suggested account is frozen.
+    /// </summary>
+    public bool HasFrozenAccount(Address address) =>
+        _addressIndex.TryGetFrozen(address, out int accountOrdinal) && HasAccountOrdinal(accountOrdinal);
 
     /// <summary>
     /// If a lane Add overflowed during a prior <see cref="Add(BlockAccessListAtIndex)"/> call,
@@ -194,14 +265,14 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     /// </summary>
     public bool TryGetGeneratedOverflow(out Address address, out uint index)
     {
-        if (_generatedOverflowAddress is null)
+        if (Volatile.Read(ref _generatedOverflow) is not { } overflow)
         {
             address = default!;
             index = 0;
             return false;
         }
-        address = _generatedOverflowAddress;
-        index = _generatedOverflowIndex;
+        address = overflow.Address;
+        index = overflow.Index;
         return true;
     }
 
@@ -219,6 +290,8 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         {
             int count = 0;
             ReadOnlySpan<ulong> words = _hasAccountWords;
+            for (int i = 0; i < words.Length; i++) count += BitOperations.PopCount(words[i]);
+            words = _extraAccountWords;
             for (int i = 0; i < words.Length; i++) count += BitOperations.PopCount(words[i]);
             return count;
         }
@@ -412,14 +485,18 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     /// </summary>
     public IEnumerable<int> EnumerateMarkedOrdinals()
     {
-        for (int wordIdx = 0; wordIdx < _hasAccountWords.Length; wordIdx++)
+        // Extra ordinals are all at or above the shared ones, so the shared words first keeps the order ascending.
+        foreach (ulong[] words in (ulong[][])[_hasAccountWords, _extraAccountWords])
         {
-            ulong word = _hasAccountWords[wordIdx];
-            while (word != 0)
+            for (int wordIdx = 0; wordIdx < words.Length; wordIdx++)
             {
-                int bitOffset = BitOperations.TrailingZeroCount(word);
-                yield return (wordIdx << WordShift) + bitOffset;
-                word &= word - 1;
+                ulong word = words[wordIdx];
+                while (word != 0)
+                {
+                    int bitOffset = BitOperations.TrailingZeroCount(word);
+                    yield return (wordIdx << WordShift) + bitOffset;
+                    word &= word - 1;
+                }
             }
         }
     }
@@ -459,13 +536,35 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     private static void ThrowIndexOutOfRange(BlockHeader header, uint index, uint lastIndex) =>
         throw new InvalidBlockException(header, BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, lastIndex));
 
-    private bool HasAccountOrdinal(int accountOrdinal) => TestBit(_hasAccountWords, accountOrdinal);
+    private bool HasAccountOrdinal(int accountOrdinal) =>
+        _isMutable && accountOrdinal >= _sharedAccountBits
+            ? TestBit(_extraAccountWords, accountOrdinal)
+            : TestBit(_hasAccountWords, accountOrdinal);
 
-    private static void MarkAccount(ref ulong[] words, int accountOrdinal)
+    /// <summary>Sets an account's bit in the bitmap part shared with concurrent slice writers.</summary>
+    /// <remarks>
+    /// Atomic on the 32-bit half of the word that holds the bit: 64-bit <see cref="Interlocked.Or(ref ulong, ulong)"/>
+    /// does not compile for the RV32 zkVM guests.
+    /// </remarks>
+    private void SetSharedAccountBit(int accountOrdinal)
+    {
+        Span<uint> halves = MemoryMarshal.Cast<ulong, uint>(_hasAccountWords.AsSpan());
+        ref uint word = ref halves[accountOrdinal >> 5];
+        uint mask = 1u << (accountOrdinal & 31);
+        if ((Volatile.Read(ref word) & mask) == 0) Interlocked.Or(ref word, mask);
+    }
+
+    private void MarkAccount(int accountOrdinal)
     {
         int word = accountOrdinal >> WordShift;
-        if ((uint)word >= (uint)words.Length) PooledArrays.Grow(ref words, word + 1);
-        words[word] |= 1UL << (accountOrdinal & BitMask);
+        if (accountOrdinal < _sharedAccountBits)
+        {
+            SetSharedAccountBit(accountOrdinal);
+            return;
+        }
+
+        if ((uint)word >= (uint)_extraAccountWords.Length) PooledArrays.Grow(ref _extraAccountWords, word + 1);
+        _extraAccountWords[word] |= 1UL << (accountOrdinal & BitMask);
     }
 
     /// <summary>
@@ -513,24 +612,48 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     internal sealed class AddressIndex
     {
         private readonly Dictionary<AddressAsKey, int> _ordinals = [with(AddressAsKey.EqualityComparer)];
+        // Addresses added after Freeze. Kept apart so _ordinals is never written once frozen and concurrent
+        // TryGetFrozen readers need no lock; only the single writer reads or writes this one.
+        private Dictionary<AddressAsKey, int>? _added;
         // Reverse lookup for slow-path diagnostics that need to translate an ordinal back to an
         // Address (e.g. "incorrect changes for {addr} at index N"). Appended in GetOrAdd.
         private readonly List<Address> _addresses = [];
+        private bool _frozen;
 
-        public int Count => _ordinals.Count;
+        public int Count => _addresses.Count;
+
+        /// <summary>Stops writes to the current addresses so <see cref="TryGetFrozen"/> may run concurrently.</summary>
+        public void Freeze() => _frozen = true;
 
         public int GetOrAdd(Address address)
         {
+            if (_frozen)
+            {
+                if (_ordinals.TryGetValue(address, out int frozenOrdinal)) return frozenOrdinal;
+                _added ??= [with(AddressAsKey.EqualityComparer)];
+                ref int added = ref CollectionsMarshal.GetValueRefOrAddDefault(_added, address, out bool addedExists);
+                if (!addedExists)
+                {
+                    added = _addresses.Count;
+                    _addresses.Add(address);
+                }
+                return added;
+            }
+
             ref int ordinal = ref CollectionsMarshal.GetValueRefOrAddDefault(_ordinals, address, out bool exists);
             if (!exists)
             {
-                ordinal = _ordinals.Count - 1;
+                ordinal = _addresses.Count;
                 _addresses.Add(address);
             }
             return ordinal;
         }
 
         public bool TryGet(Address address, out int ordinal) =>
+            _ordinals.TryGetValue(address, out ordinal) || (_added is not null && _added.TryGetValue(address, out ordinal));
+
+        /// <summary>Looks up an address added before <see cref="Freeze"/>; safe concurrently with <see cref="GetOrAdd"/>.</summary>
+        public bool TryGetFrozen(Address address, out int ordinal) =>
             _ordinals.TryGetValue(address, out ordinal);
 
         public Address GetAddress(int ordinal) => _addresses[ordinal];
@@ -543,5 +666,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         _lanes.Dispose();
         if (_hasAccountWords.Length > 0) PooledArrays.Return(_hasAccountWords);
         _hasAccountWords = [];
+        if (_extraAccountWords.Length > 0) PooledArrays.Return(_extraAccountWords);
+        _extraAccountWords = [];
     }
 }

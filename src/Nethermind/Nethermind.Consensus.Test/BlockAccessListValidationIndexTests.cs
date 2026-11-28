@@ -321,6 +321,138 @@ public class BlockAccessListValidationIndexTests
         }
     }
 
+    private const int ConcurrentTxCount = 256;
+
+    /// <summary>
+    /// Suggested BAL for <see cref="ConcurrentTxCount"/> self-transfers: tx i (row i + 1) changes sender i's balance and
+    /// nonce, and every tx pays the coinbase.
+    /// </summary>
+    private static (ReadOnlyBlockAccessList Bal, BlockAccessListAtIndex[] Slices) SelfTransferBlock()
+    {
+        Address coinbase = TestItem.AddressA;
+        List<ReadOnlyAccountChanges> accounts = [];
+        BalanceChange[] coinbaseChanges = new BalanceChange[ConcurrentTxCount];
+        BlockAccessListAtIndex[] slices = new BlockAccessListAtIndex[ConcurrentTxCount];
+        for (int i = 0; i < ConcurrentTxCount; i++)
+        {
+            uint row = (uint)(i + 1);
+            Address sender = new(Keccak.Compute(BitConverter.GetBytes(i)).Bytes[..20]);
+            accounts.Add(Account(sender, balance: new BalanceChange(row, (UInt256)(1000 - i)), nonce: new NonceChange(row, 1)));
+            coinbaseChanges[i] = new BalanceChange(row, (UInt256)(i + 1));
+
+            BlockAccessListAtIndex slice = new() { Index = row };
+            slice.AddBalanceChange(sender, before: 1001, after: (UInt256)(1000 - i));
+            slice.AddNonceChange(sender, before: 0, after: 1);
+            slice.AddBalanceChange(coinbase, before: (UInt256)i, after: (UInt256)(i + 1));
+            slices[i] = slice;
+        }
+
+        accounts.Add(Build.An.AccountChanges.WithAddress(coinbase).WithBalanceChanges(coinbaseChanges).TestObject);
+        accounts.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+        return (Bal([.. accounts]), slices);
+    }
+
+    [Test]
+    public void TryAddConcurrent_from_many_threads_matches_serial_add()
+    {
+        (ReadOnlyBlockAccessList suggested, BlockAccessListAtIndex[] slices) = SelfTransferBlock();
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, ConcurrentTxCount, _addressIndex);
+        using BlockAccessListValidationIndex serial = new(ConcurrentTxCount, _addressIndex, suggestedIndex, 0, 0);
+        using BlockAccessListValidationIndex concurrent = new(ConcurrentTxCount, _addressIndex, suggestedIndex, 0, 0);
+
+        foreach (BlockAccessListAtIndex slice in slices) serial.Add(slice);
+
+        int[] order = new int[ConcurrentTxCount];
+        for (int i = 0; i < order.Length; i++) order[i] = i;
+        new Random(42).Shuffle(order);
+        bool[] accepted = new bool[ConcurrentTxCount];
+        System.Threading.Tasks.Parallel.For(0, order.Length, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 16 },
+            k => accepted[order[k]] = concurrent.TryAddConcurrent(slices[order[k]]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.All.True);
+            for (uint row = 1; row <= ConcurrentTxCount; row++)
+            {
+                Assert.That(serial.ChangesEqual(suggestedIndex, row), Is.True, $"serial row {row}");
+                Assert.That(concurrent.ChangesEqual(suggestedIndex, row), Is.True, $"concurrent row {row}");
+            }
+            Assert.That(concurrent.MarkedAccountCount, Is.EqualTo(serial.MarkedAccountCount));
+            Assert.That(concurrent.EnumerateMarkedOrdinals(), Is.EqualTo(serial.EnumerateMarkedOrdinals()));
+            Assert.That(concurrent.FindStructuralMismatch(suggested, out _, out _), Is.EqualTo(BlockAccessListValidationIndex.StructuralMismatchKind.None));
+        }
+    }
+
+    [Test]
+    public void TryAddConcurrent_refuses_undeclared_address_without_writing_and_serial_add_takes_it()
+    {
+        ReadOnlyBlockAccessList suggested = Bal(Account(TestItem.AddressA, balance: new BalanceChange(1, 5)));
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 1, _addressIndex);
+        using BlockAccessListValidationIndex generated = new(1, _addressIndex, suggestedIndex, 0, 0);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        slice.AddBalanceChange(TestItem.AddressA, before: 4, after: 5);
+        slice.AddBalanceChange(TestItem.AddressF, before: 1, after: 2);
+
+        bool accepted = generated.TryAddConcurrent(slice);
+        int markedAfterRefusal = generated.MarkedAccountCount;
+        generated.Add(slice);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False);
+            Assert.That(markedAfterRefusal, Is.Zero);
+            Assert.That(generated.HasAccount(TestItem.AddressF), Is.True);
+            Assert.That(suggestedIndex.HasAccount(TestItem.AddressF), Is.False);
+            Assert.That(generated.MarkedAccountCount, Is.EqualTo(2));
+            Assert.That(generated.EnumerateMarkedOrdinals(), Is.Ordered.Ascending);
+        }
+    }
+
+    [Test]
+    public void TryAddConcurrent_refuses_storage_slices()
+    {
+        ReadOnlyBlockAccessList suggested = Bal(Account(TestItem.AddressA, storage: (1, new StorageChange(1, 7))));
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 1, _addressIndex);
+        using BlockAccessListValidationIndex generated = new(1, _addressIndex, suggestedIndex, 0, 1);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        slice.AddStorageChange(TestItem.AddressA, 1, before: 0, after: 7);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated.TryAddConcurrent(slice), Is.False);
+            Assert.That(generated.MarkedAccountCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void TryAddConcurrent_reports_lowest_overflow_index_whatever_the_arrival_order()
+    {
+        // Rows 1 and 2 each declare one balance change; each generated slice brings two, overflowing its row.
+        ReadOnlyBlockAccessList suggested = Bal(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 1), new BalanceChange(2, 2)).TestObject,
+            Account(TestItem.AddressB, balance: new BalanceChange(3, 3)));
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 3, _addressIndex);
+        using BlockAccessListValidationIndex generated = new(3, _addressIndex, suggestedIndex, 0, 0);
+        static BlockAccessListAtIndex Overflowing(uint row)
+        {
+            BlockAccessListAtIndex slice = new() { Index = row };
+            slice.AddBalanceChange(TestItem.AddressA, before: 0, after: row);
+            slice.AddBalanceChange(TestItem.AddressB, before: 0, after: 9);
+            return slice;
+        }
+
+        generated.TryAddConcurrent(Overflowing(2));
+        generated.TryAddConcurrent(Overflowing(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated.TryGetGeneratedOverflow(out _, out uint index), Is.True);
+            Assert.That(index, Is.EqualTo(1u));
+            Assert.That(generated.ChangesEqual(suggestedIndex, 1), Is.False);
+            Assert.That(generated.ChangesEqual(suggestedIndex, 2), Is.False);
+        }
+    }
+
     [Test]
     public void Account_bitmap_does_not_inherit_bits_from_a_previously_pooled_array()
     {
