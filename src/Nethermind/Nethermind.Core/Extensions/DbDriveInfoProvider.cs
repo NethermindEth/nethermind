@@ -41,22 +41,24 @@ namespace Nethermind.Core.Extensions
             HashSet<IDriveInfo> seen = [];
             // Ordered, so the top-level drive comes first for callers that take a single drive
             List<IDriveInfo> driveInfos = [];
-            AddDriveOf(topDir);
+            string topPath = ResolvePath(fileSystem, topDir, topDir.FullName);
+            AddDriveOf(topPath);
 
             foreach (IDirectoryInfo di in topDir.EnumerateDirectories())
             {
                 //only want to handle symlinks - otherwise will be on same drive as parent
                 if (di.LinkTarget is not null)
                 {
-                    AddDriveOf(di);
+                    // On Unix the lexical path of the link can be on another drive than the directory that holds it
+                    AddDriveOf(ResolvePath(fileSystem, di, OperatingSystem.IsWindows() ? di.FullName : topPath));
                 }
             }
 
             return driveInfos.ToArray();
 
-            void AddDriveOf(IDirectoryInfo dir)
+            void AddDriveOf(string path)
             {
-                IDriveInfo? drive = FindDrive(allDrives, ResolvePath(dir));
+                IDriveInfo? drive = FindDrive(allDrives, path);
                 if (drive is not null && seen.Add(drive))
                 {
                     driveInfos.Add(drive);
@@ -94,26 +96,92 @@ namespace Nethermind.Core.Extensions
                 || path[root.Length] == Path.AltDirectorySeparatorChar);
 
         /// <summary>
-        /// The final target of a linked directory, or the directory's own path when it is not a link.
+        /// The path of a directory with its links followed, or the directory's own path when it is not under a link.
         /// </summary>
         /// <remarks>
-        /// A listed link that cannot be resolved (for example, it changed after the directory was listed) falls back to
-        /// its own path, the drive that holds the link, so it never stops the node from starting. Dangling and looping
-        /// links are not listed as directories on Linux, so they are skipped before this.
+        /// On Unix every component is followed from the root, so a database directory under a linked parent directory
+        /// resolves to the volume of the link target. On Windows only a linked directory itself is resolved.
+        /// A directory that cannot be resolved (for example, a listed link changed after the directory was listed) falls
+        /// back to <paramref name="fallback"/> with a warning, so it never stops the node from starting. Dangling and
+        /// looping links are not listed as directories on Linux, so they are skipped before this.
         /// </remarks>
-        private static string ResolvePath(IDirectoryInfo dir)
+        private static string ResolvePath(IFileSystem fileSystem, IDirectoryInfo dir, string fallback)
         {
             try
             {
-                return dir.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? dir.FullName;
+                return OperatingSystem.IsWindows()
+                    ? dir.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? dir.FullName
+                    : FollowLinks(fileSystem, dir.FullName);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 ILogger logger = Static.LogManager.GetClassLogger(typeof(DbDriveInfoProvider));
                 if (logger.IsWarn) logger.Warn($"Cannot resolve the linked database directory {dir.FullName:hide}, so the free space of its target is not monitored: {e.Message:hide}");
-                return dir.FullName;
+                return fallback;
             }
         }
+
+        /// <summary>
+        /// Follows every link in <paramref name="path"/> one component at a time from the root, as the kernel does.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="IFileSystemInfo.ResolveLinkTarget"/>, which resolves only the last component and removes
+        /// ".." from the target text, this applies ".." to the target of the link before it. The root is never inspected.
+        /// </remarks>
+        /// <exception cref="IOException">
+        /// A component cannot be found, for example a listed link removed since, or more than
+        /// <see cref="MaxFollowedLinks"/> links are followed.
+        /// </exception>
+        private static string FollowLinks(IFileSystem fileSystem, string path)
+        {
+            Stack<string> names = new();
+            PushNames(names, path);
+            string resolved = Path.GetPathRoot(path)!;
+            int followed = 0;
+            while (names.TryPop(out string? name))
+            {
+                if (name == ".")
+                    continue;
+
+                if (name == "..")
+                {
+                    resolved = Path.GetDirectoryName(resolved) ?? resolved;
+                    continue;
+                }
+
+                string next = Path.Join(resolved, name);
+                IDirectoryInfo directory = fileSystem.DirectoryInfo.New(next);
+                string? target = directory.LinkTarget;
+                if (target is null)
+                {
+                    // LinkTarget is also null when the lookup fails, which must not pass for a directory that is not a link
+                    if (!directory.Exists)
+                        throw new DirectoryNotFoundException($"Could not find a part of the path '{next}'.");
+
+                    resolved = next;
+                    continue;
+                }
+
+                if (++followed > MaxFollowedLinks)
+                    throw new IOException("Too many levels of symbolic links");
+
+                if (Path.IsPathRooted(target))
+                    resolved = Path.GetPathRoot(target)!;
+                PushNames(names, target);
+            }
+
+            return resolved;
+
+            static void PushNames(Stack<string> names, string path)
+            {
+                string[] parts = path.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = parts.Length - 1; i >= 0; i--)
+                    names.Push(parts[i]);
+            }
+        }
+
+        // As the Linux kernel (MAXSYMLINKS) and ResolveLinkTarget on Unix
+        private const int MaxFollowedLinks = 40;
 
         private static bool CreateDirectorySilent(IDirectoryInfo directoryInfo)
         {

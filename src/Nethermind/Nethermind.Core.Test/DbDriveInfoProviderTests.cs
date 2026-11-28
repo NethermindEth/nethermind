@@ -54,19 +54,31 @@ public class DbDriveInfoProviderTests
         ];
         IFileSystem fileSystem = FileSystem(Dir(Db), children, other, Drive(Root), main);
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsWarn.Returns(true);
-        ILogManager originalLogManager = Static.LogManager;
-        Static.LogManager = new OneLoggerLogManager(new ILogger(logger));
-        try
-        {
-            Assert.That(fileSystem.GetDriveInfos(Db), Is.EqualTo(new[] { main, other }));
-        }
-        finally
-        {
-            Static.LogManager = originalLogManager;
-        }
+
+        Assert.That(GetDriveInfosLoggingTo(logger, fileSystem), Is.EqualTo(new[] { main, other }));
 
         logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(broken)));
+        fileSystem.DirectoryInfo.DidNotReceive().New(Root);
+    }
+
+    [Test]
+    [NonParallelizable] // swaps the static log manager
+    [Platform(Include = "Linux")] // Windows resolves only a linked directory itself, and macOS lists no drives
+    public void Keeps_the_database_drive_when_a_link_under_a_linked_parent_cannot_be_resolved()
+    {
+        IDriveInfo main = Drive(Main), other = Drive(Other);
+        string removed = Path.Combine(Db, "removed"), physical = Path.Combine(Other, "db", "removed");
+        IFileSystem fileSystem = FileSystem(Dir(Db), [Dir(removed, Path.Combine(Other, "state"))], main, other);
+        IDirectoryInfo linkedMain = Dir(Main, Other);
+        fileSystem.DirectoryInfo.New(Main).Returns(linkedMain);
+        // Listed as a link, then removed before it is resolved
+        IDirectoryInfo removedLater = Dir(physical, exists: false);
+        fileSystem.DirectoryInfo.New(physical).Returns(removedLater);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+
+        Assert.That(GetDriveInfosLoggingTo(logger, fileSystem), Is.EqualTo(new[] { other }));
+        logger.Received(1).Warn(Arg.Any<string>());
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(removed)));
     }
 
     [TestCase("absolute")]
@@ -74,6 +86,8 @@ public class DbDriveInfoProviderTests
     [TestCase("chain")]
     [TestCase("linked db directory")]
     [TestCase("linked db directory, trailing separator")]
+    [TestCase("linked db directory, '..' after a link in its target")]
+    [TestCase("linked parent directory")]
     [TestCase("dangling and looping")]
     [Platform(Include = "Linux")] // creating links needs a privilege on Windows, and macOS lists no drives
     public void Resolves_real_links_to_their_final_target(string link)
@@ -82,8 +96,12 @@ public class DbDriveInfoProviderTests
         string main = Path.Combine(temp.Path, "main"), other = Path.Combine(temp.Path, "other");
         string db = Path.Combine(main, "db"), state = Path.Combine(db, "state"), target = Path.Combine(other, "state");
         bool linkedDb = link.StartsWith("linked db directory", StringComparison.Ordinal);
+        bool linkedParent = link == "linked parent directory";
         Directory.CreateDirectory(target);
-        Directory.CreateDirectory(linkedDb ? main : db);
+        if (!linkedParent)
+        {
+            Directory.CreateDirectory(linkedDb ? main : db);
+        }
         switch (link)
         {
             case "absolute":
@@ -99,6 +117,19 @@ public class DbDriveInfoProviderTests
             case "linked db directory" or "linked db directory, trailing separator":
                 Directory.CreateSymbolicLink(db, Path.Combine("..", "other", "state"));
                 break;
+            case "linked db directory, '..' after a link in its target":
+                Directory.CreateDirectory(Path.Combine(other, "nested"));
+                Directory.CreateDirectory(Path.Combine(other, "store"));
+                Directory.CreateDirectory(Path.Combine(main, "ancient"));
+                Directory.CreateSymbolicLink(Path.Combine(main, "hop"), Path.Combine("..", "other", "nested"));
+                // main/hop/.. is other, not main as the text suggests
+                Directory.CreateSymbolicLink(db, Path.Combine("hop", "..", "store"));
+                Directory.CreateSymbolicLink(Path.Combine(other, "store", "state"), Path.Combine("..", "..", "main", "ancient"));
+                break;
+            case "linked parent directory":
+                Directory.CreateDirectory(Path.Combine(other, "db"));
+                Directory.CreateSymbolicLink(main, "other");
+                break;
             default:
                 Directory.CreateSymbolicLink(Path.Combine(db, "dangling"), Path.Combine(temp.Path, "missing"));
                 Directory.CreateSymbolicLink(Path.Combine(db, "loop"), Path.Combine(db, "loop"));
@@ -107,13 +138,18 @@ public class DbDriveInfoProviderTests
 
         IDriveInfo mainDrive = Drive(main), otherDrive = Drive(other);
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        fileSystem.DirectoryInfo.Returns(new RealFileSystem().DirectoryInfo);
+        IDirectoryInfoFactory directories = new RealFileSystem().DirectoryInfo;
+        IDirectoryInfo aboveTemp = Dir(temp.Path);
+        // The drive roots are spelled under the temp path, so a link above it, such as a linked TMPDIR, is not followed
+        fileSystem.DirectoryInfo.New(Arg.Any<string>()).Returns(call =>
+            call.Arg<string>().StartsWith(temp.Path, StringComparison.Ordinal) ? directories.New(call.Arg<string>()) : aboveTemp);
         fileSystem.DriveInfo.GetDrives().Returns(new[] { otherDrive, mainDrive });
 
         string dbPath = link.EndsWith("trailing separator", StringComparison.Ordinal) ? db + Path.DirectorySeparatorChar : db;
         Assert.That(fileSystem.GetDriveInfos(dbPath), Is.EqualTo(link switch
         {
-            _ when linkedDb => new[] { otherDrive },
+            "linked db directory, '..' after a link in its target" => new[] { otherDrive, mainDrive },
+            _ when linkedDb || linkedParent => new[] { otherDrive },
             "dangling and looping" => new[] { mainDrive },
             _ => new[] { mainDrive, otherDrive },
         }));
@@ -121,19 +157,40 @@ public class DbDriveInfoProviderTests
 
     private static IFileSystem FileSystem(IDirectoryInfo top, IDirectoryInfo[] children, params IDriveInfo[] drives)
     {
-        top.Exists.Returns(true);
         top.EnumerateDirectories().Returns(children);
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        fileSystem.DirectoryInfo.New(Db).Returns(top);
+        IDirectoryInfo notLinked = Dir(Root);
+        fileSystem.DirectoryInfo.New(Arg.Any<string>()).Returns(notLinked);
+        foreach (IDirectoryInfo directory in children.Append(top))
+        {
+            string fullName = directory.FullName;
+            fileSystem.DirectoryInfo.New(fullName).Returns(directory);
+        }
         fileSystem.DriveInfo.GetDrives().Returns(drives);
         return fileSystem;
     }
 
-    private static IDirectoryInfo Dir(string fullName, string? linkTarget = null, string? target = null)
+    private static IDriveInfo[] GetDriveInfosLoggingTo(InterfaceLogger logger, IFileSystem fileSystem)
+    {
+        logger.IsWarn.Returns(true);
+        ILogManager originalLogManager = Static.LogManager;
+        Static.LogManager = new OneLoggerLogManager(new ILogger(logger));
+        try
+        {
+            return fileSystem.GetDriveInfos(Db);
+        }
+        finally
+        {
+            Static.LogManager = originalLogManager;
+        }
+    }
+
+    private static IDirectoryInfo Dir(string fullName, string? linkTarget = null, string? target = null, bool exists = true)
     {
         IFileSystemInfo? resolved = Info(target);
         IDirectoryInfo directory = Substitute.For<IDirectoryInfo>();
         directory.FullName.Returns(fullName);
+        directory.Exists.Returns(exists);
         directory.LinkTarget.Returns(linkTarget);
         directory.ResolveLinkTarget(Arg.Any<bool>()).Returns(resolved);
         return directory;
