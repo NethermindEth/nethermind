@@ -17,6 +17,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
@@ -74,6 +75,8 @@ public class XdcModule : Module
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
             .AddDecorator<IBlockhashStore, XdcBlockhashStore>()
+            .AddDecorator<IBlockhashStore, XdcMulticall3Installer>()
+            .AddDecorator<IPrecompileProvider, XdcPrecompileProvider>()
 
             // Sys contracts
             //TODO this might not be wired correctly

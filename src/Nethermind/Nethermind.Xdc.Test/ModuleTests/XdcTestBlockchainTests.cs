@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
@@ -46,6 +47,21 @@ internal class XdcTestBlockchainTests
 
         Assert.That(resolved, Is.Not.Null);
         Assert.That(resolved!.MethodInfo.DeclaringType, Is.EqualTo(typeof(IXdcExtendedEthRpcModule)));
+    }
+
+    [Test]
+    public async Task FirstPragueBlockInstallsMulticall3()
+    {
+        _blockchain.ChangeReleaseSpec(spec => spec.IsEip2935Enabled = true);
+
+        await _blockchain.AddBlock();
+
+        BlockHeader head = _blockchain.BlockTree.Head!.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchain.StateReader.GetCode(head, XdcMulticall3Installer.Address), Is.EqualTo(XdcMulticall3Installer.RuntimeCode));
+            Assert.That(_blockchain.StateReader.GetNonce(head, XdcMulticall3Installer.Address), Is.EqualTo(1UL));
+        }
     }
 
     [Test]

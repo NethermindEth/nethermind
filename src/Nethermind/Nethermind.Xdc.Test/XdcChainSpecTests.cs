@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -72,6 +73,43 @@ public class XdcChainSpecTests
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(engineParameters.SwitchBlock + 1, latestRound);
 
         Assert.That(spec.LimitPenaltyEpoch, Is.EqualTo(expectedLimitPenaltyEpoch));
+    }
+
+    // The reference client's TestnetChainConfig.PragueBlock. Its PrecompiledContractsPrague adds EIP-2537 at 0x0b-0x11
+    // and the point evaluation stub at 0x0a, which no earlier set has, EIP-4844 or not.
+    [TestCase("xdc-testnet.json", 71_551_800UL, false)]
+    [TestCase("xdc-testnet.json", 84_332_999UL, false)]
+    [TestCase("xdc-testnet.json", 84_333_000UL, true)]
+    [TestCase("xdc.json", 98_802_000UL, false)]
+    public void Prague_activates_at_the_reference_block(string chainSpecFile, ulong block, bool prague)
+    {
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, EngineParameters(chainSpec), LimboLogs.Instance);
+        IReleaseSpec spec = specProvider.GetXdcSpec(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip2537Enabled, Is.EqualTo(prague));
+            Assert.That(spec.IsEip2935Enabled, Is.EqualTo(prague));
+            Assert.That(spec.IsEip7623Enabled, Is.EqualTo(prague));
+            Assert.That(spec.IsEip7702Enabled, Is.EqualTo(prague));
+            for (byte precompile = 0x0a; precompile <= 0x11; precompile++)
+            {
+                Assert.That(spec.IsPrecompile(new Address($"0x{precompile:x40}")), Is.EqualTo(prague), $"precompile 0x{precompile:x2}");
+            }
+        }
+    }
+
+    // The reference client's TestnetChainConfig.TIPProportionalRewardBlock; mainnet has not scheduled it.
+    [TestCase("xdc-testnet.json", 84_732_999UL, false)]
+    [TestCase("xdc-testnet.json", 84_733_000UL, true)]
+    [TestCase("xdc.json", 98_802_000UL, false)]
+    public void Proportional_reward_activates_at_the_reference_block(string chainSpecFile, ulong block, bool proportional)
+    {
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, EngineParameters(chainSpec), LimboLogs.Instance);
+
+        Assert.That(specProvider.GetXdcSpec(block).IsTipProportionalRewardEnabled, Is.EqualTo(proportional));
     }
 
     private static ChainSpec LoadChainSpec(string chainSpecFile) =>

@@ -49,6 +49,7 @@ public class XdcForkInfo(
         Add(engineParameters.DynamicGasLimitBlock);
         Add(engineParameters.TipUpgradeReward);
         Add(engineParameters.TipUpgradePenalty);
+        Add(engineParameters.TipProportionalReward);
 
         return [.. activations];
 

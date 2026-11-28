@@ -49,6 +49,22 @@
             "MinimumMinerBlockPerEpoch": 5,
             "LimitPenaltyEpoch": 5,
             "MinimumSigningTx": 30
+          },
+          {
+            "MaxMasternodes": 108,
+            "MaxProtectorNodes": 432,
+            "MaxObserverNodes": 99999,
+            "SwitchRound": 27400500,
+            "CertificateThreshold": 0.667,
+            "TimeoutSyncThreshold": 3,
+            "TimeoutPeriod": 10,
+            "MinePeriod": 2,
+            "MasternodeReward": 63.4196,
+            "ProtectorReward": 50.7357,
+            "ObserverReward": 25.3678,
+            "MinimumMinerBlockPerEpoch": 5,
+            "LimitPenaltyEpoch": 5,
+            "MinimumSigningTx": 30
           }
         ],
 
@@ -73,6 +89,7 @@
 
         "TIPUpgradeReward": 83600000,
         "TIPUpgradePenalty": 83600000,
+        "TIPProportionalReward": 84733000,
 
         "blackListedAddresses": [
           "0x5248bfb72fd4f234e062d3e9bb76f08643004fcd",
@@ -200,9 +217,11 @@
     "eip6780Transition": 71551800,
     "eip7516Transition": 71551800,
 
-    "eip2935Transition": 83600000,
-    "eip7623Transition": 83600000,
-    "eip7702Transition": 83600000,
+    "eip2028Transition": 84333000,
+    "eip2537Transition": 84333000,
+    "eip2935Transition": 84333000,
+    "eip7623Transition": 84333000,
+    "eip7702Transition": 84333000,
 
     "MaxCodeSizeTransition": 3,
     "MaxCodeSize": 24576
