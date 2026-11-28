@@ -89,6 +89,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
         => Set(in storageCell, in newValue);
 
+    /// <summary>The slot's current value, without recording an unwritten slot's read in the block's changes.</summary>
+    /// <remarks>A later write still reads the slot first, which records it; a state without the distinction reads as <see cref="IReadOnlyStateProvider.Get"/>.</remarks>
+    void GetUnrecorded(in StorageCell storageCell, out UInt256 value) => Get(in storageCell, out value);
+
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>

@@ -277,6 +277,8 @@ public class WitnessGeneratingWorldState(
         return base.GetOriginalBalance(address);
     }
 
+    public override void GetUnrecorded(in StorageCell storageCell, out UInt256 value) => Get(in storageCell, out value);
+
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);

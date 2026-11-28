@@ -553,6 +553,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         slot.Read = true;
     }
 
+    public override void GetUnrecorded(in StorageCell storageCell, out UInt256 value) => Get(in storageCell, out value);
+
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         base.Get(in storageCell, out value);
