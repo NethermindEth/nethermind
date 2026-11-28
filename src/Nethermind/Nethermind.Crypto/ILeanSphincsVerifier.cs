@@ -7,8 +7,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Crypto;
 
 /// <summary>Verifies leanSPHINCS signatures, the EIP-8141 <c>LEANSPHINCS_VERIFIER</c> protocol verifier.</summary>
-/// <remarks>leanSPHINCS is SLH-DSA (FIPS 205) instantiated with Keccak-256 and WOTS+C, as fixed by the
-/// <c>Cryptography/Sphincs</c> module of <c>ethereum/EthLib</c>.</remarks>
+/// <remarks>leanSPHINCS uses leanVM's parameters, the scheme the EIP-8288 aggregation guest verifies, so a raw witness
+/// and an aggregated one get the same verdict.</remarks>
 public interface ILeanSphincsVerifier
 {
     /// <summary>Whether <paramref name="signature"/> is a valid signature of <paramref name="message"/> under
