@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Nethermind.Tools.Eip8288Bench</RootNamespace>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <!-- The package's fixtures tool signs the leanSPHINCS claims; it ships for linux-x64 and linux-arm64 only. -->
+    <NethermindCryptoLeanTestAssets Condition="$([MSBuild]::IsOSPlatform('Linux')) Or $(RuntimeIdentifier.StartsWith('linux'))">true</NethermindCryptoLeanTestAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+  </ItemGroup>
+
+  <Target Name="PublishLeanTestAssets" AfterTargets="Publish" Condition="'$(NethermindCryptoLeanTestAssets)' == 'true'">
+    <ItemGroup>
+      <_LeanTestAssetOutput Include="$(OutDir)lean-vectors/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LeanTestAssetOutput)" DestinationFolder="$(PublishDir)lean-vectors" SkipUnchangedFiles="true" />
+    <Exec Condition="!$([MSBuild]::IsOSPlatform('Windows'))" Command="chmod +x &quot;$(PublishDir)lean-vectors/fixtures&quot;" />
+  </Target>
+
+</Project>
