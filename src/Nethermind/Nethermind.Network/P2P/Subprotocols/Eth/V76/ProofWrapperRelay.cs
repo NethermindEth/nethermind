@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V76;
 /// <para>A block's aggregated proof is remembered too, so a transaction a reorg returns to the pool with aggregated witnesses
 /// stays buildable and is re-aggregated into a wrapper by the next aggregation round.</para>
 /// <para>Wrappers are exchanged only while EIP-8288 is active at the current time; received messages are ignored otherwise.
-/// Wrappers whose transactions carry blobs are not supported.</para>
+/// A wrapper's blob-carrying transactions, their blob data elided, go to EIP-8070 cell sampling.</para>
 /// </remarks>
 public sealed class ProofWrapperRelay : IDisposable
 {
@@ -66,7 +66,7 @@ public sealed class ProofWrapperRelay : IDisposable
     /// STARK verification is the relay's one expensive step, so even valid wrappers are rate limited.</summary>
     private const int MaxVerificationsPerNode = 30;
     private const int MaxVerifications = 300;
-    private static readonly long VerificationWindow = System.Diagnostics.Stopwatch.Frequency * 60;
+    private static readonly TimeSpan DefaultVerificationWindow = TimeSpan.FromMinutes(1);
 
     /// <summary>Node budgets remembered, beyond the connected peers: a node keeps its budget across reconnections.</summary>
     private const int NodeBudgetCapacity = 4096;
@@ -113,6 +113,13 @@ public sealed class ProofWrapperRelay : IDisposable
     private readonly LruCache<PublicKey, NodeBudget> _budgets = new(NodeBudgetCapacity, "proof wrapper node budgets");
     private readonly NodeBudget _global = new();
     private int _requests;
+    private long _verificationWindow = (long)(DefaultVerificationWindow.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+
+    /// <summary>The window verification budgets are counted over; shortened by tests.</summary>
+    internal TimeSpan VerificationWindow
+    {
+        set => _verificationWindow = (long)(value.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+    }
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Timer? _timer;
     private int _aggregating;
@@ -133,7 +140,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
         _txPool.NewPending += OnNewPending;
         _blockTree.BlockAddedToMain += OnBlockAddedToMain;
-        _timer = new Timer(_ => StartAggregation(), null, AggregationInterval, AggregationInterval);
+        _timer = new Timer(_ => Tick(), null, AggregationInterval, AggregationInterval);
     }
 
     /// <summary>Whether wrappers are exchanged now: this node aggregates its mempool and EIP-8288 is active at the current time.</summary>
@@ -327,7 +334,7 @@ public sealed class ProofWrapperRelay : IDisposable
                     {
                         // A node whose verification budget is spent would have its wrappers fetched only to be dropped.
                         if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, MaxRequests)
-                            || !CanVerify(state.Budget)) continue;
+                            || (!CanVerify(state.Budget) && !IsProven(state, hash))) continue;
                         state.Budget.Requests++;
                         _requests++;
                         batch = [];
@@ -420,7 +427,8 @@ public sealed class ProofWrapperRelay : IDisposable
         for (int i = announcers.Count - 1; i >= 0; i--)
         {
             if (announcers[i] == fetch.Fetcher) continue;
-            if (!_peers.TryGetValue(announcers[i], out PeerState? state) || state.Budget.Failures > 0 || state.Budget.Requests >= MaxRequestsPerPeer)
+            if (!_peers.TryGetValue(announcers[i], out PeerState? state) || state.Budget.Failures > 0 || state.Budget.Requests >= MaxRequestsPerPeer
+                || !CanVerify(state.Budget))
             {
                 announcers[i] = peer;
                 return;
@@ -445,14 +453,19 @@ public sealed class ProofWrapperRelay : IDisposable
     private static bool WithinGlobalCap(NodeBudget budget, int used, int cap) =>
         used < cap - cap / 4 || (used < cap && budget.Successes > 0 && budget.Failures == 0);
 
-    /// <summary>Whether <paramref name="budget"/>'s window, and the global one, have a verification left.</summary>
+    /// <summary>Whether a proof of the dependencies <paramref name="state"/>'s peer announced for <paramref name="hash"/> is
+    /// remembered already, so its wrapper's proof is likely a cached one, which costs no verification.</summary>
+    private bool IsProven(PeerState state, in ValueHash256 hash) =>
+        state.Announced.TryGet(hash, out WrapperAnnouncement announcement) && _proofCache.TryGetProof(announcement.DepsHash, out _);
+
+    /// <summary>Whether <paramref name="budget"/>'s window has a verification left.</summary>
+    /// <remarks>The global cap applies only where a verification happens: a proof turns out cached only once fetched.</remarks>
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
     private bool CanVerify(NodeBudget budget)
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        budget.Roll(now);
-        _global.Roll(now);
-        return budget.Verifications < MaxVerificationsPerNode && WithinGlobalCap(budget, _global.Verifications, MaxVerifications);
+        budget.Roll(now, _verificationWindow);
+        return budget.Verifications < MaxVerificationsPerNode;
     }
 
     /// <summary>Takes one verification from <paramref name="budget"/>'s window, and from the global one.</summary>
@@ -460,8 +473,8 @@ public sealed class ProofWrapperRelay : IDisposable
     private bool TryTakeVerification(NodeBudget budget)
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        budget.Roll(now);
-        _global.Roll(now);
+        budget.Roll(now, _verificationWindow);
+        _global.Roll(now, _verificationWindow);
         if (budget.Verifications >= MaxVerificationsPerNode
             || !WithinGlobalCap(budget, _global.Verifications, MaxVerifications)) return false;
         budget.Verifications++;
@@ -621,7 +634,8 @@ public sealed class ProofWrapperRelay : IDisposable
     }
 
     /// <summary>Admits a verified wrapper's transactions, and holds and relays it unless a retained witness fails.</summary>
-    /// <returns>Whether the wrapper was held and admitted at least one transaction.</returns>
+    /// <returns>Whether the wrapper was held and admitted at least one transaction, which credits its sender; a wrapper whose
+    /// transactions only await cells may still be relayed.</returns>
     private bool Accept(ProofWrapper wrapper, PeerState source)
     {
         // The proof stands for its dependencies whatever the transactions' other witnesses, so the transactions it admits
@@ -656,7 +670,8 @@ public sealed class ProofWrapperRelay : IDisposable
             return false;
         }
 
-        bool relay = admitted + pending > 0 && admitted + pending >= rejected;
+        // A transaction awaiting cells lets its wrapper circulate, as EIP-8518 allows, but does not offset a rejection.
+        bool relay = admitted + pending > 0 && admitted >= rejected;
         bool held = Hold(wrapper);
         if (held && relay) AnnounceToAll(wrapper);
         Complete(wrapper.Hash.ValueHash256);
@@ -676,8 +691,8 @@ public sealed class ProofWrapperRelay : IDisposable
 
         ValueHash256 txHash = transaction.Hash!.ValueHash256;
         ValueHash256 encodingHash = ProofWrapperCodec.EncodingHash(encoding);
-        if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash
-            && _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash))
+        bool recordedAlready = _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash);
+        if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash && recordedAlready)
         {
             // Kept as the one alternate, the first, for when the recorded copy fails or expires; a later one cannot displace it.
             if (!_blobAlternates.TryGet(txHash, out _)) _blobAlternates.Set(txHash, new BlobAlternate(transaction, encodingHash, peer));
@@ -685,7 +700,11 @@ public sealed class ProofWrapperRelay : IDisposable
         }
 
         _sampledEncodings.Set(txHash, encodingHash);
-        return _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction) ?? AcceptTxResult.IncompleteBlobData;
+        AcceptTxResult? result = _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction);
+        // Pending only when this wrapper started its sampling, which passed the pool's checks; one already sampled is known.
+        if (result is not null) return result.Value;
+        return recordedAlready ? AcceptTxResult.AlreadyKnown
+            : _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash) ? AcceptTxResult.IncompleteBlobData : AcceptTxResult.Invalid;
     }
 
     private bool Hold(ProofWrapper wrapper)
@@ -865,6 +884,14 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         List<AggregatedDependency> deps = AggregatedDependencyProof.Aggregated(FrameTxDependencyProof.BlockDependencies(block));
         if (deps.Count != 0) _proofCache.Remember(deps, Eip8288Dependencies.ComputeDepsHash(deps), stark);
+    }
+
+    /// <summary>Runs every aggregation interval: fetches that waited on a spent verification window are scheduled again once
+    /// it rolls, and pending transactions are aggregated.</summary>
+    internal void Tick()
+    {
+        if (!_peers.IsEmpty) _ = Schedule();
+        StartAggregation();
     }
 
     private void StartAggregation()
@@ -1072,9 +1099,9 @@ public sealed class ProofWrapperRelay : IDisposable
         private long _windowStart;
 
         /// <summary>Starts a new verification window once the current one has passed.</summary>
-        public void Roll(long now)
+        public void Roll(long now, long window)
         {
-            if (now - _windowStart < VerificationWindow) return;
+            if (now - _windowStart < window) return;
             _windowStart = now;
             Verifications = 0;
             Successes = 0;

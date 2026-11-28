@@ -482,6 +482,109 @@ public class ProofWrapperRelayTests
         Assert.That(peer.Requests, Is.EqualTo(30));
     }
 
+    /// <summary>A node out of verification budget is still fetched from for a wrapper whose dependencies have a proof here.</summary>
+    [Test]
+    public async Task Verification_SpentBudget_StillFetchesAProvenStatement()
+    {
+        using Context context = new();
+        FakePeer peer = await SpentBudgetPeer(context);
+        ProofWrapper proven = context.Wrapper(Tx(100, TestItem.KeccakB));
+        context.ProofCache.Remember(proven.Deps, proven.DepsHash, proven.Proof);
+        context.ProofCache.VerifyDependencyProof(proven.DepsHash, Eip8288Constants.AggregatedVk, proven.Proof);
+        peer.Served = proven;
+
+        await context.Relay.OnAnnouncement(peer, [Announcement(proven)]);
+
+        Assert.That(context.Relay.TryGetHeld(proven.Hash.ValueHash256, out _), Is.True);
+    }
+
+    /// <summary>A fetch that waited on a spent verification window is scheduled again once the window rolls.</summary>
+    [Test]
+    public async Task Verification_FetchWaitingOnTheWindow_IsScheduledWhenItRolls()
+    {
+        using Context context = new();
+        FakePeer peer = await SpentBudgetPeer(context);
+        Transaction tx = Tx(100, TestItem.KeccakB);
+        ProofWrapper wrapper = context.Wrapper(tx);
+        peer.Served = wrapper;
+        await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+        Assert.That(peer.Requests, Is.EqualTo(30), "the spent window holds the fetch back");
+
+        context.Relay.VerificationWindow = TimeSpan.FromMilliseconds(1);
+        await Task.Delay(10);
+        context.Relay.Tick();
+
+        Assert.That(() => context.TxPool.ReceivedCalls().Any(c => c.GetArguments()[0] is Transaction submitted && submitted.Hash == tx.Hash),
+            Is.True.After(5000, 10));
+    }
+
+    /// <summary>With its announcers full, a wanted wrapper takes a new announcer in place of one out of verification budget.</summary>
+    [Test]
+    public async Task Announcers_WhenFull_ReplaceOneOutOfVerificationBudget()
+    {
+        using Context context = new();
+        FakePeer spent = await SpentBudgetPeer(context);
+        ProofWrapper wrapper = context.Wrapper(Tx(100, TestItem.KeccakB));
+        FakePeer first = context.Peer();
+        first.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        _ = context.Relay.OnAnnouncement(first, [Announcement(wrapper)]);
+        await context.Relay.OnAnnouncement(spent, [Announcement(wrapper)]);
+        for (int i = 0; i < 14; i++) await context.Relay.OnAnnouncement(context.Peer(), [Announcement(wrapper)]);
+        FakePeer holder = context.Peer(wrapper);
+
+        await context.Relay.OnAnnouncement(holder, [Announcement(wrapper)]);
+        context.Relay.RemovePeer(first);
+
+        Assert.That(() => context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True.After(5000, 10));
+    }
+
+    /// <summary>A transaction awaiting cells lets its wrapper circulate but does not offset a rejected one.</summary>
+    [Test]
+    public async Task Relay_PendingBlobTransaction_DoesNotOffsetARejection()
+    {
+        using Context context = new();
+        context.TxPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.FeeTooLow);
+        ProofWrapper wrapper = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0), Tx(1, TestItem.KeccakC));
+        FakePeer other = context.Peer();
+
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
+            Assert.That(other.Announced, Is.Empty);
+        }
+    }
+
+    /// <summary>A blob-carrying transaction an earlier wrapper already sent to sampling counts as known, not as pending.</summary>
+    [Test]
+    public async Task Relay_BlobTransactionAlreadySampled_IsKnown()
+    {
+        using Context context = new();
+        context.TxPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.AlreadyKnown);
+        ProofWrapper first = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0));
+        ProofWrapper second = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0), Tx(1, TestItem.KeccakC));
+        await context.Relay.OnAnnouncement(context.Peer(first), [Announcement(first)]);
+        FakePeer other = context.Peer();
+
+        await context.Relay.OnAnnouncement(context.Peer(second), [Announcement(second)]);
+
+        Assert.That(other.Announced.Select(a => a.Hash), Does.Not.Contain(second.Hash.ValueHash256));
+    }
+
+    private static async Task<FakePeer> SpentBudgetPeer(Context context)
+    {
+        FakePeer peer = context.Peer();
+        for (int i = 0; i < 30; i++)
+        {
+            ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, Keccak.Compute([(byte)i])));
+            peer.Served = wrapper;
+            await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+        }
+
+        return peer;
+    }
+
     [Test]
     public async Task Fetch_ItemLongerThanAnnounced_Disconnects()
     {
