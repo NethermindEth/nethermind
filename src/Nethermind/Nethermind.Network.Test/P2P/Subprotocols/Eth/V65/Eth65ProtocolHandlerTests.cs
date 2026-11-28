@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
@@ -176,6 +177,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             using GetPooledTransactionsMessage request = new(hashes.Select(static h => h.ValueHash256).ToArray().ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
+        }
+
+        /// <summary>EIP-8518: a transaction known only from a proof wrapper has no complete pooled form.</summary>
+        [TestCase(false, 1)]
+        [TestCase(true, 0)]
+        public async Task should_not_serve_a_transaction_with_aggregated_witnesses(bool aggregated, int served)
+        {
+            Transaction tx = FrameTxTestFrames.LeanSphincsTx(0, withSecp256k1Claim: false, (TestItem.KeccakA, TestItem.KeccakB));
+            if (aggregated) tx.ClaimWitnesses![0] = FrameTxClaimVerifier.AggregatedWitness;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    x[1] = tx;
+                    return true;
+                });
+
+            using GetPooledTransactionsMessage request = new(new[] { tx.Hash!.ValueHash256 }.ToPooledList());
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+            Assert.That(response.Transactions.Count, Is.EqualTo(served));
         }
 
         [Test]

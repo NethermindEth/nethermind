@@ -53,20 +53,20 @@ public static class DependencyProofAggregator
         return size;
     }
 
-    /// <summary>Combines raw witnesses with an already proven statement, discarding what the statement proves beyond
-    /// <paramref name="required"/>, so a changed dependency set is proven by extending an earlier one.</summary>
+    /// <summary>Combines raw witnesses with already proven statements, discarding what the statements prove beyond
+    /// <paramref name="required"/>, so a changed dependency set is proven by extending earlier ones.</summary>
     /// <param name="deps">The dependencies with raw witnesses, index for index with <paramref name="witnesses"/>.</param>
     /// <param name="witnesses">The raw witnesses, each the public key followed by the signature.</param>
     /// <param name="required">The final dependency set.</param>
-    /// <param name="parent">The proven statement to extend, if any.</param>
-    /// <exception cref="ArgumentException">A required dependency has neither a witness nor the parent's proof.</exception>
+    /// <param name="parents">The proven statements to extend, if any.</param>
+    /// <exception cref="ArgumentException">A required dependency has neither a witness nor a parent's proof.</exception>
     public static AggregationInput Combine(IReadOnlyList<AggregatedDependency> deps, IReadOnlyList<ReadOnlyMemory<byte>> witnesses,
-        IReadOnlyList<AggregatedDependency> required, RecursiveProofInput? parent = null)
+        IReadOnlyList<AggregatedDependency> required, params ReadOnlySpan<RecursiveProofInput> parents)
     {
         HashSet<AggregatedDependency> wanted = [.. required];
         HashSet<AggregatedDependency> covered = [];
         List<RecursiveProofInput> recursive = [];
-        if (parent is { } proven)
+        foreach (RecursiveProofInput proven in parents)
         {
             recursive.Add(proven);
             covered.UnionWith(proven.InnerDeps);

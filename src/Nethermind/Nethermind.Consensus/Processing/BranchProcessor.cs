@@ -275,7 +275,9 @@ public class BranchProcessor(
         {
             processingException = ex;
             // Cancelling the token is reported by whoever cancelled it: a processing timeout or shutdown.
-            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested)) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // A production build whose aggregated proof is not ready is rebuilt by its producer, so it is no fault.
+            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested) && ex is not ProofAggregation.AggregatedProofNotReadyException)
+                _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 

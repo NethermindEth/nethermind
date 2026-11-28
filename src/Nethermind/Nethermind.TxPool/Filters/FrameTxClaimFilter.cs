@@ -30,11 +30,15 @@ namespace Nethermind.TxPool.Filters;
 /// A gossiped transaction's verification yields between claims to block processing and to this node's block
 /// building, and is deferred, as <see cref="FrameTxSimulationFilter"/> defers its simulation.
 /// </remarks>
+/// <param name="acceptAggregated">Admits a leanSPHINCS claim whose witness a verified EIP-8288 proof stands for, as an
+/// EIP-8518 proof wrapper or a reorged block hands it, once EIP-8288 is active; for a node aggregating its mempool, which can
+/// build such a transaction into a block.</param>
 internal sealed class FrameTxClaimFilter(
     IChainHeadSpecProvider specProvider,
     IEthereumEcdsa ecdsa,
     ILogger logger,
-    IChainHeadInfoProvider? headInfo = null)
+    IChainHeadInfoProvider? headInfo = null,
+    bool acceptAggregated = false)
     : IIncomingTxFilter
 {
     private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
@@ -47,12 +51,12 @@ internal sealed class FrameTxClaimFilter(
             return AcceptTxResult.Accepted;
         }
 
-        if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders: false, out string? error))
+        IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
+        if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders: false, out string? error, acceptAggregated && spec.IsEip8288Enabled))
         {
             return Reject(tx, error!, ref state);
         }
 
-        IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
         // Same availability test the processor makes, so a chain reaching P256VERIFY via RIP-7212 rather
         // than EIP-7951 is not refused a claim block processing would verify.
         IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxClaimVerifier.P256VerifyPrecompileAddress)

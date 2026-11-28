@@ -33,7 +33,8 @@ namespace Nethermind.Stats
         Receipts,
         SnapRanges,
         BlockAccessLists,
-        DependencyProofs
+        DependencyProofs,
+        ProofWrappers
     }
 
     public enum RequestType

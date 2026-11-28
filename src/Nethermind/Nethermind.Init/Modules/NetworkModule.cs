@@ -32,6 +32,7 @@ using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using V74 = Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
+using V76 = Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -171,6 +172,14 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V74.GetDependencyProofsMessage, V74.GetDependencyProofsMessageSerializer>()
             .AddMessageSerializer<V74.DependencyProofsMessage, V74.DependencyProofsMessageSerializer>()
 
+            // V76
+            .AddMessageSerializer<V76.NewProofWrapperHashesMessage, V76.NewProofWrapperHashesMessageSerializer>()
+            .AddMessageSerializer<V76.GetProofWrappersMessage, V76.GetProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V76.ProofWrappersMessage, V76.ProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V76.GetProofWrapperManifestsMessage, V76.GetProofWrapperManifestsMessageSerializer>()
+            .AddMessageSerializer<V76.ProofWrapperManifestsMessage, V76.ProofWrapperManifestsMessageSerializer>()
+            .AddSingleton<Subprotocols.Eth.V76.ProofWrapperRelay>()
+
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
@@ -187,6 +196,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V74.Eth74ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V76.Eth76ProtocolHandler>()
 
             ;
     }

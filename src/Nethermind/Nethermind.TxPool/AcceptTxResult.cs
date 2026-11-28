@@ -249,7 +249,7 @@ namespace Nethermind.TxPool
 
         private int Id { get; }
         private string Code { get; }
-        private string? Message { get; }
+        public string? Message { get; }
 
         public static implicit operator bool(AcceptTxResult result) => result.Id == Accepted.Id;
         public static implicit operator AcceptTxResult(bool result) => result ? Accepted : Invalid;

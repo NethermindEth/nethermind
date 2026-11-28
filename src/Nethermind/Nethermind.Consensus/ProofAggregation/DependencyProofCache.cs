@@ -18,7 +18,8 @@ namespace Nethermind.Consensus.ProofAggregation;
 public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManager logManager) : ILeanProofVerifier
 {
     private const int MaxVerified = 256;
-    private const int MaxStatements = 16;
+    // Proof wrappers and received blocks share the statements with this builder's own, so they are bounded by bytes first.
+    private const int MaxStatements = 256;
     private const long MaxStatementBytes = 32 * 1024 * 1024;
 
     private readonly ILogger _logger = logManager.GetClassLogger<DependencyProofCache>();
@@ -32,7 +33,10 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
     private PendingStatement? _pending;
 
     /// <summary>A proven statement: the dependencies a proof covers.</summary>
-    public sealed record Statement(IReadOnlyList<AggregatedDependency> Deps, ValueHash256 DepsHash, byte[] Proof);
+    public sealed record Statement(IReadOnlyList<AggregatedDependency> Deps, ValueHash256 DepsHash, byte[] Proof)
+    {
+        internal HashSet<AggregatedDependency> DepsSet { get; } = [.. Deps];
+    }
 
     private sealed record PendingStatement(IReadOnlyList<AggregatedDependency> Deps, ValueHash256 DepsHash, AggregationInput Input);
 
@@ -126,12 +130,74 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
         return best;
     }
 
-    /// <summary>Records a proven statement for reuse.</summary>
+    /// <summary>Proven statements that together cover every dependency of <paramref name="needed"/>, chosen greedily by how
+    /// many still uncovered dependencies each adds, or <see langword="null"/> when the statements held do not cover them.</summary>
+    public List<Statement>? Covering(IReadOnlyCollection<AggregatedDependency> needed)
+    {
+        HashSet<AggregatedDependency> uncovered = [.. needed];
+        List<Statement> chosen = [];
+        lock (_cacheLock)
+        {
+            while (uncovered.Count > 0)
+            {
+                Statement? best = null;
+                int bestShared = 0;
+                foreach (Statement statement in _statements)
+                {
+                    int shared = 0;
+                    foreach (AggregatedDependency dependency in uncovered)
+                    {
+                        if (statement.DepsSet.Contains(dependency)) shared++;
+                    }
+
+                    if (shared > bestShared) (best, bestShared) = (statement, shared);
+                }
+
+                if (best is null) return null;
+                chosen.Add(best);
+                uncovered.ExceptWith(best.DepsSet);
+            }
+        }
+
+        return chosen;
+    }
+
+    /// <summary>Whether every dependency of <paramref name="needed"/> lies in some proven statement.</summary>
+    public bool Covers(IEnumerable<AggregatedDependency> needed)
+    {
+        lock (_cacheLock)
+        {
+            foreach (AggregatedDependency dependency in needed)
+            {
+                bool found = false;
+                foreach (Statement statement in _statements)
+                {
+                    if (!statement.DepsSet.Contains(dependency)) continue;
+                    found = true;
+                    break;
+                }
+
+                if (!found) return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Records a proven statement for reuse; one already held is only marked as recently used.</summary>
     public void Remember(IReadOnlyList<AggregatedDependency> deps, in ValueHash256 depsHash, byte[] proof)
     {
         Statement statement = new(deps, depsHash, proof);
         lock (_cacheLock)
         {
+            for (LinkedListNode<Statement>? node = _statements.First; node is not null; node = node.Next)
+            {
+                if (node.Value.DepsHash != depsHash) continue;
+                _statements.Remove(node);
+                _statements.AddLast(node);
+                return;
+            }
+
             while (_statements.Count > 0 && (_statements.Count >= MaxStatements || _statementBytes + proof.Length > MaxStatementBytes))
             {
                 _statementBytes -= _statements.First!.Value.Proof.Length;

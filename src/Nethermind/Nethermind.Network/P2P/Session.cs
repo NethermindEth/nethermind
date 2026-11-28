@@ -288,14 +288,15 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this:hide}");
         }
 
-        /// <remarks>Caps <c>eth/74</c> DependencyProofs; data within the cap needs no protocol lookup.</remarks>
+        /// <remarks>Caps <c>eth/74</c> DependencyProofs and the <c>eth/76</c> proof wrapper messages; data within the smallest
+        /// cap needs no protocol lookup.</remarks>
         bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
         {
-            if (uncompressedLength <= Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes || _routes is not { } routes) return false;
+            if (uncompressedLength <= Subprotocols.Eth.V76.Eth76Protocol.MaxAnnouncementBytes || _routes is not { } routes) return false;
             (string? protocol, int messageId) = routes.Resolver.ResolveProtocol(adaptivePacketType);
-            return protocol == Protocol.Eth && _protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)
-                && eth.ProtocolVersion >= EthVersions.Eth74
-                && Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength);
+            if (protocol != Protocol.Eth || !_protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)) return false;
+            return (eth.ProtocolVersion >= EthVersions.Eth74 && Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength))
+                || (eth.ProtocolVersion >= EthVersions.Eth76 && Subprotocols.Eth.V76.Eth76Protocol.ExceedsMessageLimit(messageId, uncompressedLength));
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);

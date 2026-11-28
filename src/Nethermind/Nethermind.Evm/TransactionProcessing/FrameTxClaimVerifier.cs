@@ -30,9 +30,10 @@ public static class FrameTxClaimVerifier
     public static bool IsWitnessError(string? error) =>
         error is InvalidClaim or MissingWitnesses or WitnessCountMismatch or InvalidWitnessLength;
 
-    /// <summary>The witness a block assigns a leanSPHINCS claim its EIP-8288 aggregated dependency proof has already proven.</summary>
-    /// <remarks>Recognized by reference, and only where a block assigned it: <see cref="CheckWitnesses"/> refuses it
-    /// unless asked to accept it, so a transaction a reorg returns to the pool is not admitted on it.</remarks>
+    /// <summary>The witness of a leanSPHINCS claim that a verified EIP-8288 proof has already proven: a block's aggregated
+    /// dependency proof, or an EIP-8518 proof wrapper's.</summary>
+    /// <remarks>Recognized by reference, so no decoded witness can be it. <see cref="CheckWitnesses"/> refuses it unless asked
+    /// to accept it, so the pool admits a transaction carrying it only when it aggregates its mempool.</remarks>
 #pragma warning disable CA1825 // A distinct instance, never Array.Empty, so no decoded witness can be it.
     public static readonly byte[] AggregatedWitness = new byte[0];
 #pragma warning restore CA1825
@@ -166,6 +167,18 @@ public static class FrameTxClaimVerifier
         Result<byte[]> result = p256Precompile.Run(input.AsMemory(0, InputLength), spec);
         ArrayPool<byte>.Shared.Return(input);
         return result && result.Data is { Length: > 0 };
+    }
+
+    /// <summary>Whether some witness of <paramref name="tx"/> is <see cref="AggregatedWitness"/>, so its complete pooled form is
+    /// not available.</summary>
+    public static bool HasAggregatedWitness(Transaction tx)
+    {
+        foreach (byte[] witness in tx.ClaimWitnesses ?? [])
+        {
+            if (ReferenceEquals(witness, AggregatedWitness)) return true;
+        }
+
+        return false;
     }
 
     /// <summary>Whether <paramref name="witness"/> stands for <paramref name="claim"/>'s proof in an aggregated dependency proof.</summary>

@@ -114,6 +114,30 @@ internal class FrameTxClaimFilterTests
         }
     }
 
+    /// <summary>A leanSPHINCS witness a verified EIP-8288 proof stands for is admitted only by a node aggregating its mempool,
+    /// which can build the transaction, and only once EIP-8288 is active.</summary>
+    [TestCase(true, true, true)]
+    [TestCase(false, true, false)]
+    [TestCase(true, false, false)]
+    public void Accept_AggregatedWitness_OnlyWhenAggregatingTheMempool(bool acceptAggregated, bool eip8288, bool expected)
+    {
+        Transaction tx = LeanSphincsTx(0, withSecp256k1Claim: false, (TestItem.KeccakA, TestItem.KeccakB));
+        tx.ClaimWitnesses![0] = FrameTxClaimVerifier.AggregatedWitness;
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(eip8288 ? Eip8288Prototype.Instance : Eip8141Prototype.Instance);
+        FrameTxClaimFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxClaimFilterTests>(),
+            acceptAggregated: acceptAggregated);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expected), result.ToString());
+            Assert.That(state.FrameClaimsVerified, Is.False, "the aggregated claim is left to the simulation, which accepts its stand-in");
+        }
+    }
+
     [Test]
     public void Accept_LeavesANonFrameTransactionAlone()
     {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -105,6 +106,33 @@ public class MergeP2PCapabilityResolverTests
         {
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 72)), Is.EqualTo(advertised));
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(advertised));
+        }
+    }
+
+    [TestCase(DependencyProofAggregation.Mempool, true, true, TestName = "Mempool aggregation, EIP-8288 scheduled: eth76")]
+    [TestCase(DependencyProofAggregation.Mempool, false, false, TestName = "Mempool aggregation, no EIP-8288: no eth76")]
+    [TestCase(DependencyProofAggregation.BuilderOnly, true, false, TestName = "Builder-only aggregation: no eth76")]
+    [TestCase(DependencyProofAggregation.None, true, false, TestName = "No aggregation: no eth76")]
+    public void Resolve_advertises_eth76_when_aggregating_the_mempool_once_eip8288_is_scheduled(DependencyProofAggregation mode, bool eip8288Scheduled, bool advertised)
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(true);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Substitute.For<IReleaseSpec>());
+        IReleaseSpec final = Substitute.For<IReleaseSpec>();
+        final.IsEip8141Enabled.Returns(true);
+        final.IsEip8288Enabled.Returns(eip8288Scheduled);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(final);
+        using MergeP2PCapabilityResolver resolver = new(poSSwitcher, new TxPoolConfig { BlobsSupport = BlobsSupportMode.Disabled }, specProvider,
+            chainHeadInfoProvider: null, new BlocksConfig { DependencyProofAggregation = mode });
+
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.True);
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 76)), Is.EqualTo(advertised));
         }
     }
 

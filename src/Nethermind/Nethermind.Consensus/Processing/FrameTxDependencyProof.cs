@@ -230,7 +230,9 @@ public static class FrameTxDependencyProof
             for (int c = 0; c < resolved.Length; c++)
             {
                 if (claimWitnesses is null || c >= claimWitnesses.Length) throw new InvalidBlockException(block, MissingWitness);
-                witnesses[Array.BinarySearch(dependencies, resolved[c])] ??= claimWitnesses[c];
+                // A raw witness of the same dependency replaces an aggregated one, which only an EIP-8288 proof can stand for.
+                ref byte[]? witness = ref witnesses[Array.BinarySearch(dependencies, resolved[c])];
+                if (witness is null || ReferenceEquals(witness, FrameTxClaimVerifier.AggregatedWitness)) witness = claimWitnesses[c];
             }
         }
 
@@ -264,7 +266,8 @@ public static class FrameTxDependencyProof
             HashSet<Dependency> fresh = [];
             for (int c = 0; c < resolved.Length; c++)
             {
-                if (witnesses is null || c >= witnesses.Length || (ulong)witnesses[c].Length != resolved[c].WitnessLength)
+                if (witnesses is null || c >= witnesses.Length
+                    || ((ulong)witnesses[c].Length != resolved[c].WitnessLength && !IsAggregated(resolved[c], witnesses[c])))
                 {
                     error = MissingWitness;
                     return false;
@@ -282,6 +285,11 @@ public static class FrameTxDependencyProof
             added = [.. fresh];
             return true;
         }
+
+        // An EIP-8518 aggregated transaction's leanSPHINCS witness is covered by the block's aggregated proof instead; the
+        // picker admits one only when this node holds a proof covering it.
+        private static bool IsAggregated(in Dependency dependency, byte[] witness) =>
+            ReferenceEquals(witness, FrameTxClaimVerifier.AggregatedWitness) && AggregatedDependencyProof.IsAggregated(dependency);
 
         /// <summary>Records the dependencies a transaction added once it is in the block.</summary>
         public void Include(Dependency[] added, int addedLength)

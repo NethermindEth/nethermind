@@ -16,24 +16,30 @@ using Metrics = Nethermind.Blockchain.Metrics;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Replaces the raw leanSPHINCS witnesses of a block being produced with an EIP-8288 aggregated dependency proof
-/// under <see cref="DependencyProofAggregation.BuilderOnly"/>.</summary>
+/// under <see cref="DependencyProofAggregation.BuilderOnly"/> and <see cref="DependencyProofAggregation.Mempool"/>.</summary>
 /// <remarks>
 /// Runs on <see cref="IBlockProcessor.TransactionsExecuted"/>, after the raw proof is built and before finalization, so the
 /// header hash covers the replacement. A build under a deadline never waits for the prover: it schedules the block's
 /// statement and keeps the raw witnesses, and a later build of a block with the same leanSPHINCS dependencies uses the proof.
 /// A build without a deadline proves in place. The aggregated proof is used only when smaller than the raw one: a recursive
 /// STARK outweighs a few signatures.
+/// <para>A transaction known only from an EIP-8518 proof wrapper has no raw witness to fall back on, so a block holding one
+/// must carry the aggregated proof, extending the proofs that cover it. When that proof is not ready under a deadline, the
+/// build fails with <see cref="AggregatedProofNotReadyException"/> and is rebuilt without such transactions.</para>
 /// </remarks>
 /// <param name="blockTransactionsExecutor">The scope's executor; only a production executor aggregates, and a scope that
 /// registers none, such as one supplying its own block processor, never does.</param>
+/// <param name="production">The scope's state shared with <see cref="AggregatedTxPicker"/>.</param>
 public sealed class AggregatingBlockProcessor(
     IBlockProcessor inner,
     DependencyProofCache proofCache,
     IBlocksConfig blocksConfig,
     ILogManager logManager,
-    IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : IBlockProcessor
+    IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null,
+    AggregatedTxProduction? production = null) : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<AggregatingBlockProcessor>();
+    private readonly AggregatedTxProduction _production = production ?? new();
 
     public event Action<Block>? TransactionsExecuted
     {
@@ -44,12 +50,13 @@ public sealed class AggregatingBlockProcessor(
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer,
         IReleaseSpec spec, CancellationToken token = default)
     {
-        if (!spec.IsEip8288Enabled || blocksConfig.DependencyProofAggregation != DependencyProofAggregation.BuilderOnly
+        if (!spec.IsEip8288Enabled || blocksConfig.DependencyProofAggregation is not (DependencyProofAggregation.BuilderOnly or DependencyProofAggregation.Mempool)
             || blockTransactionsExecutor is not BlockProcessor.IBlockProductionTransactionsExecutor)
         {
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
 
+        bool rebuild = _production.ExcludeAggregated;
         void Aggregate(Block block) => TryAggregate(block, spec, token);
         inner.TransactionsExecuted += Aggregate;
         try
@@ -59,6 +66,7 @@ public sealed class AggregatingBlockProcessor(
         finally
         {
             inner.TransactionsExecuted -= Aggregate;
+            if (rebuild) _production.ExcludeAggregated = false;
         }
     }
 
@@ -69,6 +77,7 @@ public sealed class AggregatingBlockProcessor(
         FrameTxDependencyProof.Dependency[] dependencies = FrameTxDependencyProof.BlockDependencies(block);
         List<AggregatedDependency> aggregated = [];
         List<ReadOnlyMemory<byte>> aggregatedWitnesses = [];
+        List<AggregatedDependency> unwitnessed = [];
         List<byte[]> raw = [];
         for (int j = 0; j < dependencies.Length; j++)
         {
@@ -78,25 +87,35 @@ public sealed class AggregatingBlockProcessor(
                 continue;
             }
 
-            aggregated.Add(Eip8288Dependencies.Map(dependencies[j].Key, dependencies[j].Msg));
+            AggregatedDependency dependency = Eip8288Dependencies.Map(dependencies[j].Key, dependencies[j].Msg);
+            // Only a transaction known from a proof wrapper leaves a leanSPHINCS witness empty: a proof covers it instead.
+            if (witnesses[j].Length == 0)
+            {
+                unwitnessed.Add(dependency);
+                continue;
+            }
+
+            aggregated.Add(dependency);
             byte[] witness = new byte[Eip8288Constants.LeanSphincsWitnessBytes];
             dependencies[j].Key.Bytes.CopyTo(witness);
             witnesses[j].CopyTo(witness.AsSpan(ValueHash256.MemorySize));
             aggregatedWitnesses.Add(witness);
         }
 
-        if (aggregated.Count == 0) return;
+        if (aggregated.Count == 0 && unwitnessed.Count == 0) return;
 
+        bool mustAggregate = unwitnessed.Count != 0;
         // The block's dependencies are sorted by key before message, the guest's by message: reorder both together.
-        List<AggregatedDependency> canonical = Eip8288Dependencies.Canonicalize(aggregated);
+        List<AggregatedDependency> canonical = Eip8288Dependencies.Canonicalize([.. aggregated, .. unwitnessed]);
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(canonical);
         if (!proofCache.TryGetProof(depsHash, out byte[] stark))
         {
-            AggregationInput input = Plan(aggregated, aggregatedWitnesses, canonical);
-            if (token.CanBeCanceled)
+            AggregationInput? input = Plan(aggregated, aggregatedWitnesses, unwitnessed, canonical);
+            if (input is null || token.CanBeCanceled)
             {
-                proofCache.Schedule(canonical, depsHash, input);
+                if (input is not null) proofCache.Schedule(canonical, depsHash, input);
                 Interlocked.Increment(ref Metrics.LeanRawFallbacks);
+                if (mustAggregate) NotReady();
                 return;
             }
 
@@ -109,6 +128,7 @@ public sealed class AggregatingBlockProcessor(
                 // The raw proof is already valid, so a prover failure costs only the aggregation, not the block.
                 if (_logger.IsWarn) _logger.Warn($"EIP-8288 aggregation of block {block.ToString(Block.Format.Short)} failed, keeping raw witnesses: {exception.Message}");
                 Interlocked.Increment(ref Metrics.LeanRawFallbacks);
+                if (mustAggregate) NotReady();
                 return;
             }
 
@@ -116,7 +136,7 @@ public sealed class AggregatingBlockProcessor(
         }
 
         byte[] proof = AggregatedDependencyProof.Encode(stark, raw);
-        if (proof.Length >= rawProof.Length)
+        if (proof.Length >= rawProof.Length && !mustAggregate)
         {
             Interlocked.Increment(ref Metrics.LeanRawFallbacks);
             return;
@@ -129,16 +149,32 @@ public sealed class AggregatingBlockProcessor(
         if (_logger.IsDebug) _logger.Debug($"Aggregated {aggregated.Count} leanSPHINCS witnesses of block {block.ToString(Block.Format.Short)}: {rawProof.Length} -> {proof.Length} bytes");
     }
 
-    /// <summary>Folds every witness, or extends the proven statement sharing the most dependencies, whichever is estimated cheaper.</summary>
-    private AggregationInput Plan(List<AggregatedDependency> deps, List<ReadOnlyMemory<byte>> witnesses, List<AggregatedDependency> required)
+    /// <summary>Folds every witness, or extends the proven statement sharing the most dependencies, whichever is estimated
+    /// cheaper, together with the proven statements covering <paramref name="unwitnessed"/>.</summary>
+    /// <returns>The input, or <see langword="null"/> when no statement held covers <paramref name="unwitnessed"/> any more.</returns>
+    private AggregationInput? Plan(List<AggregatedDependency> deps, List<ReadOnlyMemory<byte>> witnesses, List<AggregatedDependency> unwitnessed,
+        List<AggregatedDependency> required)
     {
-        AggregationInput best = DependencyProofAggregator.Combine(deps, witnesses, required);
+        List<RecursiveProofInput> covering = [];
+        if (unwitnessed.Count != 0)
+        {
+            if (proofCache.Covering(unwitnessed) is not { } statements) return null;
+            foreach (DependencyProofCache.Statement statement in statements) covering.Add(new RecursiveProofInput(statement.Deps, statement.Proof));
+        }
+
+        AggregationInput best = DependencyProofAggregator.Combine(deps, witnesses, required, [.. covering]);
         if (proofCache.BestOverlap(new HashSet<AggregatedDependency>(required)) is { } parent)
         {
-            AggregationInput extended = DependencyProofAggregator.Combine(deps, witnesses, required, new RecursiveProofInput(parent.Deps, parent.Proof));
+            AggregationInput extended = DependencyProofAggregator.Combine(deps, witnesses, required, [.. covering, new RecursiveProofInput(parent.Deps, parent.Proof)]);
             if (DependencyProofAggregator.EstimatedCost(extended) < DependencyProofAggregator.EstimatedCost(best)) best = extended;
         }
 
         return best;
+    }
+
+    private void NotReady()
+    {
+        _production.ExcludeAggregated = true;
+        throw new AggregatedProofNotReadyException();
     }
 }

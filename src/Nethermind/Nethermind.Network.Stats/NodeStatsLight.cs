@@ -36,6 +36,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
     private float _averageSnapRangesTransferSpeed = float.NaN;
     private float _averageAccessListsTransferSpeed = float.NaN;
     private float _averageDependencyProofsTransferSpeed = float.NaN;
+    private float _averageProofWrappersTransferSpeed = float.NaN;
     private float _averageLatency = float.NaN;
 
     private readonly int[] _statCountersArray = new int[_statsLength];
@@ -226,6 +227,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
             case TransferSpeedType.SnapRanges: return ref _averageSnapRangesTransferSpeed;
             case TransferSpeedType.BlockAccessLists: return ref _averageAccessListsTransferSpeed;
             case TransferSpeedType.DependencyProofs: return ref _averageDependencyProofsTransferSpeed;
+            case TransferSpeedType.ProofWrappers: return ref _averageProofWrappersTransferSpeed;
             default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, "Unsupported transfer speed type.");
         }
     }
