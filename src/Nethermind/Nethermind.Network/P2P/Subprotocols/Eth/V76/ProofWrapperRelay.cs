@@ -58,6 +58,18 @@ public sealed class ProofWrapperRelay : IDisposable
     /// penalizing a peer for proof failures, but allows deprioritizing its fetches.</summary>
     private const int MaxFailuresPerPeer = 8;
 
+    /// <summary>Requests in flight to all peers together.</summary>
+    private const int MaxRequests = 64;
+
+    /// <summary>Aggregate proofs not verified before that one node may have verified per window, and all nodes together:
+    /// STARK verification is the relay's one expensive step, so even valid wrappers are rate limited.</summary>
+    private const int MaxVerificationsPerNode = 30;
+    private const int MaxVerifications = 300;
+    private static readonly long VerificationWindow = System.Diagnostics.Stopwatch.Frequency * 60;
+
+    /// <summary>Node budgets remembered, beyond the connected peers: a node keeps its budget across reconnections.</summary>
+    private const int NodeBudgetCapacity = 4096;
+
     /// <summary>Wanted wrappers, waiting or being fetched; announcements beyond them are not recorded.</summary>
     private const int MaxFetches = 4096;
 
@@ -90,6 +102,9 @@ public sealed class ProofWrapperRelay : IDisposable
     private readonly LruKeyCache<ValueHash256> _discarded = new(PeerRecordCapacity, "discarded proof wrappers");
     private readonly EncodingCache _encodings = new(MaxEncodingBytes);
     private readonly ConcurrentDictionary<IProofWrapperPeer, PeerState> _peers = new();
+    private readonly LruCache<PublicKey, NodeBudget> _budgets = new(NodeBudgetCapacity, "proof wrapper node budgets");
+    private readonly NodeBudget _global = new();
+    private int _requests;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Timer? _timer;
     private int _aggregating;
@@ -146,7 +161,17 @@ public sealed class ProofWrapperRelay : IDisposable
     /// most recent first.</summary>
     internal void AddPeer(IProofWrapperPeer peer)
     {
-        PeerState state = new();
+        NodeBudget budget;
+        lock (_lock)
+        {
+            if (!_budgets.TryGet(peer.NodeId, out budget!))
+            {
+                budget = new NodeBudget();
+                _budgets.Set(peer.NodeId, budget);
+            }
+        }
+
+        PeerState state = new(budget);
         if (!_peers.TryAdd(peer, state) || !IsActive) return;
 
         List<ProofWrapper> offered = [];
@@ -197,15 +222,15 @@ public sealed class ProofWrapperRelay : IDisposable
                 // Equal digests identify coverage held already, despite different proof bytes.
                 if (_discarded.Get(announcement.Hash) || _heldDigests.ContainsKey((announcement.DepsHash, announcement.TxsHash))) continue;
 
-                if (state.Failures >= MaxFailuresPerPeer) continue;
+                if (state.Budget.Failures >= MaxFailuresPerPeer) continue;
                 if (_fetches.TryGetValue(announcement.Hash, out Fetch? fetch))
                 {
                     AddAnnouncer(fetch, peer);
                 }
-                else if (_fetches.Count < MaxFetches && state.Opened < MaxFetchesOpenedPerPeer)
+                else if (_fetches.Count < MaxFetches && state.Budget.Opened < MaxFetchesOpenedPerPeer)
                 {
-                    _fetches[announcement.Hash] = new Fetch(peer, state);
-                    state.Opened++;
+                    _fetches[announcement.Hash] = new Fetch(peer, state.Budget);
+                    state.Budget.Opened++;
                 }
             }
         }
@@ -273,7 +298,7 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <returns>The requests started.</returns>
     private Task Schedule()
     {
-        Dictionary<IProofWrapperPeer, List<ValueHash256>> batches = [];
+        Dictionary<IProofWrapperPeer, (NodeBudget Budget, List<ValueHash256> Hashes)> batches = [];
         lock (_lock)
         {
             foreach ((ValueHash256 hash, Fetch fetch) in _fetches)
@@ -281,16 +306,20 @@ public sealed class ProofWrapperRelay : IDisposable
                 if (fetch.Fetcher is not null) continue;
                 foreach (IProofWrapperPeer announcer in fetch.Announcers)
                 {
-                    if (!_peers.TryGetValue(announcer, out PeerState? state)) continue;
-                    if (batches.TryGetValue(announcer, out List<ValueHash256>? batch))
+                    if (!_peers.TryGetValue(announcer, out PeerState? state) || state.Budget.Failures >= MaxFailuresPerPeer) continue;
+                    List<ValueHash256> batch;
+                    if (batches.TryGetValue(announcer, out (NodeBudget Budget, List<ValueHash256> Hashes) started))
                     {
+                        batch = started.Hashes;
                         if (batch.Count == Eth76Protocol.MaxRequestedWrappers) continue;
                     }
                     else
                     {
-                        if (state.Requests >= MaxRequestsPerPeer) continue;
-                        state.Requests++;
-                        batches[announcer] = batch = [];
+                        if (state.Budget.Requests >= MaxRequestsPerPeer || _requests >= MaxRequests) continue;
+                        state.Budget.Requests++;
+                        _requests++;
+                        batch = [];
+                        batches[announcer] = (state.Budget, batch);
                     }
 
                     batch.Add(hash);
@@ -302,11 +331,11 @@ public sealed class ProofWrapperRelay : IDisposable
 
         if (batches.Count == 0) return Task.CompletedTask;
         List<Task> requests = [];
-        foreach ((IProofWrapperPeer peer, List<ValueHash256> batch) in batches) requests.Add(FetchFrom(peer, batch));
+        foreach ((IProofWrapperPeer peer, (NodeBudget budget, List<ValueHash256> batch)) in batches) requests.Add(FetchFrom(peer, budget, batch));
         return Task.WhenAll(requests);
     }
 
-    private async Task FetchFrom(IProofWrapperPeer peer, List<ValueHash256> hashes)
+    private async Task FetchFrom(IProofWrapperPeer peer, NodeBudget budget, List<ValueHash256> hashes)
     {
         List<ValueHash256> assigned = [.. hashes];
         bool failed = false;
@@ -336,22 +365,20 @@ public sealed class ProofWrapperRelay : IDisposable
         }
         finally
         {
-            Finish(peer, assigned, failed);
+            Finish(peer, budget, assigned, failed);
         }
     }
 
     /// <summary>Ends a request: each of its hashes still waiting on <paramref name="peer"/> goes to its next announcer, or
     /// is forgotten when none is left, so a later announcement fetches it again.</summary>
     /// <param name="failed">Whether the request went unanswered, which counts against the peer as an invalid proof does.</param>
-    private void Finish(IProofWrapperPeer peer, List<ValueHash256> hashes, bool failed)
+    private void Finish(IProofWrapperPeer peer, NodeBudget budget, List<ValueHash256> hashes, bool failed)
     {
         lock (_lock)
         {
-            if (_peers.TryGetValue(peer, out PeerState? state))
-            {
-                state.Requests--;
-                if (failed) CountFailure(peer, state);
-            }
+            budget.Requests--;
+            _requests--;
+            if (failed) CountFailure(peer, budget);
 
             foreach (ValueHash256 hash in hashes)
             {
@@ -381,7 +408,7 @@ public sealed class ProofWrapperRelay : IDisposable
         for (int i = announcers.Count - 1; i >= 0; i--)
         {
             if (announcers[i] == fetch.Fetcher) continue;
-            if (!_peers.TryGetValue(announcers[i], out PeerState? state) || state.Failures > 0 || state.Requests >= MaxRequestsPerPeer)
+            if (!_peers.TryGetValue(announcers[i], out PeerState? state) || state.Budget.Failures > 0 || state.Budget.Requests >= MaxRequestsPerPeer)
             {
                 announcers[i] = peer;
                 return;
@@ -396,9 +423,22 @@ public sealed class ProofWrapperRelay : IDisposable
     }
 
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
-    private void CountFailure(IProofWrapperPeer peer, PeerState state)
+    private void CountFailure(IProofWrapperPeer peer, NodeBudget budget)
     {
-        if (++state.Failures == MaxFailuresPerPeer) DropAnnouncer(peer);
+        if (++budget.Failures == MaxFailuresPerPeer) DropAnnouncer(peer);
+    }
+
+    /// <summary>Takes one verification from <paramref name="budget"/>'s window, and from the global one.</summary>
+    /// <remarks>Called under <see cref="_lock"/>.</remarks>
+    private bool TryTakeVerification(NodeBudget budget)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        budget.Roll(now);
+        _global.Roll(now);
+        if (budget.Verifications >= MaxVerificationsPerNode || _global.Verifications >= MaxVerifications) return false;
+        budget.Verifications++;
+        _global.Verifications++;
+        return true;
     }
 
     /// <summary>Removes <paramref name="peer"/> from every waiting fetch's announcers, forgetting fetches left without one;
@@ -500,6 +540,8 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         // An announcement the bounded record forgot cannot be checked, so the wrapper is left to another announcer.
         if (!state.Announced.TryGet(served.Hash, out WrapperAnnouncement announcement)) return;
+        // A served item is never longer than its canonical wrapper, which the announcement gives; checked before decoding.
+        if (served.Item.Length > announcement.Length) throw new ProtocolViolation("served wrapper exceeds its announced length");
         ProofWrapperCodec.Verdict verdict = ProofWrapperCodec.TryDecode(served.Item, compact ? ResolveEncoding : null, announcement.Length,
             out ProofWrapper? wrapper, out string? error, out ValueHash256 canonicalHash);
         switch (verdict)
@@ -525,9 +567,19 @@ public sealed class ProofWrapperRelay : IDisposable
             throw new ProtocolViolation("wrapper does not match its announcement");
         }
 
-        if (!ProofWrapperCodec.VerifyProof(wrapper, _proofCache))
+        // A proof verified before costs nothing; any other takes from the sender's verification budget, and one beyond it is
+        // left to another announcer, as no fault of the sender.
+        bool verified = _proofCache.IsVerified(wrapper.DepsHash, Eip8288Constants.AggregatedVk, wrapper.Proof);
+        if (!verified)
         {
-            lock (_lock) CountFailure(peer, state);
+            bool allowed;
+            lock (_lock) allowed = TryTakeVerification(state.Budget);
+            if (!allowed) return;
+        }
+
+        if (!verified && !ProofWrapperCodec.VerifyProof(wrapper, _proofCache))
+        {
+            lock (_lock) CountFailure(peer, state.Budget);
             Discard(served.Hash, "wrapper proof does not verify");
             return;
         }
@@ -926,23 +978,39 @@ public sealed class ProofWrapperRelay : IDisposable
         }
     }
 
+    /// <summary>The fetch and verification budget of one node, shared by its connections and kept across reconnections.</summary>
+    /// <remarks>Guarded by the relay's lock.</remarks>
+    private sealed class NodeBudget
+    {
+        public int Requests;
+        public int Failures;
+        public int Opened;
+        public int Verifications;
+        private long _windowStart;
+
+        /// <summary>Starts a new verification window once the current one has passed.</summary>
+        public void Roll(long now)
+        {
+            if (now - _windowStart < VerificationWindow) return;
+            _windowStart = now;
+            Verifications = 0;
+        }
+    }
+
     /// <summary>A wanted wrapper: the peers that announced it, and the one it is being fetched from, if any.</summary>
-    private sealed class Fetch(IProofWrapperPeer announcer, PeerState opener)
+    private sealed class Fetch(IProofWrapperPeer announcer, NodeBudget opener)
     {
         public List<IProofWrapperPeer> Announcers { get; } = [announcer];
 
         /// <summary>The peer whose announcement opened the fetch, which it counts against.</summary>
-        public PeerState Opener { get; } = opener;
+        public NodeBudget Opener { get; } = opener;
         public IProofWrapperPeer? Fetcher { get; set; }
     }
 
     /// <summary>What one connection has exchanged: bounded records, so old entries may be forgotten.</summary>
-    private sealed class PeerState
+    private sealed class PeerState(NodeBudget budget)
     {
-        /// <summary>Requests in flight; guarded by the relay's lock, as are <see cref="Failures"/> and <see cref="Opened"/>.</summary>
-        public int Requests;
-        public int Failures;
-        public int Opened;
+        public NodeBudget Budget { get; } = budget;
 
         public LruCache<ValueHash256, WrapperAnnouncement> Announced { get; } = new(PeerRecordCapacity, "announced proof wrappers");
         public LruKeyCache<ValueHash256> AnnouncedTo { get; } = new(PeerRecordCapacity, "proof wrappers announced to a peer");

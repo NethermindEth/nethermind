@@ -124,6 +124,8 @@ public class Eth76ProtocolHandler(
         return new ProofWrapperManifestsMessage(req.RequestId, relay.ServeManifests(this, req.Hashes));
     }
 
+    PublicKey IProofWrapperPeer.NodeId => Session.Node.Id;
+
     void IProofWrapperPeer.Announce(IReadOnlyList<WrapperAnnouncement> announcements) => Send(new NewProofWrapperHashesMessage(announcements));
 
     async Task<IReadOnlyList<ServedWrapper>> IProofWrapperPeer.GetProofWrappers(IReadOnlyList<ValueHash256> hashes, bool compact, CancellationToken token)

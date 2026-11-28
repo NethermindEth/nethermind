@@ -73,6 +73,13 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
         return true;
     }
 
+    /// <summary>Whether this exact proof has verified already, so verifying it again costs no native call.</summary>
+    public bool IsVerified(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    {
+        ValueHash256 key = VerifiedKey(in depsHash, aggregatedVk, proof);
+        lock (_cacheLock) return _verified.ContainsKey(key);
+    }
+
     /// <inheritdoc/>
     /// <remarks>Runs one native proof at a time and verifies it before returning it.</remarks>
     public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)

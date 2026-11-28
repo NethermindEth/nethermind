@@ -12,6 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V76;
 /// <summary>An <c>eth/76</c> connection as <see cref="ProofWrapperRelay"/> uses it.</summary>
 internal interface IProofWrapperPeer
 {
+    /// <summary>The remote node, whose fetch and verification budget its connections share.</summary>
+    PublicKey NodeId { get; }
+
     void Announce(IReadOnlyList<WrapperAnnouncement> announcements);
 
     Task<IReadOnlyList<ServedWrapper>> GetProofWrappers(IReadOnlyList<ValueHash256> hashes, bool compact, CancellationToken token);

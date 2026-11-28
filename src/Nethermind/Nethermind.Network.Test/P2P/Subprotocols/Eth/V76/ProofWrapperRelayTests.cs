@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -13,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76;
@@ -370,6 +372,85 @@ public class ProofWrapperRelayTests
         Assert.That(peer.Disconnected, Is.False);
     }
 
+    /// <summary>A node's failures outlive its connection, so reconnecting does not restore its fetches.</summary>
+    [Test]
+    public async Task Budget_SurvivesReconnection()
+    {
+        using Context context = new();
+        PublicKey node = TestItem.PublicKeyB;
+        FakePeer first = context.Peer(nodeId: node);
+        first.TimesOut = true;
+        for (int i = 0; i < 8; i++) await context.Relay.OnAnnouncement(first, [Announcement(context.Wrapper(Tx((ulong)i, TestItem.KeccakA)))]);
+        context.Relay.RemovePeer(first);
+        ProofWrapper wrapper = context.Wrapper(Tx(20, TestItem.KeccakA));
+        FakePeer again = context.Peer(wrapper, node);
+
+        await context.Relay.OnAnnouncement(again, [Announcement(wrapper)]);
+
+        Assert.That(again.Requests, Is.Zero);
+    }
+
+    [Test]
+    public void Requests_AreCappedAcrossAllPeers()
+    {
+        using Context context = new();
+        Task gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        List<FakePeer> peers = [];
+        for (int p = 0; p < 17; p++)
+        {
+            FakePeer peer = context.Peer();
+            peer.Gate = gate;
+            peers.Add(peer);
+            for (int i = 0; i < 4; i++) _ = context.Relay.OnAnnouncement(peer, [Announcement(context.Wrapper(Tx((ulong)(p * 10 + i), TestItem.KeccakA)))]);
+        }
+
+        Assert.That(peers.Sum(peer => peer.Requests), Is.EqualTo(64));
+    }
+
+    /// <summary>Proofs not verified before take from the sender's verification budget; a proof verified before is free.</summary>
+    [Test]
+    public async Task Verification_IsRateLimitedPerNode_ExceptForKnownProofs()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        ProofWrapper known = context.Wrapper(Tx(100, TestItem.KeccakB));
+        context.ProofCache.VerifyDependencyProof(known.DepsHash, Eip8288Constants.AggregatedVk, known.Proof);
+        int before = context.Verifier.Verifications;
+        for (int i = 0; i < 31; i++)
+        {
+            ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, Keccak.Compute([(byte)i])));
+            peer.Served = wrapper;
+            await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+        }
+
+        peer.Served = known;
+        await context.Relay.OnAnnouncement(peer, [Announcement(known)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Verifier.Verifications - before, Is.EqualTo(30));
+            Assert.That(context.Relay.HeldCount, Is.EqualTo(31), "thirty within the budget and the known one");
+            Assert.That(peer.Disconnected, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Fetch_ItemLongerThanAnnounced_Disconnects()
+    {
+        using Context context = new();
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+        FakePeer peer = context.Peer(wrapper);
+        peer.Substitute = [.. wrapper.Encoded, 0x80];
+
+        await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Disconnected, Is.True);
+            Assert.That(context.Verifier.Verifications, Is.Zero);
+        }
+    }
+
     [Test]
     public async Task Announcement_FromARemovedPeer_RecordsNothing()
     {
@@ -600,9 +681,9 @@ public class ProofWrapperRelayTests
         public DependencyProofCache ProofCache { get; }
         public ProofWrapperRelay Relay { get; }
 
-        public FakePeer Peer(ProofWrapper? served = null)
+        public FakePeer Peer(ProofWrapper? served = null, PublicKey? nodeId = null)
         {
-            FakePeer peer = new(served);
+            FakePeer peer = new(served) { NodeId = nodeId ?? new PrivateKeyGenerator().Generate().PublicKey };
             Relay.AddPeer(peer);
             return peer;
         }
@@ -659,6 +740,8 @@ public class ProofWrapperRelayTests
 
         public ProofWrapper? Served { get; set; } = served;
 
+        public PublicKey NodeId { get; init; } = TestItem.PublicKeyA;
+
         /// <summary>Serves every requested wrapper of <see cref="Held"/>.</summary>
         public bool ServeAll { get; set; }
 
@@ -695,7 +778,7 @@ public class ProofWrapperRelayTests
                 return all;
             }
 
-            if (Served is not { } wrapper || !System.Linq.Enumerable.Contains(hashes, wrapper.Hash.ValueHash256)) return [];
+            if (Served is not { } wrapper || !Enumerable.Contains(hashes, wrapper.Hash.ValueHash256)) return [];
             byte[] item = Substitute ?? (compact && CompactReferencesEverything
                 ? ProofWrapperCodec.Encode(wrapper.EncodedTransactions, wrapper.Deps, wrapper.Proof, static _ => true)
                 : wrapper.Encoded);
@@ -707,7 +790,7 @@ public class ProofWrapperRelayTests
         public async Task<IReadOnlyList<ServedManifest>> GetProofWrapperManifests(IReadOnlyList<ValueHash256> hashes, CancellationToken token)
         {
             await Gate;
-            return Manifests.FindAll(m => System.Linq.Enumerable.Contains(hashes, m.Hash));
+            return Manifests.FindAll(m => Enumerable.Contains(hashes, m.Hash));
         }
 
         public void Disconnect(string reason) => Disconnected = true;
