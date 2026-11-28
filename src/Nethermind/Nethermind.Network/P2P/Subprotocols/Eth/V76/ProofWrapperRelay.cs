@@ -647,7 +647,8 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <summary>Submits a covered transaction: to the pool, or, carrying blobs whose data the wrapper elides, to EIP-8070 cell
     /// sampling, which submits it once its blobs are available.</summary>
     /// <remarks>The wrapper's sender is not recorded as a cell provider: only cell announcements are. A copy whose blob
-    /// metadata differs from the one awaiting cells replaces it, so the first copy recorded cannot shadow a valid one.</remarks>
+    /// metadata differs from the one awaiting cells is ignored while that one is still sampled, so no peer can restart
+    /// sampling; it takes over once the recorded copy failed validation or expired, as the registry then holds none.</remarks>
     /// <returns><see cref="AcceptTxResult.IncompleteBlobData"/> while the transaction awaits its cells.</returns>
     private AcceptTxResult Admit(Transaction transaction, byte[] encoding, PeerState source)
     {
@@ -656,7 +657,12 @@ public sealed class ProofWrapperRelay : IDisposable
 
         ValueHash256 txHash = transaction.Hash!.ValueHash256;
         ValueHash256 encodingHash = ProofWrapperCodec.EncodingHash(encoding);
-        if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash) _sparseBlobPoolPeerRegistry.Clear(txHash);
+        if (_sampledEncodings.TryGet(txHash, out ValueHash256 recorded) && recorded != encodingHash
+            && _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash))
+        {
+            return AcceptTxResult.IncompleteBlobData;
+        }
+
         _sampledEncodings.Set(txHash, encodingHash);
         return _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction) ?? AcceptTxResult.IncompleteBlobData;
     }

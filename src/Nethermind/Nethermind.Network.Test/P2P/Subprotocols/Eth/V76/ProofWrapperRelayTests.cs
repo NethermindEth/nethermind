@@ -534,21 +534,26 @@ public class ProofWrapperRelayTests
         }
     }
 
-    /// <summary>A copy with other blob metadata replaces the one awaiting cells, so the first recorded cannot shadow it; the
-    /// same copy again leaves sampling alone.</summary>
-    [TestCase(1, 0)]
-    [TestCase(2, 1)]
-    public async Task Fetch_BlobTransactionCopy_ReplacesOnlyOnOtherMetadata(byte secondFill, int clears)
+    /// <summary>A copy with other blob metadata cannot touch the copy still awaiting cells; it is recorded only once the
+    /// registry no longer holds that one, after its validation failed or it expired.</summary>
+    [TestCase(true, 1)]
+    [TestCase(false, 2)]
+    public async Task Fetch_BlobTransactionCopy_WithOtherMetadata_WaitsForTheRecordedOneToFail(bool stillRecorded, int records)
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(stillRecorded);
         using Context context = new(registry: registry);
         ProofWrapper first = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 1));
-        ProofWrapper second = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: secondFill), Tx(1, TestItem.KeccakC));
+        ProofWrapper second = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 2), Tx(1, TestItem.KeccakC));
         await context.Relay.OnAnnouncement(context.Peer(first), [Announcement(first)]);
 
         await context.Relay.OnAnnouncement(context.Peer(second), [Announcement(second)]);
 
-        registry.Received(clears).Clear(Arg.Any<ValueHash256>());
+        using (Assert.EnterMultipleScope())
+        {
+            registry.DidNotReceiveWithAnyArgs().Clear(default);
+            registry.ReceivedWithAnyArgs(records).RecordTransaction(default!, default!);
+        }
     }
 
     /// <summary>Another wrapper covering the same blob-carrying transaction adds no provider and does not restart sampling.</summary>
