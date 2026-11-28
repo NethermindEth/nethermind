@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -89,6 +90,24 @@ public class ChainHeadInfoProviderTests
             Assert.That(provider.BlockGasLimit, Is.Null);
             Assert.That(provider.CurrentBaseFee, Is.EqualTo(UInt256.Zero));
         }
+    }
+
+    [Test]
+    public void Production_parent_state_stays_bound_when_the_head_changes([Values] bool buildsOnHead)
+    {
+        Block parent = Build.A.Block.WithNumber(15).TestObject;
+        Block other = Build.A.Block.WithNumber(16).WithParent(parent).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent.Header).TestObject;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.Head.Returns(buildsOnHead ? parent : other);
+        tree.FindHeader(parent.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, parent.Number).Returns(parent.Header);
+        IChainHeadSpecProvider spec = Substitute.For<IChainHeadSpecProvider>();
+        spec.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
+        ChainHeadInfoProvider provider = new(spec, tree, Substitute.For<IStateReader>(), new());
+
+        IReadOnlyStateProvider? state = provider.GetProductionParentState(target);
+        tree.Head.Returns(other);
+        Assert.That((state as SpecificBlockReadOnlyStateProvider)?.BaseBlock, Is.SameAs(parent.Header));
     }
 
     private static ChainHeadInfoProvider CreateProvider(IBlockTree blockTree)

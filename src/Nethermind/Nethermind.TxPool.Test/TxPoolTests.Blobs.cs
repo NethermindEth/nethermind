@@ -3959,6 +3959,38 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task production_view_excludes_a_blob_removed_while_the_producer_is_waiting()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage },
+                GetCancunSpecProvider(), txStorage: new BlobTxStorage());
+            Transaction stale = CreateBlobTx(TestItem.PrivateKeyA);
+            Transaction valid = CreateBlobTx(TestItem.PrivateKeyB);
+            foreach (Transaction tx in new[] { stale, valid })
+            {
+                EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            PendingTransactionsView Read() => _txPool.GetPendingForProduction(_blockTree.Head.Header, false, UInt256.Zero);
+            Assert.That(Read().BlobTransactions, Has.Count.EqualTo(2));
+
+            Task<PendingTransactionsView> read = new(Read);
+            Thread producer = new(() => read.RunSynchronously(TaskScheduler.Default)) { IsBackground = true };
+            BlobPool().UpdatePool(Substitute.For<IAccountStateProvider>(),
+                (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction last, TxDistinctSortedPool.UpdateTransactionDelegate update) =>
+                {
+                    if (bucket.Min.Hash != stale.Hash) return;
+                    producer.Start();
+                    Assert.That(SpinWait.SpinUntil(() => read.IsCompleted || (producer.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                        TimeSpan.FromSeconds(10)), Is.True);
+                    update(bucket, bucket.Min, changedGasBottleneck: null, last);
+                });
+
+            PendingTransactionsView view = await read.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(view.BlobTransactions.Keys, Is.EquivalentTo(new AddressAsKey[] { valid.SenderAddress }));
+        }
+
+        [Test]
         public void should_filter_unready_blob_senders_from_production_view()
         {
             _txPool = CreatePool(

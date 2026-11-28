@@ -325,6 +325,76 @@ public class TxDistinctSortedPoolTests
         }
     }
 
+    [Test]
+    public void Production_snapshot_reuses_cached_membership_before_and_during_a_bulk_update()
+    {
+        TxDistinctSortedPool pool = Pool(blobs: false, AccountTx(0, 100, TestItem.KeccakA), OtherSenderTx("other", 100));
+        IDictionary<AddressAsKey, Transaction[]> cached = pool.GetProductionSnapshotAllowingPreUpdateMembership(out _);
+        pool.UpdateGroup(Sender, default,
+            (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+                Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(out _), Is.SameAs(cached)));
+
+        pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
+            (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(out bool preUpdate), Is.SameAs(cached));
+                    Assert.That(preUpdate, Is.True);
+                }
+                updateTx(bucket, bucket.Min!, changedGasBottleneck: null, lastElement);
+            });
+
+        Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(out _), Is.Empty);
+    }
+
+    [Test]
+    public void Bulk_update_keeps_an_invalidated_production_snapshot_only_when_opened_before_the_change([Values] bool openedBeforeChange)
+    {
+        Transaction first = AccountTx(0, 100, TestItem.KeccakA);
+        TxDistinctSortedPool pool = Pool(blobs: false, first);
+        IDictionary<AddressAsKey, Transaction[]> cached = pool.GetProductionSnapshotAllowingPreUpdateMembership(out _);
+        if (openedBeforeChange) pool.BeginBulkUpdate();
+        Transaction next = AccountTx(1, 100, TestItem.KeccakB);
+        pool.TryInsert(next.Hash!, next);
+
+        pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
+            (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+            {
+                if (openedBeforeChange)
+                {
+                    Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(out _), Is.SameAs(cached));
+                }
+                else
+                {
+                    // A cache miss takes the non-reentrant lock already held by this update.
+                    Assert.That(() => pool.GetProductionSnapshotAllowingPreUpdateMembership(out _), Throws.InvalidOperationException);
+                }
+            });
+
+        Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(out _)[Sender], Is.EqualTo(new[] { first, next }));
+    }
+
+    [Test]
+    public void Head_refreshes_membership_after_churn_only_if_production_requested_it([Values] bool requested)
+    {
+        Transaction first = AccountTx(0, 100, TestItem.KeccakA);
+        Transaction next = AccountTx(1, 100, TestItem.KeccakB);
+        TxDistinctSortedPool pool = Pool(blobs: false, first);
+        if (requested) pool.GetProductionSnapshotAllowingPreUpdateMembership(out _);
+        pool.TryInsert(next.Hash!, next);
+        pool.BeginHeadUpdate();
+        pool.TryRemove(first.Hash!);
+        pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
+            (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+            {
+                if (requested)
+                    Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(out _)[Sender], Is.EqualTo(new[] { first, next }));
+                else
+                    Assert.That(() => pool.GetProductionSnapshotAllowingPreUpdateMembership(out _), Throws.InvalidOperationException);
+            });
+    }
+
     private static Transaction[] TreeOrder(TxDistinctSortedPool pool)
     {
         Transaction[] order = [];

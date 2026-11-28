@@ -12,8 +12,7 @@ namespace Nethermind.TxPool
 {
     /// <remarks>
     /// Extension contract: derive from <c>ChainHeadInfoProvider</c>, which is public and non-sealed, and added
-    /// head facts arrive tracked. Implementing this interface directly opts into a compile error per addition —
-    /// no member here carries a default body, because a stale or zero head fact is a silent wrong answer.
+    /// head facts arrive tracked. Implementations must supply every required head fact.
     /// </remarks>
     public interface IChainHeadInfoProvider
     {
@@ -27,6 +26,11 @@ namespace Nethermind.TxPool
         /// can belong to a different head. A check that must hold the header and the state it reads to one head
         /// takes both from here.</remarks>
         bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state);
+
+        /// <summary>Gets state bound to the parent of the block being produced, when available.</summary>
+        IReadOnlyStateProvider? GetProductionParentState(BlockHeader target) =>
+            TryGetHeadState(out BlockHeader? head, out IReadOnlyStateProvider? state)
+                && head.Hash is not null && head.Hash == target.ParentHash ? state : null;
 
         /// <summary>
         /// Number of the last block moved onto the canonical chain.
