@@ -8,7 +8,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Consensus
 {
-    public class NullSigner : IHeaderSigner, ISignerStore
+    public class NullSigner : ISigner, ISignerStore
     {
         public static NullSigner Instance { get; } = new();
 
@@ -22,17 +22,9 @@ namespace Nethermind.Consensus
             return false;
         }
 
-        public bool TrySign(BlockHeader header, [NotNullWhen(true)] out Signature signature)
-        {
-            signature = null!;
-            return false;
-        }
-
         public bool CanSign { get; } = false;
 
         public PrivateKey? Key { get; } = null;
-
-        public bool CanSignHeader => false;
 
         public void SetSigner(PrivateKey key) { }
 

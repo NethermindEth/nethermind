@@ -42,8 +42,6 @@ internal static class SyncSettings
         ("op-sepolia", "https://sepolia.optimism.io", 8192, 10000, true),
         ("worldchain-mainnet", "https://worldchain-mainnet.g.alchemy.com/public", 8192, 10000, true),
         ("worldchain-sepolia", "https://worldchain-sepolia.g.alchemy.com/public", 8192, 10000, true),
-        ("linea-mainnet", "https://rpc.linea.build", 8192, 10000, false),
-        ("linea-sepolia", "https://rpc.sepolia.linea.build", 8192, 10000, false),
         ("xdc", "https://erpc.xinfin.network", 8192, 10000, false),
         ("xdc-testnet", "https://rpc.apothem.network", 8192, 10000, false)
     ];

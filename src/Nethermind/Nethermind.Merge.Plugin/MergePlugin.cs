@@ -52,7 +52,7 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     public string Author => "Nethermind";
 
     protected virtual bool MergeEnabled => mergeConfig.Enabled &&
-                                           chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+                                           chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Ethash;
 
     public bool Enabled => MergeEnabled;
 

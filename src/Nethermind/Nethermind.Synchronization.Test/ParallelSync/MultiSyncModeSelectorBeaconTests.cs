@@ -308,9 +308,9 @@ public class MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, MultiSy
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
 
     [Test]
-    public void When_recently_started_full_sync_on_empty_clique_chain() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+    public void When_recently_started_full_sync_on_empty_chain_without_block_rewards() => Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain()
+            .IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyChainWithoutBlockRewards()
             .AndGoodPeersAreKnown()
             .ThenInAnyFastSyncConfiguration()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));

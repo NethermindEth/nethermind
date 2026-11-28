@@ -56,7 +56,6 @@ jobs:
             list: >-
               Nethermind.Abi.Test
               Nethermind.AuRa.Test
-              Nethermind.Clique.Test
               Nethermind.Db.Test
               Nethermind.Init.Test
               Nethermind.Network.Dns.Test

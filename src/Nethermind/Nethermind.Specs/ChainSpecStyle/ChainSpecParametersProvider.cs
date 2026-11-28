@@ -45,7 +45,20 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
             }
         }
 
-        return result ?? throw new InvalidOperationException("No seal engine in chain spec");
+        return result ?? throw new InvalidOperationException(NoSealEngineMessage());
+    }
+
+    // Names the engine sections no loaded plugin claims (e.g. "clique"), which would otherwise surface only as a
+    // missing seal engine.
+    private string NoSealEngineMessage()
+    {
+        string[] unrecognized = _chainSpecParameters.Keys
+            .Where(name => !_instances.Values.Any(p => string.Equals(p.EngineName, name, StringComparison.InvariantCultureIgnoreCase)))
+            .ToArray();
+
+        return unrecognized.Length == 0
+            ? "No seal engine in chain spec"
+            : $"No seal engine in chain spec; unrecognized engine(s): {string.Join(", ", unrecognized)}";
     }
 
     private void InitializeInstances()

@@ -10,7 +10,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.ExternalSigner.Plugin;
 
-public class ClefSigner : IHeaderSigner, ISignerStore
+public class ClefSigner : ISigner, ISignerStore
 {
     private readonly ClefWallet _clefWallet;
 
@@ -27,8 +27,6 @@ public class ClefSigner : IHeaderSigner, ISignerStore
 
     public bool CanSign => true;
 
-    public bool CanSignHeader => true;
-
     public PrivateKey Key => throw new InvalidOperationException("Cannot get private keys from remote signer.");
 
     /// <summary>
@@ -37,13 +35,6 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// </summary>
     public bool TrySign(in ValueHash256 message, [NotNullWhen(true)] out Signature signature)
         => _clefWallet.TrySign(in message, Address, out signature);
-
-    /// <summary>
-    /// Used to sign a clique header. The full Rlp of the header has to be sent,
-    /// since clef does not sign data directly, but will parse and decide itself what to sign.
-    /// </summary>
-    public bool TrySign(BlockHeader header, [NotNullWhen(true)] out Signature signature)
-        => _clefWallet.TrySign(header, Address, out signature);
 
     public bool TrySign(Transaction tx) =>
         throw new NotImplementedException("Remote signing of transactions is not supported.");

@@ -24,7 +24,6 @@
     "Port": 8545,
     "EnabledModules": [
       "Admin",
-      "Clique",
       "Consensus",
       "Db",
       "Debug",

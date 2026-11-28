@@ -112,7 +112,6 @@ jobs:
           - name: Nethermind tests 5
             list: >-
               Nethermind.Blockchain.Test
-              Nethermind.Clique.Test
               Nethermind.Consensus.Test
               Nethermind.Flashbots.Test
               Nethermind.Merge.AuRa.Test
