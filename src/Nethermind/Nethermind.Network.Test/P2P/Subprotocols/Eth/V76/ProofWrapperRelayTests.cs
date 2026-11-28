@@ -622,22 +622,51 @@ public class ProofWrapperRelayTests
             Is.True.After(5000, 10));
     }
 
-    /// <summary>A blob-carrying copy the sparse blobpool declines is neither pending nor rejected: the wrapper is kept.</summary>
+    /// <summary>A blob-carrying copy the sparse blobpool declines is neither pending nor rejected: the wrapper is not held, but
+    /// left to the next announcer rather than discarded.</summary>
     [Test]
-    public async Task Fetch_BlobCopyTheRegistryDeclines_KeepsTheWrapper()
+    public async Task Fetch_BlobCopyTheRegistryDeclines_LeavesTheWrapperToTheNextAnnouncer()
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         using Context context = new(registry: registry);
         ProofWrapper wrapper = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0));
-        FakePeer other = context.Peer();
+        FakePeer first = context.Peer(wrapper);
+        FakePeer second = context.Peer(wrapper);
 
-        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+        await context.Relay.OnAnnouncement(first, [Announcement(wrapper)]);
+        await context.Relay.OnAnnouncement(second, [Announcement(wrapper)]);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
-            Assert.That(other.Announced, Is.Empty);
+            Assert.That(context.Relay.HeldCount, Is.Zero);
+            Assert.That(second.Requests, Is.EqualTo(1), "not discarded, so fetched again");
+            Assert.That(first.Disconnected || second.Disconnected, Is.False);
         }
+    }
+
+    /// <summary>An honest burst that outruns the verification budget is handed on, never charged as failures.</summary>
+    [Test]
+    public async Task Verification_BurstBeyondTheBudget_IsNotChargedAsFailures()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        peer.ServeAll = true;
+        List<WrapperAnnouncement> burst = [];
+        for (int i = 0; i < 38; i++)
+        {
+            ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, Keccak.Compute([(byte)i])));
+            peer.Held.Add(wrapper);
+            burst.Add(Announcement(wrapper));
+        }
+
+        await context.Relay.OnAnnouncement(peer, burst);
+        context.Relay.VerificationWindow = TimeSpan.FromMilliseconds(1);
+        await Task.Delay(10);
+        ProofWrapper next = context.Wrapper(Tx(100, TestItem.KeccakB));
+        peer.Held.Add(next);
+        await context.Relay.OnAnnouncement(peer, [Announcement(next)]);
+
+        Assert.That(context.Relay.TryGetHeld(next.Hash.ValueHash256, out _), Is.True, "the peer was not dropped");
     }
 
     private static async Task<FakePeer> SpentBudgetPeer(Context context)
@@ -727,7 +756,9 @@ public class ProofWrapperRelayTests
     public async Task Fetch_BlobTransactionCopy_WithOtherMetadata_WaitsForTheRecordedOneToFail(bool stillRecorded, int records)
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
-        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(stillRecorded);
+        bool recorded = false;
+        registry.When(r => r.RecordTransaction(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Transaction>())).Do(_ => recorded = true);
+        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(_ => recorded && stillRecorded);
         using Context context = new(registry: registry);
         ProofWrapper first = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 1));
         ProofWrapper second = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 2), Tx(1, TestItem.KeccakC));
@@ -747,7 +778,9 @@ public class ProofWrapperRelayTests
     public async Task Fetch_BlobTransactionAlternate_IsRecordedOnceTheRecordedCopyFails()
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
-        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(true);
+        bool recorded = false;
+        registry.When(r => r.RecordTransaction(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Transaction>())).Do(_ => recorded = true);
+        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(_ => recorded);
         using Context context = new(registry: registry);
         Transaction alternate = FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 2);
         ProofWrapper first = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 1));
@@ -756,7 +789,7 @@ public class ProofWrapperRelayTests
         await context.Relay.OnAnnouncement(context.Peer(second), [Announcement(second)]);
         registry.ReceivedWithAnyArgs(1).RecordTransaction(default!, default!);
 
-        registry.HasRecordedTransaction(Arg.Any<ValueHash256>()).Returns(false);
+        recorded = false;
         context.Relay.Prune();
 
         using (Assert.EnterMultipleScope())
