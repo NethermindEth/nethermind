@@ -277,31 +277,48 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
             return;
         }
 
-        SocketRlpxConnection connection = CreateConnection(socket, HandshakeRole.Recipient);
-        IPAddress remoteIp = remote.Address.NormalizeMappedIPv4();
-        Session session = new(LocalPort, connection, _disconnectsAnalyzer, _logManager)
+        SocketRlpxConnection? connection = null;
+        try
         {
-            RemoteHost = remoteIp.ToString(),
-            RemotePort = remote.Port
-        };
+            connection = CreateConnection(socket, HandshakeRole.Recipient);
+            IPAddress remoteIp = remote.Address.NormalizeMappedIPv4();
+            Session session = new(LocalPort, connection, _disconnectsAnalyzer, _logManager)
+            {
+                RemoteHost = remoteIp.ToString(),
+                RemotePort = remote.Port
+            };
 
-        if (!TryTrack(connection))
-        {
-            return;
+            if (!TryTrack(connection))
+            {
+                return;
+            }
+
+            Metrics.IncomingConnections++;
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
+
+            if (!_dialPolicy.AcceptsInbound(remoteIp))
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteIp:hide}");
+                Untrack(connection);
+                _ = connection.DisconnectAsync();
+                return;
+            }
+
+            StartSession(socket, connection, session);
         }
-
-        Metrics.IncomingConnections++;
-        if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
-
-        if (!_dialPolicy.AcceptsInbound(remoteIp))
+        catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteIp:hide}");
+            // A failure closes only this connection, so the accept loop keeps running, as on DotNetty.
+            if (_logger.IsError) _logger.Error("Failed to set up an inbound RLPx connection", e);
+            if (connection is null)
+            {
+                socket.Dispose();
+                return;
+            }
+
             Untrack(connection);
             _ = connection.DisconnectAsync();
-            return;
         }
-
-        StartSession(socket, connection, session);
     }
 
     public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)

@@ -15,6 +15,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Sockets;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.RlpxHostIntegrationTests;
 
@@ -185,14 +186,19 @@ public class SocketRlpxHostTests
     }
 
     [Test]
-    public async Task Closes_only_the_connection_whose_session_subscriber_throws()
+    public async Task Closes_only_the_inbound_connection_whose_setup_fails([Values] bool inSessionSubscriber)
     {
-        await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets);
+        // The inbound filter asks the privileged IP provider first, so it fails before the session is activated.
+        IPrivilegedIpProvider privilegedIps = Substitute.For<IPrivilegedIpProvider>();
+        int filterCalls = 0;
+        privilegedIps.IsPrivileged(Arg.Any<IPAddress>()).Returns(_ =>
+            !inSessionSubscriber && Interlocked.Increment(ref filterCalls) == 1 ? throw new InvalidOperationException("Filter failure") : false);
+        await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, privilegedIpProvider: privilegedIps, transport: RlpxTransport.Sockets);
         SocketRlpxHost host = (SocketRlpxHost)container.Resolve<IRlpxHost>();
         int sessions = 0;
         host.SessionCreated += (_, _) =>
         {
-            if (Interlocked.Increment(ref sessions) == 1) throw new InvalidOperationException("Subscriber failure");
+            if (Interlocked.Increment(ref sessions) == 1 && inSessionSubscriber) throw new InvalidOperationException("Subscriber failure");
         };
         try
         {
@@ -207,7 +213,7 @@ public class SocketRlpxHostTests
             await second.ConnectAsync(listener);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(() => Volatile.Read(ref sessions), Is.EqualTo(2).After(5000, 10), "the listener still accepts");
+                Assert.That(() => Volatile.Read(ref sessions), Is.EqualTo(inSessionSubscriber ? 2 : 1).After(5000, 10), "the listener still accepts");
                 Assert.That(host.ConnectionCount, Is.EqualTo(1), "the failed connection is no longer tracked");
             }
         }
