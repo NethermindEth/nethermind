@@ -285,18 +285,66 @@ public class ProofWrapperRelayTests
         Assert.That(peer.Requests, Is.EqualTo(8));
     }
 
+    /// <summary>One peer opens at most its share of fetches, so the global bound leaves room for the others.</summary>
     [Test]
-    public void Announcements_BeyondTheFetchBound_AreNotRecorded()
+    public void Announcements_BeyondAPeersShare_AreNotRecorded_AndOthersStillAre()
+    {
+        using Context context = new();
+        FakePeer flooder = context.Peer();
+        flooder.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        FakePeer other = context.Peer();
+        other.Gate = flooder.Gate;
+
+        _ = context.Relay.OnAnnouncement(flooder, Announcements(0, 600));
+        int flooded = context.Relay.FetchCount;
+        _ = context.Relay.OnAnnouncement(other, Announcements(1000, 10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flooded, Is.EqualTo(512));
+            Assert.That(context.Relay.FetchCount, Is.EqualTo(522));
+        }
+    }
+
+    /// <summary>With its announcers full, a wanted wrapper takes a new announcer in place of one that failed.</summary>
+    [Test]
+    public async Task Announcers_WhenFull_ReplaceAFailedOne()
+    {
+        using Context context = new();
+        FakePeer first = context.Peer();
+        first.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+        _ = context.Relay.OnAnnouncement(first, [Announcement(wrapper)]);
+        FakePeer failing = context.Peer();
+        failing.TimesOut = true;
+        await context.Relay.OnAnnouncement(failing, [Announcement(context.Wrapper(Tx(1, TestItem.KeccakA)))]);
+        await context.Relay.OnAnnouncement(failing, [Announcement(wrapper)]);
+        for (int i = 0; i < 14; i++) await context.Relay.OnAnnouncement(context.Peer(), [Announcement(wrapper)]);
+        FakePeer holder = context.Peer(wrapper);
+
+        await context.Relay.OnAnnouncement(holder, [Announcement(wrapper)]);
+        context.Relay.RemovePeer(first);
+
+        Assert.That(() => context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True.After(5000, 10));
+    }
+
+    [Test]
+    public async Task Announcement_FromARemovedPeer_RecordsNothing()
     {
         using Context context = new();
         FakePeer peer = context.Peer();
-        peer.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        context.Relay.RemovePeer(peer);
+
+        await context.Relay.OnAnnouncement(peer, [Announcement(context.Wrapper(Tx(0, TestItem.KeccakA)))]);
+
+        Assert.That(context.Relay.FetchCount, Is.Zero);
+    }
+
+    private static List<WrapperAnnouncement> Announcements(int start, int count)
+    {
         List<WrapperAnnouncement> announcements = [];
-        for (int i = 0; i < 4200; i++) announcements.Add(new WrapperAnnouncement(100, Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, default, default));
-
-        _ = context.Relay.OnAnnouncement(peer, announcements);
-
-        Assert.That(context.Relay.FetchCount, Is.EqualTo(4096));
+        for (int i = start; i < start + count; i++) announcements.Add(new WrapperAnnouncement(100, Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, default, default));
+        return announcements;
     }
 
     [Test]

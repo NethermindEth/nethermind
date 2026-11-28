@@ -58,6 +58,9 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <summary>Wanted wrappers, waiting or being fetched; announcements beyond them are not recorded.</summary>
     private const int MaxFetches = 4096;
 
+    /// <summary>Wanted wrappers one peer may open, so that no peer fills <see cref="MaxFetches"/> alone.</summary>
+    private const int MaxFetchesOpenedPerPeer = 512;
+
     /// <summary>Announcers recorded per wanted wrapper.</summary>
     private const int MaxAnnouncersPerFetch = 16;
 
@@ -168,10 +171,14 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <returns>The fetches started, for callers that wait on them.</returns>
     internal Task OnAnnouncement(IProofWrapperPeer peer, IReadOnlyList<WrapperAnnouncement> announcements)
     {
-        if (!IsActive || !_peers.TryGetValue(peer, out PeerState? state)) return Task.CompletedTask;
+        if (!IsActive) return Task.CompletedTask;
 
         lock (_lock)
         {
+            // Looked up under the lock: a peer removed before it records nothing, and one removed after is cleaned up by
+            // RemovePeer, which takes the lock once the peer is gone.
+            if (!_peers.TryGetValue(peer, out PeerState? state)) return Task.CompletedTask;
+
             foreach (WrapperAnnouncement announcement in announcements)
             {
                 state.Announced.Set(announcement.Hash, announcement);
@@ -189,11 +196,12 @@ public sealed class ProofWrapperRelay : IDisposable
                 if (state.Failures >= MaxFailuresPerPeer) continue;
                 if (_fetches.TryGetValue(announcement.Hash, out Fetch? fetch))
                 {
-                    if (fetch.Announcers.Count < MaxAnnouncersPerFetch && !fetch.Announcers.Contains(peer)) fetch.Announcers.Add(peer);
+                    AddAnnouncer(fetch, peer);
                 }
-                else if (_fetches.Count < MaxFetches)
+                else if (_fetches.Count < MaxFetches && state.Opened < MaxFetchesOpenedPerPeer)
                 {
-                    _fetches[announcement.Hash] = new Fetch(peer);
+                    _fetches[announcement.Hash] = new Fetch(peer, state);
+                    state.Opened++;
                 }
             }
         }
@@ -346,11 +354,41 @@ public sealed class ProofWrapperRelay : IDisposable
                 if (!_fetches.TryGetValue(hash, out Fetch? fetch) || fetch.Fetcher != peer) continue;
                 fetch.Fetcher = null;
                 fetch.Announcers.Remove(peer);
-                if (fetch.Announcers.Count == 0) _fetches.Remove(hash);
+                if (fetch.Announcers.Count == 0) RemoveFetch(hash);
             }
         }
 
         Schedule();
+    }
+
+    /// <summary>Adds <paramref name="peer"/> as an announcer; when they are full, in place of one that failed before or is
+    /// busy, so that peers announcing first cannot shut out the rest.</summary>
+    /// <remarks>Called under <see cref="_lock"/>.</remarks>
+    private void AddAnnouncer(Fetch fetch, IProofWrapperPeer peer)
+    {
+        List<IProofWrapperPeer> announcers = fetch.Announcers;
+        if (announcers.Contains(peer)) return;
+        if (announcers.Count < MaxAnnouncersPerFetch)
+        {
+            announcers.Add(peer);
+            return;
+        }
+
+        for (int i = announcers.Count - 1; i >= 0; i--)
+        {
+            if (announcers[i] == fetch.Fetcher) continue;
+            if (!_peers.TryGetValue(announcers[i], out PeerState? state) || state.Failures > 0 || state.Requests >= MaxRequestsPerPeer)
+            {
+                announcers[i] = peer;
+                return;
+            }
+        }
+    }
+
+    /// <remarks>Called under <see cref="_lock"/>.</remarks>
+    private void RemoveFetch(in ValueHash256 hash)
+    {
+        if (_fetches.Remove(hash, out Fetch? fetch)) fetch.Opener.Opened--;
     }
 
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
@@ -378,7 +416,7 @@ public sealed class ProofWrapperRelay : IDisposable
             if (fetch.Announcers.Count == 0 && fetch.Fetcher is null) orphaned.Add(hash);
         }
 
-        foreach (ValueHash256 hash in orphaned) _fetches.Remove(hash);
+        foreach (ValueHash256 hash in orphaned) RemoveFetch(hash);
     }
 
     /// <summary>Fetches the manifests of large wrappers while wrappers are held, and drops each whose transactions held
@@ -599,7 +637,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
     private void Complete(in ValueHash256 hash)
     {
-        lock (_lock) _fetches.Remove(hash);
+        lock (_lock) RemoveFetch(hash);
     }
 
     private void Discard(in ValueHash256 hash, string reason)
@@ -879,18 +917,22 @@ public sealed class ProofWrapperRelay : IDisposable
     }
 
     /// <summary>A wanted wrapper: the peers that announced it, and the one it is being fetched from, if any.</summary>
-    private sealed class Fetch(IProofWrapperPeer announcer)
+    private sealed class Fetch(IProofWrapperPeer announcer, PeerState opener)
     {
         public List<IProofWrapperPeer> Announcers { get; } = [announcer];
+
+        /// <summary>The peer whose announcement opened the fetch, which it counts against.</summary>
+        public PeerState Opener { get; } = opener;
         public IProofWrapperPeer? Fetcher { get; set; }
     }
 
     /// <summary>What one connection has exchanged: bounded records, so old entries may be forgotten.</summary>
     private sealed class PeerState
     {
-        /// <summary>Requests in flight; guarded by the relay's lock, as is <see cref="Failures"/>.</summary>
+        /// <summary>Requests in flight; guarded by the relay's lock, as are <see cref="Failures"/> and <see cref="Opened"/>.</summary>
         public int Requests;
         public int Failures;
+        public int Opened;
 
         public LruCache<ValueHash256, WrapperAnnouncement> Announced { get; } = new(PeerRecordCapacity, "announced proof wrappers");
         public LruKeyCache<ValueHash256> AnnouncedTo { get; } = new(PeerRecordCapacity, "proof wrappers announced to a peer");
