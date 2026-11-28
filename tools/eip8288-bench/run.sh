@@ -53,7 +53,7 @@ for profile in "${profiles[@]}"; do
   # Arms alternate run by run, so drift on the host does not land on one arm only.
   for ((run = 1; run <= ${MEMPOOL_RUNS:-3}; run++)); do
     for arm in "${arms[@]}"; do
-      AGGREGATION=$arm "$root/scripts/eip8288-bench/mempool.sh" "$out/mempool/$profile/$arm/run$run" nethermind:eip8288-bench-head "$profile-$arm-run$run"
+      AGGREGATION=$arm "$root/tools/eip8288-bench/mempool.sh" "$out/mempool/$profile/$arm/run$run" nethermind:eip8288-bench-head "$profile-$arm-run$run"
     done
   done
   for arm in "${arms[@]}"; do

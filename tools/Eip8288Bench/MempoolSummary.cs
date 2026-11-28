@@ -9,7 +9,7 @@ using System.Text.Json.Nodes;
 namespace Nethermind.Tools.Eip8288Bench;
 
 /// <summary>Joins the load generator's <c>load.json</c> with each node's start/end resource and Prometheus snapshots written by
-/// <c>scripts/eip8288-bench/mempool.sh</c>.</summary>
+/// <c>tools/eip8288-bench/mempool.sh</c>.</summary>
 internal static class MempoolSummary
 {
 
