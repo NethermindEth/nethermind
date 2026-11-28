@@ -164,6 +164,21 @@ jobs:
       - name: Run the fetch-artifacts test suite
         run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/frame-verify-gas
 
+  rule-bot-scripts:
+    name: Test rule-bot scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Run the rule-bot test suite
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/rule-bot
+
   sync-scripts:
     name: Test sync workflow scripts
     runs-on: ubuntu-latest

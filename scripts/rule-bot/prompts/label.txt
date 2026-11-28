@@ -1,0 +1,11 @@
+You check the precision of a new Roslyn analyzer rule {{ID}} in the Nethermind repository in the current directory.
+
+What the rule is meant to report: {{WHY}}
+
+Below are hits of the rule in production code as JSON, each with file, line and the surrounding source. You did not write this analyzer. For each hit decide independently whether the reported line really has the problem the rule describes and a reviewer would ask to change it (true_positive), or whether the code is correct or intentionally written this way (false_positive). Open the file if the context is not enough.
+
+{{SAMPLE}}
+
+Also decide for each hit whether the problem the rule reports there is the one stated above, not a different problem the analyzer happens to check (matches_why). If the rule as written reports something other than the stated problem, set matches_why to false for every hit and say so in the reason.
+
+Write {{RESULT}} as a JSON array with one object per hit, in the same order: {"file": "...", "line": N, "label": "true_positive" | "false_positive", "matches_why": true | false, "reason": "<one short sentence>"}. Do not change any file in the repository.

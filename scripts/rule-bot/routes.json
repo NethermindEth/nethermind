@@ -1,0 +1,129 @@
+{
+ "unused": {
+  "route": "A",
+  "ids": [
+   "IDE0051",
+   "IDE0052",
+   "IDE0059",
+   "IDE0060"
+  ],
+  "why": "unused private member / unread private member / unnecessary assignment / unused parameter"
+ },
+ "throwhelper": {
+  "route": "A",
+  "ids": [
+   "CA1510",
+   "CA1511",
+   "CA1512",
+   "CA1513"
+  ],
+  "why": "ArgumentNullException/ArgumentException/ArgumentOutOfRangeException/ObjectDisposedException throw helpers; the `?? throw` form is not covered by any of them (route X, team decision)"
+ },
+ "dispose": {
+  "route": "A",
+  "ids": [
+   "CA2000",
+   "CA2213"
+  ],
+  "why": "dispose objects before losing scope / disposable fields should be disposed"
+ },
+ "syncasync": {
+  "route": "A",
+  "ids": [
+   "CA1849"
+  ],
+  "why": "call async methods when in an async method"
+ },
+ "dbl": {
+  "route": "A",
+  "ids": [
+   "CA1854",
+   "CA1864",
+   "CA1868"
+  ],
+  "why": "TryGetValue / TryAdd / unnecessary Contains before Add/Remove"
+ },
+ "catch": {
+  "route": "A",
+  "ids": [
+   "CA1031"
+  ],
+  "why": "do not catch general exception types"
+ },
+ "xmldoc": {
+  "route": "A",
+  "ids": [
+   "CS1591"
+  ],
+  "why": "missing XML comment for publicly visible member (needs GenerateDocumentationFile)"
+ },
+ "fireforget": {
+  "route": "A",
+  "ids": [
+   "CA2012"
+  ],
+  "why": "use ValueTasks correctly; discarded Task needs a new analyzer (route B)"
+ },
+ "nullforg": {
+  "route": "C",
+  "ids": [],
+  "why": "comments say a `!` hides a value that can really be null; deciding that needs judgement per site. No CA/IDE rule reports a needed-but-wrong `!` (IDE0370 reports only unnecessary suppressions)"
+ },
+ "linq": {
+  "route": "B",
+  "ids": [],
+  "why": "LINQ is allowed outside hot paths; needs a project-scoped NETH analyzer or BannedApi"
+ },
+ "sleep": {
+  "route": "B",
+  "ids": [],
+  "why": "no CA/IDE rule for Thread.Sleep/Task.Delay in tests"
+ },
+ "testcase": {
+  "route": "B",
+  "ids": [],
+  "why": "duplicate test bodies need a new analyzer"
+ },
+ "arraypool": {
+  "route": "B",
+  "ids": [],
+  "why": "A pooled list used only inside one method should be the stack-only ArrayPoolListRef<T> instead of ArrayPoolList<T>"
+ },
+ "skip": {
+  "route": "B",
+  "ids": [],
+  "why": "stackalloc without SkipLocalsInit needs a new analyzer"
+ },
+ "config": {
+  "route": "X",
+  "ids": [],
+  "why": "already enforced by Nethermind.Config.Test StandardConfigTests"
+ },
+ "methodimpl": {
+  "route": "C",
+  "ids": [],
+  "why": "mostly perf taste; narrow part (AggressiveInlining on async/try) would be route B"
+ },
+ "logguard": {
+  "route": "B",
+  "ids": [],
+  "why": "guard dominance check needs a new analyzer"
+ },
+ "todo": {
+  "route": "C",
+  "ids": [],
+  "why": "judgement"
+ },
+ "commented": {
+  "route": "C",
+  "ids": [],
+  "why": "judgement"
+ },
+ "nameof": {
+  "route": "A",
+  "ids": [
+   "CA1507"
+  ],
+  "why": "use nameof in place of string"
+ }
+}

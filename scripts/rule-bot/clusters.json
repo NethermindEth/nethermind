@@ -1,0 +1,22 @@
+{
+ "unused": "\\bunused\\b|dead code|no callers|never read|is never used|not used anywhere|unnecessary assignment|overwritten before",
+ "throwhelper": "ThrowIf(Null|GreaterThan|Negative|LessThan|NullOrEmpty)|\\?\\? throw new Argument",
+ "dispose": "never disposed|not disposed|missing `using`|undisposed|leaks?.{0,40}(dispos|IDisposable)",
+ "syncasync": "GetAwaiter\\(\\)\\.GetResult\\(\\)|\\.Result\\b|\\.Wait\\(\\)|sync-over-async|blocks? on",
+ "dbl": "two (hash )?lookups|double lookup|TryGetValue|ContainsKey",
+ "catch": "catch \\(Exception\\)|catch-all|swallow|broad catch|catches all",
+ "xmldoc": "(no|missing|without|lacks?) (an? )?(XML doc|`<summary>`)|XML doc rather than|leading `//`",
+ "nullforg": "null-forgiving|`!`|null-suppress",
+ "fireforget": "fire-and-forget|unobserved|async void|not awaited",
+ "linq": "\\bLINQ\\b",
+ "sleep": "Thread\\.Sleep|Task\\.Delay|wall-clock|polling loop",
+ "testcase": "TestCase|parameteri[sz]e|copy-paste|duplicat",
+ "arraypool": "ArrayPool|rented|Rent\\(|never returned",
+ "skip": "SkipLocalsInit",
+ "config": "ConfigItem",
+ "methodimpl": "AggressiveInlining|NoInlining|MethodImpl",
+ "logguard": "Is(Debug|Trace|Info|Warn)\\b.{0,60}guard|guard.{0,60}Is(Debug|Trace|Info)|without .{0,20}guard",
+ "todo": "\\bTODO\\b",
+ "commented": "commented[- ]out code",
+ "nameof": "\\bnameof\\b"
+}
