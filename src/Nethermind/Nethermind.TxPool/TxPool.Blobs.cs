@@ -124,7 +124,7 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
         {
-            if (!tx.SupportsBlobs)
+            if (!tx.SamplesBlobCells())
             {
                 return AcceptTxResult.Invalid;
             }

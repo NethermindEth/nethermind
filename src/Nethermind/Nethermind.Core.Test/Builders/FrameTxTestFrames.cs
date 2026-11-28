@@ -166,4 +166,22 @@ public static class FrameTxTestFrames
         tx.Hash = tx.CalculateHash();
         return tx;
     }
+
+    /// <summary>A <see cref="LeanSphincsTx"/> carrying one blob, with a placeholder commitment and cell proofs filled with
+    /// <paramref name="proofFill"/>, and its blob data in full.</summary>
+    public static Transaction LeanSphincsBlobTx(ulong nonce, byte proofFill = 0)
+    {
+        Transaction tx = LeanSphincsTx(nonce, withSecp256k1Claim: false, (TestItem.KeccakA, TestItem.KeccakB));
+        byte[] commitment = new byte[CkzgLib.Ckzg.BytesPerCommitment];
+        commitment[0] = 0xc0;
+        commitment[1] = (byte)nonce;
+        byte[] versionedHash = new byte[32];
+        KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, versionedHash);
+        byte[] proofs = new byte[CkzgLib.Ckzg.CellsPerExtBlob * ShardBlobNetworkWrapper.BytesPerProof];
+        Array.Fill(proofs, proofFill);
+        tx.BlobVersionedHashes = [versionedHash];
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper([new byte[CkzgLib.Ckzg.BytesPerBlob]], [commitment], proofs, ProofVersion.V1);
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
 }

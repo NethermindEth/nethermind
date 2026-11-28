@@ -271,7 +271,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void OnPendingTransactionRemoved(object? sender, TxEventArgs e)
     {
-        if (e.Transaction.SupportsBlobs && e.Transaction.Hash is not null)
+        if (e.Transaction.SamplesBlobCells() && e.Transaction.Hash is not null)
         {
             Clear(e.Transaction.Hash);
         }
@@ -279,7 +279,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void OnPendingTransactionAdded(object? sender, TxEventArgs e)
     {
-        if (e.Transaction.SupportsBlobs && e.Transaction.Hash is not null)
+        if (e.Transaction.SamplesBlobCells() && e.Transaction.Hash is not null)
         {
             TryApplyRecordedCells(e.Transaction.Hash);
         }
@@ -1047,7 +1047,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction)
     {
         Hash256? hash = transaction.Hash;
-        if (hash is null || !transaction.SupportsBlobs)
+        if (hash is null || !transaction.SamplesBlobCells())
         {
             return SubmitTransaction(peer, transaction);
         }

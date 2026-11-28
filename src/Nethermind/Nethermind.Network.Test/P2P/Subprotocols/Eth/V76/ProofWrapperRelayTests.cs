@@ -13,13 +13,16 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Specs;
+using Nethermind.Stats.Model;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -481,6 +484,79 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>A blob-carrying transaction of a verified wrapper goes to EIP-8070 cell sampling, not straight to the pool,
+    /// and the wrapper's sender is not taken for a cell provider.</summary>
+    [Test]
+    public async Task Fetch_BlobCarryingWrapper_AwaitsCellsWithoutProviders()
+    {
+        using Context context = new();
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        ProofWrapper wrapper = context.Wrapper(tx);
+
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Registry.HasRecordedTransaction(tx.Hash!.ValueHash256), Is.True);
+            Assert.That(context.Registry.GetFullProviderAnnouncementCount(tx.Hash!.ValueHash256), Is.Zero);
+            context.TxPool.DidNotReceiveWithAnyArgs().SubmitTx(default!, default);
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
+        }
+    }
+
+    /// <summary>Another wrapper covering the same blob-carrying transaction adds no provider and does not restart sampling.</summary>
+    [Test]
+    public async Task Fetch_SecondWrapperOfABlobTransaction_AddsNoProvider()
+    {
+        using Context context = new();
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        Transaction sibling = Tx(1, TestItem.KeccakC);
+        ProofWrapper first = context.Wrapper(tx);
+        ProofWrapper second = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0), sibling);
+        await context.Relay.OnAnnouncement(context.Peer(first), [Announcement(first)]);
+
+        await context.Relay.OnAnnouncement(context.Peer(second), [Announcement(second)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Registry.HasRecordedTransaction(tx.Hash!.ValueHash256), Is.True);
+            Assert.That(context.Registry.GetFullProviderAnnouncementCount(tx.Hash!.ValueHash256), Is.Zero);
+        }
+    }
+
+    /// <summary>Cells are not sought for a blob-carrying transaction before its wrapper's proof verifies.</summary>
+    [Test]
+    public async Task Fetch_BlobCarryingWrapperWithAnInvalidProof_RecordsNothing()
+    {
+        using Context context = new();
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        ProofWrapper wrapper = ProofWrapperCodec.Create([ProofWrapperCodec.Normalize(tx)!], [tx],
+            Eip8288Dependencies.Canonicalize(ProofWrapperCodec.AggregatedDependencies(tx)), [1, 2, 3]);
+
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        Assert.That(context.Registry.HasRecordedTransaction(tx.Hash!.ValueHash256), Is.False);
+    }
+
+    /// <summary>An elided blob-carrying frame transaction is sampled only when a verified wrapper covered it: one without
+    /// aggregated witnesses goes to the pool as before.</summary>
+    [Test]
+    public void Registry_SamplesOnlyAggregatedBlobFrameTransactions()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        Transaction raw = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        raw.NetworkWrapper = ((ShardBlobNetworkWrapper)raw.NetworkWrapper!) with { Blobs = [] };
+
+        context.Registry.RecordTransaction(peer, raw);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Registry.HasRecordedTransaction(raw.Hash!.ValueHash256), Is.False);
+            context.TxPool.ReceivedWithAnyArgs(1).SubmitTx(default!, default);
+        }
+    }
+
     [Test]
     public async Task Announcement_FromARemovedPeer_RecordsNothing()
     {
@@ -699,12 +775,16 @@ public class ProofWrapperRelayTests
         public Context(IReleaseSpec? spec = null)
         {
             TxPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.Accepted);
+            TxPool.ValidateTxForBlobSampling(default!).ReturnsForAnyArgs(AcceptTxResult.Accepted);
             TxPool.GetPendingTransactions().Returns([]);
             ProofCache = new DependencyProofCache(Verifier, LimboLogs.Instance);
+            Registry = new SparseBlobPoolPeerRegistry(TxPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
             Relay = new ProofWrapperRelay(TxPool, ProofCache, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance),
                 Substitute.For<IBlockTree>(), Timestamper.Default, new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.Mempool },
-                LimboLogs.Instance);
+                LimboLogs.Instance, Registry);
         }
+
+        public SparseBlobPoolPeerRegistry Registry { get; }
 
         public ITxPool TxPool { get; } = Substitute.For<ITxPool>();
         public FakeVerifier Verifier { get; } = new();
@@ -714,6 +794,7 @@ public class ProofWrapperRelayTests
         public FakePeer Peer(ProofWrapper? served = null, PublicKey? nodeId = null)
         {
             FakePeer peer = new(served) { NodeId = nodeId ?? new PrivateKeyGenerator().Generate().PublicKey };
+            Registry.AddPeer(peer);
             Relay.AddPeer(peer);
             return peer;
         }
@@ -733,7 +814,11 @@ public class ProofWrapperRelayTests
             return ProofWrapperCodec.Create(encodings, transactions, canonical, Verifier.Prove(Eip8288Dependencies.ComputeDepsHash(canonical)));
         }
 
-        public void Dispose() => Relay.Dispose();
+        public void Dispose()
+        {
+            Relay.Dispose();
+            Registry.Dispose();
+        }
     }
 
     /// <summary>A Lean backend whose proof of a statement is its dependency digest.</summary>
@@ -764,8 +849,15 @@ public class ProofWrapperRelayTests
     }
 
     /// <summary>An <c>eth/76</c> peer serving one wrapper.</summary>
-    private sealed class FakePeer(ProofWrapper? served) : IProofWrapperPeer
+    private sealed class FakePeer(ProofWrapper? served) : IProofWrapperPeer, ISparseBlobPoolPeer
     {
+        PublicKey ISparseBlobPoolPeer.Id => NodeId;
+        bool ISparseBlobPoolPeer.IsClosing => Disconnected;
+        bool ISparseBlobPoolPeer.TrySendGetCells(in ValueHash256 hash, BlobCellMask requestMask) => true;
+        bool ISparseBlobPoolPeer.TrySendPooledTransactionRequest(Hash256 hash) => true;
+        void ISparseBlobPoolPeer.MaintainSparseBlobState(DateTimeOffset now) { }
+        void ISparseBlobPoolPeer.DisconnectSparseBlobPeer(DisconnectReason reason, string details) => Disconnected = true;
+
         private int _requests;
 
         public ProofWrapper? Served { get; set; } = served;
@@ -784,7 +876,7 @@ public class ProofWrapperRelayTests
         public List<bool> CompactFlags { get; } = [];
         public bool CompactReferencesEverything { get; set; }
         public bool TimesOut { get; set; }
-        public bool Disconnected { get; private set; }
+        public bool Disconnected { get; set; }
         public Task Gate { get; set; } = Task.CompletedTask;
         public int Requests => Volatile.Read(ref _requests);
 

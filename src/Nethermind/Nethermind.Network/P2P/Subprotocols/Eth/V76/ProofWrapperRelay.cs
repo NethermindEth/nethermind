@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.TxPool;
 using TxEventArgs = Nethermind.TxPool.TxEventArgs;
@@ -83,6 +84,7 @@ public sealed class ProofWrapperRelay : IDisposable
     private const int ManifestThreshold = 256 * 1024;
 
     private readonly ITxPool _txPool;
+    private readonly ISparseBlobPoolPeerRegistry? _sparseBlobPoolPeerRegistry;
     private readonly DependencyProofCache _proofCache;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockTree _blockTree;
@@ -110,9 +112,11 @@ public sealed class ProofWrapperRelay : IDisposable
     private int _aggregating;
 
     public ProofWrapperRelay(ITxPool txPool, DependencyProofCache proofCache, ISpecProvider specProvider, IBlockTree blockTree,
-        ITimestamper timestamper, IBlocksConfig blocksConfig, ILogManager logManager)
+        ITimestamper timestamper, IBlocksConfig blocksConfig, ILogManager logManager,
+        ISparseBlobPoolPeerRegistry? sparseBlobPoolPeerRegistry = null)
     {
         _txPool = txPool;
+        _sparseBlobPoolPeerRegistry = sparseBlobPoolPeerRegistry;
         _proofCache = proofCache;
         _specProvider = specProvider;
         _blockTree = blockTree;
@@ -171,7 +175,7 @@ public sealed class ProofWrapperRelay : IDisposable
             }
         }
 
-        PeerState state = new(budget);
+        PeerState state = new(budget) { SparsePeer = peer as ISparseBlobPoolPeer };
         if (!_peers.TryAdd(peer, state) || !IsActive) return;
 
         List<ProofWrapper> offered = [];
@@ -431,7 +435,7 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <summary>Whether a node may take one more of a globally capped resource. The cap is hard; its last quarter is kept for
     /// nodes that have served a valid proof, so that fresh nodes, however many, cannot shut out a proven one.</summary>
     private static bool WithinGlobalCap(NodeBudget budget, int used, int cap) =>
-        used < cap - cap / 4 || (used < cap && budget.Successes > 0);
+        used < cap - cap / 4 || (used < cap && budget.Successes > 0 && budget.Failures == 0);
 
     /// <summary>Takes one verification from <paramref name="budget"/>'s window, and from the global one.</summary>
     /// <remarks>Called under <see cref="_lock"/>.</remarks>
@@ -558,9 +562,9 @@ public sealed class ProofWrapperRelay : IDisposable
             case ProofWrapperCodec.Verdict.Malformed or ProofWrapperCodec.Verdict.CacheMiss:
                 throw new ProtocolViolation(error!);
             // A wrapper is discarded only under the hash it really has, so a peer cannot have another's wrapper refused.
-            case ProofWrapperCodec.Verdict.Invalid or ProofWrapperCodec.Verdict.Unsupported when canonicalHash != served.Hash:
+            case ProofWrapperCodec.Verdict.Invalid when canonicalHash != served.Hash:
                 throw new ProtocolViolation("wrapper does not match its served hash");
-            case ProofWrapperCodec.Verdict.Invalid or ProofWrapperCodec.Verdict.Unsupported:
+            case ProofWrapperCodec.Verdict.Invalid:
                 Discard(served.Hash, error!);
                 return;
         }
@@ -590,13 +594,17 @@ public sealed class ProofWrapperRelay : IDisposable
             return;
         }
 
-        lock (_lock) state.Budget.Successes++;
         state.Exchange(wrapper);
-        Accept(wrapper);
+        // Only a proof this node verified itself, which became new coverage, earns a place in the reserved part of the caps.
+        if (Accept(wrapper, state) && !verified)
+        {
+            lock (_lock) state.Budget.Successes++;
+        }
     }
 
     /// <summary>Admits a verified wrapper's transactions, and holds and relays it unless a retained witness fails.</summary>
-    private void Accept(ProofWrapper wrapper)
+    /// <returns>Whether the wrapper was held as new coverage.</returns>
+    private bool Accept(ProofWrapper wrapper, PeerState source)
     {
         // The proof stands for its dependencies whatever the transactions' other witnesses, so the transactions it admits
         // stay buildable even when the wrapper is discarded below.
@@ -608,13 +616,13 @@ public sealed class ProofWrapperRelay : IDisposable
         int known = 0;
         foreach (Transaction transaction in wrapper.Transactions)
         {
-            AcceptTxResult result = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+            AcceptTxResult result = Admit(transaction, source);
             if (result == AcceptTxResult.Accepted) admitted++;
             else if (result == AcceptTxResult.AlreadyKnown) known++;
             else if (FrameTxClaimVerifier.IsWitnessError(result.Message))
             {
                 Discard(wrapper.Hash.ValueHash256, $"retained witness of {transaction.Hash} failed: {result.Message}");
-                return;
+                return false;
             }
             else rejected++;
         }
@@ -623,12 +631,24 @@ public sealed class ProofWrapperRelay : IDisposable
         if (admitted == 0 && known == 0)
         {
             Discard(wrapper.Hash.ValueHash256, "no transaction of the wrapper is pending");
-            return;
+            return false;
         }
 
         bool relay = admitted > 0 && admitted >= rejected;
-        if (Hold(wrapper) && relay) AnnounceToAll(wrapper);
+        bool held = Hold(wrapper);
+        if (held && relay) AnnounceToAll(wrapper);
         Complete(wrapper.Hash.ValueHash256);
+        return held;
+    }
+
+    /// <summary>Submits a covered transaction: to the pool, or, carrying blobs whose data the wrapper elides, to EIP-8070 cell
+    /// sampling, which submits it once its blobs are available.</summary>
+    /// <remarks>The wrapper's sender is not recorded as a cell provider: only cell announcements are.</remarks>
+    private AcceptTxResult Admit(Transaction transaction, PeerState source)
+    {
+        if (!transaction.CarriesBlobs) return _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+        if (_sparseBlobPoolPeerRegistry is null || source.SparsePeer is not { } peer) return AcceptTxResult.IncompleteBlobData;
+        return _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction) ?? AcceptTxResult.Accepted;
     }
 
     private bool Hold(ProofWrapper wrapper)
@@ -994,7 +1014,8 @@ public sealed class ProofWrapperRelay : IDisposable
         public int Opened;
         public int Verifications;
 
-        /// <summary>Valid proofs the node has served, which admit it to the reserved part of the global caps.</summary>
+        /// <summary>Valid proofs the node served in the current window that this node verified and kept as new coverage, which
+        /// admit it to the reserved part of the global caps.</summary>
         public int Successes;
         private long _windowStart;
 
@@ -1004,6 +1025,7 @@ public sealed class ProofWrapperRelay : IDisposable
             if (now - _windowStart < VerificationWindow) return;
             _windowStart = now;
             Verifications = 0;
+            Successes = 0;
         }
     }
 
@@ -1021,6 +1043,9 @@ public sealed class ProofWrapperRelay : IDisposable
     private sealed class PeerState(NodeBudget budget)
     {
         public NodeBudget Budget { get; } = budget;
+
+        /// <summary>The connection as EIP-8070 cell sampling knows it, for blob-carrying transactions it delivers.</summary>
+        public ISparseBlobPoolPeer? SparsePeer { get; init; }
 
         public LruCache<ValueHash256, WrapperAnnouncement> Announced { get; } = new(PeerRecordCapacity, "announced proof wrappers");
         public LruKeyCache<ValueHash256> AnnouncedTo { get; } = new(PeerRecordCapacity, "proof wrappers announced to a peer");

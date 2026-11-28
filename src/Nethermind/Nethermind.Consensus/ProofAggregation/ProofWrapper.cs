@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using CkzgLib;
 using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -67,7 +68,7 @@ public static class ProofWrapperCodec
     public const string CoveredWitnessRetained = "wrapper transaction retains the witness of an aggregatable claim";
     public const string UncoveredWitnessMissing = "wrapper transaction lacks the witness of a claim that is not aggregated";
     public const string DepsMismatch = "wrapper deps are not the canonical union of its transactions' aggregatable claims";
-    public const string BlobsNotSupported = "wrapper transactions carrying blobs are not supported";
+    public const string InvalidBlobSidecar = "wrapper transaction blob sidecar must elide blob data and match its versioned hashes";
 
     private static readonly int ReferenceLength = Rlp.LengthOfSequence(Rlp.LengthOfKeccakRlp);
 
@@ -85,8 +86,6 @@ public static class ProofWrapperCodec
         /// <summary>A dependency-rule failure: discarded, but its sender is not penalized.</summary>
         Invalid,
 
-        /// <summary>A wrapper this node cannot use, which is not thereby invalid.</summary>
-        Unsupported,
     }
 
     /// <summary>The aggregate encoding of a validated pooled frame transaction: its pooled encoding with the witness of every
@@ -94,7 +93,7 @@ public static class ProofWrapperCodec
     /// <remarks>The other witnesses are kept, so the same transaction normalized from any raw signatures encodes identically.</remarks>
     public static byte[]? Normalize(Transaction tx)
     {
-        if (tx.Type != TxType.FrameTx || tx.CarriesBlobs || tx.FrameClaims is not { Length: > 0 } claims
+        if (tx.Type != TxType.FrameTx || tx.FrameClaims is not { Length: > 0 } claims
             || tx.ClaimWitnesses is not { } witnesses || witnesses.Length != claims.Length)
         {
             return null;
@@ -114,7 +113,11 @@ public static class ProofWrapperCodec
         Transaction copy = new();
         tx.CopyTo(copy);
         copy.ClaimWitnesses = normalized;
-        copy.NetworkWrapper = null;
+        // EIP-8070 elides the blob data; the commitments and cell proofs stay, so the encoding hash binds them.
+        copy.NetworkWrapper = tx.CarriesBlobs && tx.NetworkWrapper is ShardBlobNetworkWrapper blobs
+            ? new ShardBlobNetworkWrapper([], blobs.Commitments, blobs.Proofs, blobs.Version)
+            : null;
+        if (tx.CarriesBlobs && copy.NetworkWrapper is null) return null;
         return TxDecoder.Instance.Encode(copy, TransactionBehaviors);
     }
 
@@ -357,7 +360,8 @@ public static class ProofWrapperCodec
         error = null;
         if (transaction.Type != TxType.FrameTx || transaction.FrameClaims is not { Length: > 0 } claims)
             return Fail(Verdict.Invalid, NotAggregatable, out error);
-        if (transaction.CarriesBlobs) return Fail(Verdict.Unsupported, BlobsNotSupported, out error);
+        if (transaction.CarriesBlobs ? !HasElidedSidecar(transaction) : transaction.NetworkWrapper is not null)
+            return Fail(Verdict.Invalid, InvalidBlobSidecar, out error);
         if (transaction.ClaimWitnesses is not { } witnesses || witnesses.Length != claims.Length)
             return Fail(Verdict.Invalid, FrameTxClaimVerifier.WitnessCountMismatch, out error);
 
@@ -376,6 +380,30 @@ public static class ProofWrapperCodec
 
         deps.AddRange(AggregatedDependencies(transaction));
         return deps.Count == before ? Fail(Verdict.Invalid, NotAggregatable, out error) : Verdict.Valid;
+    }
+
+    /// <summary>EIP-8070's elided sidecar: no blob data, and a commitment per versioned hash, hashing to it, with all its
+    /// cell proofs.</summary>
+    private static bool HasElidedSidecar(Transaction transaction)
+    {
+        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper { Blobs.Length: 0, Version: ProofVersion.V1 } sidecar
+            || transaction.BlobVersionedHashes is not { } hashes || sidecar.Commitments.Length != hashes.Length
+            || sidecar.Proofs.Length != hashes.Length * Ckzg.CellsPerExtBlob * ShardBlobNetworkWrapper.BytesPerProof)
+        {
+            return false;
+        }
+
+        Span<byte> hash = stackalloc byte[32];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            if (sidecar.Commitments[i] is not { Length: Ckzg.BytesPerCommitment } commitment
+                || !KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) || !hash.SequenceEqual(hashes[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool Matches(List<AggregatedDependency> deps, ReadOnlySpan<byte> rawDeps)

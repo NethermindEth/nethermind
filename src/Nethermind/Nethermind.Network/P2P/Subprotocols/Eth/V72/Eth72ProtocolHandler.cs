@@ -449,7 +449,7 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            bool supportsBlobs = txType.SupportsBlobs();
+            bool supportsBlobs = SamplesCells(txType, hash);
             bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash);
             bool tracksCells = _blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff;
             if (tracksCells)
@@ -1705,12 +1705,18 @@ public class Eth72ProtocolHandler(
         return Rlp.LengthOfSequence(contentLength);
     }
 
+    /// <summary>Whether an announced transaction's cells are sampled: a blob transaction's, and a blob-carrying frame
+    /// transaction's only while an EIP-8518 wrapper's elided copy of it awaits them.</summary>
+    private bool SamplesCells(TxType txType, in ValueHash256 hash) =>
+        txType.SupportsBlobs() || (txType == TxType.FrameTx && _sparseBlobPoolPeerRegistry.HasRecordedTransaction(hash));
+
     private BlobCellMask ExtractAnnouncementMask(NewPooledTransactionHashesMessage72 message, ReadOnlySpan<byte> types)
     {
         bool containsBlobTransaction = false;
+        ReadOnlySpan<ValueHash256> hashes = message.Hashes.AsSpan();
         for (int i = 0; i < types.Length; i++)
         {
-            if (((TxType)types[i]).SupportsBlobs())
+            if (SamplesCells((TxType)types[i], hashes[i]))
             {
                 containsBlobTransaction = true;
                 break;

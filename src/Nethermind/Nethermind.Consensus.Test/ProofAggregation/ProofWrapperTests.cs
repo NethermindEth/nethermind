@@ -47,6 +47,77 @@ public class ProofWrapperTests
     public void Normalize_WithoutAnAggregatableClaim_IsNull() =>
         Assert.That(ProofWrapperCodec.Normalize(FrameTxTestFrames.LeanSphincsTx(0, withSecp256k1Claim: true)), Is.Null);
 
+    /// <summary>EIP-8070 elides a blob-carrying transaction's blob data in a wrapper; its commitments and cell proofs remain.</summary>
+    [Test]
+    public void Normalize_BlobTransaction_ElidesTheBlobDataOnly_AndDecodes()
+    {
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        ProofWrapper wrapper = Wrapper(tx);
+
+        ProofWrapperCodec.Verdict verdict = ProofWrapperCodec.TryDecode(wrapper.Encoded, null, wrapper.Length, out ProofWrapper? decoded, out string? error);
+
+        ShardBlobNetworkWrapper sidecar = (ShardBlobNetworkWrapper)decoded!.Transactions[0].NetworkWrapper!;
+        ShardBlobNetworkWrapper original = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict, Is.EqualTo(ProofWrapperCodec.Verdict.Valid), error);
+            Assert.That(decoded.Transactions[0].Hash, Is.EqualTo(tx.Hash));
+            Assert.That(sidecar.Blobs, Is.Empty);
+            Assert.That(sidecar.Commitments, Is.EqualTo(original.Commitments));
+            Assert.That(sidecar.Proofs, Is.EqualTo(original.Proofs));
+        }
+    }
+
+    /// <summary>The encoding hash binds the blob metadata: a copy with the same consensus hash but other cell proofs does not
+    /// resolve a compact reference.</summary>
+    [Test]
+    public void EncodingHash_BindsTheBlobMetadata()
+    {
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 1);
+        Transaction other = FrameTxTestFrames.LeanSphincsBlobTx(0, proofFill: 2);
+        ProofWrapper wrapper = Wrapper(tx);
+        byte[] cachedOther = ProofWrapperCodec.Normalize(other)!;
+        byte[] compact = ProofWrapperCodec.Encode(wrapper.EncodedTransactions, wrapper.Deps, wrapper.Proof, static _ => true);
+
+        ProofWrapperCodec.Verdict verdict = ProofWrapperCodec.TryDecode(compact,
+            hash => hash == ProofWrapperCodec.EncodingHash(cachedOther) ? cachedOther : null, wrapper.Length, out _, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(other.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(ProofWrapperCodec.EncodingHash(cachedOther), Is.Not.EqualTo(ProofWrapperCodec.EncodingHash(wrapper.EncodedTransactions[0])));
+            Assert.That(verdict, Is.EqualTo(ProofWrapperCodec.Verdict.CacheMiss));
+        }
+    }
+
+    public enum SidecarDefect { BlobDataKept, CommitmentMismatch, MissingCellProofs }
+
+    [TestCase(SidecarDefect.BlobDataKept)]
+    [TestCase(SidecarDefect.CommitmentMismatch)]
+    [TestCase(SidecarDefect.MissingCellProofs)]
+    public void TryDecode_InvalidBlobSidecar_IsInvalid(SidecarDefect defect)
+    {
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        Transaction broken = Decode(ProofWrapperCodec.Normalize(tx)!);
+        ShardBlobNetworkWrapper sidecar = (ShardBlobNetworkWrapper)broken.NetworkWrapper!;
+        broken.NetworkWrapper = defect switch
+        {
+            SidecarDefect.BlobDataKept => tx.NetworkWrapper,
+            SidecarDefect.CommitmentMismatch => new ShardBlobNetworkWrapper([], [new byte[CkzgLib.Ckzg.BytesPerCommitment]], sidecar.Proofs, ProofVersion.V1),
+            _ => new ShardBlobNetworkWrapper([], sidecar.Commitments, sidecar.Proofs[..ShardBlobNetworkWrapper.BytesPerProof], ProofVersion.V1),
+        };
+        byte[] encoded = ProofWrapperCodec.Encode([TxDecoder.Instance.Encode(broken, ProofWrapperCodec.TransactionBehaviors)],
+            Eip8288Dependencies.Canonicalize(ProofWrapperCodec.AggregatedDependencies(tx)), [1, 2, 3]);
+
+        ProofWrapperCodec.Verdict verdict = ProofWrapperCodec.TryDecode(encoded, null, encoded.Length, out _, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict, Is.EqualTo(ProofWrapperCodec.Verdict.Invalid));
+            Assert.That(error, Is.EqualTo(ProofWrapperCodec.InvalidBlobSidecar));
+        }
+    }
+
     [Test]
     public void TryDecode_RoundTripsTheCanonicalWrapper_AndDeduplicatesRepeatedClaims()
     {

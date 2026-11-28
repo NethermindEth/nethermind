@@ -24,10 +24,12 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats;
@@ -54,6 +56,7 @@ public class Eth76ProtocolHandlerTests
     public void Setup()
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Eip8288Prototype.Instance);
         _serializer = Build.A.SerializationService().WithEth72(specProvider)
             .With(new NewProofWrapperHashesMessageSerializer())
             .With(new GetProofWrappersMessageSerializer())
@@ -73,12 +76,13 @@ public class Eth76ProtocolHandlerTests
         BlobCustodyTracker custody = new();
         _txPool = Substitute.For<ITxPool>();
         _txPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.Accepted);
+        _txPool.ValidateTxForBlobSampling(default!).ReturnsForAnyArgs(AcceptTxResult.Accepted);
         _registry = new SparseBlobPoolPeerRegistry(_txPool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         _relay = new ProofWrapperRelay(_txPool, new DependencyProofCache(new AcceptingVerifier(), LimboLogs.Instance), new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance),
             Substitute.For<IBlockTree>(), Timestamper.Default, new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.Mempool }, LimboLogs.Instance);
         _handler = new Eth76ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
             syncServer, RunImmediatelyScheduler.Instance, _txPool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
-            LimboLogs.Instance, Substitute.For<ITxPoolConfig>(), specProvider, custody, _registry, Substitute.For<IBlockFinder>(),
+            LimboLogs.Instance, new TxPoolConfig { BlobsSupport = BlobsSupportMode.StorageWithReorgs }, specProvider, custody, _registry, Substitute.For<IBlockFinder>(),
             new DependencyProofStore(new TestMemDb()), _relay);
         _handler.Init();
         using StatusMessage69 status = new() { ProtocolVersion = 76, GenesisHash = genesis.Hash!, LatestBlockHash = genesis.Hash! };
@@ -158,6 +162,28 @@ public class Eth76ProtocolHandlerTests
             Assert.That(() => _relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True.After(5000, 10));
             _txPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
+    }
+
+    /// <summary>A blob-carrying frame transaction's cell announcement is tracked only while an EIP-8518 wrapper's elided copy
+    /// of it awaits cells; other frame transactions keep travelling whole.</summary>
+    [TestCase(true, 1)]
+    [TestCase(false, 0)]
+    public void Tracks_frame_cell_announcements_only_for_an_aggregated_copy_awaiting_cells(bool awaiting, int providers)
+    {
+        Transaction tx = FrameTxTestFrames.LeanSphincsBlobTx(0);
+        if (awaiting)
+        {
+            byte[] encoded = ProofWrapperCodec.Normalize(tx)!;
+            Transaction elided = TxDecoder.Instance.DecodeCompleteNotNull(encoded, ProofWrapperCodec.TransactionBehaviors);
+            elided.ClaimWitnesses![0] = Nethermind.Evm.TransactionProcessing.FrameTxClaimVerifier.AggregatedWitness;
+            AcceptTxResult? recorded = _registry.RecordTransaction(_handler, elided);
+            Assert.That(_registry.HasRecordedTransaction(tx.Hash!.ValueHash256), Is.True, recorded?.ToString() ?? "null");
+        }
+
+        Handle(new NewPooledTransactionHashesMessage72([(byte)TxType.FrameTx], [tx.GetLength()], [tx.Hash!.ValueHash256], BlobCellMask.Full.ToBytes()),
+            Eth72MessageCode.NewPooledTransactionHashes);
+
+        Assert.That(_registry.GetFullProviderAnnouncementCount(tx.Hash!.ValueHash256), Is.EqualTo(providers));
     }
 
     private static ProofWrapper Wrapper()
