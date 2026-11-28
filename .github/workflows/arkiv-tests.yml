@@ -1,0 +1,72 @@
+name: Arkiv tests
+
+# The Arkiv plugin's tests need its native library (src/native/arkiv-ffi, Rust), which the main test workflows do not
+# build; there they are skipped. Here the library is built and both suites run, failing if the library is missing.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    paths: &arkiv-paths
+      - 'src/native/arkiv-ffi/**'
+      - 'src/Nethermind/**'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/arkiv-tests.yml'
+      - '.github/actions/setup-dotnet/**'
+  push:
+    branches: [master]
+    paths: *arkiv-paths
+  workflow_dispatch:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Run Arkiv tests (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      # bindgen (librocksdb-sys, mdbx-sys) needs libclang.
+      - name: Install libclang
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
+
+      - name: Cache the Rust build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/native/arkiv-ffi/target
+          key: arkiv-ffi-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/native/arkiv-ffi/Cargo.lock', 'src/native/arkiv-ffi/rust-toolchain.toml') }}
+          restore-keys: arkiv-ffi-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Native tests
+        working-directory: src/native/arkiv-ffi
+        run: cargo test --release --locked
+
+      - name: Nethermind.Arkiv.Test
+        env:
+          ARKIV_REQUIRE_NATIVE: 1
+        run: dotnet test --project src/Nethermind/Nethermind.Arkiv.Test -c release -p:BuildArkivNative=true

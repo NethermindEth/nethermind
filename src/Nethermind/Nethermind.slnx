@@ -83,6 +83,7 @@
     <Project Path="Nethermind.Analyzers.Test/Nethermind.Analyzers.Test.csproj" />
     <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="Nethermind.Api.Test/Nethermind.Api.Test.csproj" />
+    <Project Path="Nethermind.Arkiv.Test/Nethermind.Arkiv.Test.csproj" />
     <Project Path="Nethermind.AuRa.Test/Nethermind.AuRa.Test.csproj" />
     <Project Path="Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj" />
     <Project Path="Nethermind.Clique.Test/Nethermind.Clique.Test.csproj" />
@@ -134,6 +135,7 @@
   </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
+  <Project Path="Nethermind.Arkiv/Nethermind.Arkiv.csproj" />
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
   <Project Path="Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
   <Project Path="Nethermind.BlockProfiler/Nethermind.BlockProfiler.csproj" />

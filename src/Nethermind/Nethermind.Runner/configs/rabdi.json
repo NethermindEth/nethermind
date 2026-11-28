@@ -1,0 +1,50 @@
+{
+  "Init": {
+    "ChainSpecPath": "chainspec/rabdi.json",
+    "GenesisHash": "0xa65a2b9e25129f0e8ccdf494dfd66ec744bdf400c806b832b1da86b0b939cbce",
+    "BaseDbPath": "nethermind_db/rabdi",
+    "LogFileName": "rabdi.log"
+  },
+  "Arkiv": {
+    "Enabled": true,
+    "EntityHistory": false,
+    "CheckpointInterval": 50000
+  },
+  "FlatDb": {
+    "Enabled": false
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true
+  },
+  "Network": {
+    "StaticPeers": "enode://d7a736b0078af1699dd6e73c58466257efed1d7ddd244e8dee8cb1f3bf244e1458eaa7dc6418c94db0bb82f97ff3b7e62d9f87027dcc0b3d580a7c9a18e6b3d2@57.130.8.252:30002,enode://1f481d9a2b23aeaff49eafa18ba74bb8e36a8a80e312c1139d88b1a597e3a748e8273ce7a84f60bd7907b656ca524b5d74a1ec2f617c4f67de7cfc3e4f82a1a7@91.134.92.8:30002,enode://de823d8409cbc42c2c783eee521121b2274c6264f8f647b4143d1f00d909363f930290c6a5b53e17914c54135511bb5e4f5bfab2271cf83f5d2104290a1400dc@57.130.8.112:30002,enode://6c954754c419c3459e3c6657c9a9e02e31bf69a9596e1cc040e4663e46e3638da120795b63c7bd885f2361f826db705bedd40093b65b60911725c08dafd802f9@51.91.50.10:30002,enode://b03e4b037a2292f13bbc9dfa31a281838d12dfebae42c3fbf8fa937d59e7a2560780c6c5ca61a8d1337662186b07432e1a88be9727e5e2ea01444e7a1f5bbefa@57.129.87.92:30002,enode://36d1fa77c5c702a9e1a69bd383c705836ba59c78baaebc27b67240065f5a9d17c173786a31756b0cd97e40e3a1dbf2ed54c534ea03495c1abd8bec8164ba940b@51.38.26.142:30002,enode://91a8b7fec339f6b1175f000151c3669781646673e3298523b3c7f8503f952bd3a2d9a31c93d77e13a28a36a44536cbcd4ed96d6813b0f1f029fbc8d55ff3c161@217.182.88.215:30002,enode://fa62f4721884b514c3d2a7dc76066bb38f8cd778e7feb6a9ea588ffdf67d2e586f3b9674c75c47a20d244974aaab986aa7b892bba9430430d83644bf5947e533@57.130.15.24:30002,enode://7a4c7976a3afa3e61b2e3f952477d3f3ac2b0b85797e82246446b0cba78ef4bfbffd47d895209f89fb507a26c9441b615b8433455093e8615d7676ca559ecce4@46.105.223.217:30002,enode://67c1d847c65478070d3694b0c82a278826bc31ad22e125288a40d071d4c3072370af140ea9ed983780551d65e777b98a7e495a69a7199713dfce94af89dbb0dc@51.91.50.9:30002",
+    "MaxActivePeers": 25
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Host": "127.0.0.1",
+    "Port": 8545,
+    "EnabledModules": [
+      "Eth",
+      "Net",
+      "Web3",
+      "Debug",
+      "Admin",
+      "Proof",
+      "Arkiv",
+      "TxPool",
+      "Subscribe",
+      "Rpc"
+    ],
+    "EnginePort": 8551,
+    "EngineHost": "127.0.0.1"
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 200000000,
+    "PreWarming": "None"
+  }
+}

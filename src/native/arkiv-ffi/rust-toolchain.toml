@@ -1,0 +1,4 @@
+# The toolchain the shim builds with, locally and in CI (.github/workflows/arkiv-tests.yml): GitHub's runner images
+# ship rustup, which installs this channel on the first cargo invocation.
+[toolchain]
+channel = "1.97"
