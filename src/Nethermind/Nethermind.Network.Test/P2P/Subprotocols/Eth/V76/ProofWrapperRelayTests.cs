@@ -114,6 +114,85 @@ public class ProofWrapperRelayTests
         }
     }
 
+    /// <summary>A peer serving an invalid wrapper under an honest hash cannot get that hash refused: it is the peer's fault,
+    /// and the wrapper is fetched from another announcer.</summary>
+    [Test]
+    public async Task Fetch_InvalidWrapperUnderAnotherHash_BlamesThePeer_AndKeepsTheHashFetchable()
+    {
+        using Context context = new();
+        ProofWrapper honest = context.Wrapper(Tx(0, TestItem.KeccakA));
+        Transaction other = Tx(1, TestItem.KeccakB);
+        ProofWrapper invalid = ProofWrapperCodec.Create([ProofWrapperCodec.Normalize(other)!], [other],
+            [new AggregatedDependency(TestItem.KeccakE.ValueHash256, TestItem.KeccakF.ValueHash256)], [1]);
+        FakePeer liar = context.Peer(honest);
+        liar.Substitute = invalid.Encoded;
+        FakePeer holder = context.Peer(honest);
+
+        await context.Relay.OnAnnouncement(liar, [Announcement(honest)]);
+        await context.Relay.OnAnnouncement(holder, [Announcement(honest)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(liar.Disconnected, Is.True);
+            Assert.That(() => context.Relay.TryGetHeld(honest.Hash.ValueHash256, out _), Is.True.After(5000, 10));
+        }
+    }
+
+    [Test]
+    public async Task Fetch_NoTransactionPending_DoesNotHoldTheWrapper()
+    {
+        using Context context = new();
+        context.TxPool.SubmitTx(default!, default).ReturnsForAnyArgs(AcceptTxResult.FeeTooLow);
+        ProofWrapper wrapper = context.Wrapper(Tx(0, TestItem.KeccakA));
+
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        Assert.That(context.Relay.HeldCount, Is.Zero);
+    }
+
+    /// <summary>EIP-8518 forbids penalizing a peer for proof failures but allows deprioritizing its fetches: after repeated
+    /// failures its announcements are no longer fetched, and it stays connected.</summary>
+    [Test]
+    public async Task Fetch_RepeatedProofFailures_StopFetchingFromThePeer()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        for (int i = 0; i <= 8; i++)
+        {
+            Transaction tx = Tx((ulong)i, TestItem.KeccakA);
+            ProofWrapper wrapper = ProofWrapperCodec.Create([ProofWrapperCodec.Normalize(tx)!], [tx],
+                Eip8288Dependencies.Canonicalize(ProofWrapperCodec.AggregatedDependencies(tx)), [1, 2, 3]);
+            peer.Served = wrapper;
+            await context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Requests, Is.EqualTo(8));
+            Assert.That(peer.Disconnected, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Fetch_ConcurrentFetchesFromOnePeer_AreCapped()
+    {
+        using Context context = new();
+        FakePeer peer = context.Peer();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peer.Gate = release.Task;
+        List<Task> fetches = [];
+        for (int i = 0; i < 6; i++)
+        {
+            ProofWrapper wrapper = context.Wrapper(Tx((ulong)i, TestItem.KeccakA));
+            fetches.Add(context.Relay.OnAnnouncement(peer, [Announcement(wrapper)]));
+        }
+
+        Assert.That(() => peer.Requests, Is.EqualTo(4).After(5000, 10));
+        release.SetResult();
+        await Task.WhenAll(fetches);
+        Assert.That(peer.Requests, Is.EqualTo(4));
+    }
+
     [Test]
     public async Task Fetch_RetainedWitnessFails_DiscardsTheWrapper()
     {
@@ -355,6 +434,11 @@ public class ProofWrapperRelayTests
     {
         private int _requests;
 
+        public ProofWrapper? Served { get; set; } = served;
+
+        /// <summary>An item served in place of <see cref="Served"/>'s, under its hash.</summary>
+        public byte[]? Substitute { get; set; }
+
         public List<WrapperAnnouncement> Announced { get; } = [];
         public List<bool> CompactFlags { get; } = [];
         public bool CompactReferencesEverything { get; set; }
@@ -369,11 +453,11 @@ public class ProofWrapperRelayTests
             Interlocked.Increment(ref _requests);
             CompactFlags.Add(compact);
             await Gate;
-            if (served is null || !System.Linq.Enumerable.Contains(hashes, served.Hash.ValueHash256)) return [];
-            byte[] item = compact && CompactReferencesEverything
-                ? ProofWrapperCodec.Encode(served.EncodedTransactions, served.Deps, served.Proof, static _ => true)
-                : served.Encoded;
-            return [new ServedWrapper(served.Hash.ValueHash256, item)];
+            if (Served is not { } wrapper || !System.Linq.Enumerable.Contains(hashes, wrapper.Hash.ValueHash256)) return [];
+            byte[] item = Substitute ?? (compact && CompactReferencesEverything
+                ? ProofWrapperCodec.Encode(wrapper.EncodedTransactions, wrapper.Deps, wrapper.Proof, static _ => true)
+                : wrapper.Encoded);
+            return [new ServedWrapper(wrapper.Hash.ValueHash256, item)];
         }
 
         public Task<IReadOnlyList<ServedManifest>> GetProofWrapperManifests(IReadOnlyList<ValueHash256> hashes, CancellationToken token) =>

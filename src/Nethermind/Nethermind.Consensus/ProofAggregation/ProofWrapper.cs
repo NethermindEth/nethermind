@@ -172,6 +172,13 @@ public static class ProofWrapperCodec
     public static byte[] Encode(IReadOnlyList<byte[]> encodedTransactions, IReadOnlyList<AggregatedDependency> deps, ReadOnlySpan<byte> proof,
         Func<byte[], bool>? reference = null)
     {
+        byte[] rawDeps = new byte[deps.Count * Eip8288Constants.DependencyTripleLength];
+        for (int i = 0; i < deps.Count; i++) deps[i].WriteTo(rawDeps.AsSpan(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength));
+        return Encode(encodedTransactions, rawDeps, proof, reference);
+    }
+
+    private static byte[] Encode(IReadOnlyList<byte[]> encodedTransactions, ReadOnlySpan<byte> rawDeps, ReadOnlySpan<byte> proof, Func<byte[], bool>? reference)
+    {
         bool[] references = new bool[encodedTransactions.Count];
         int txsLength = 0;
         for (int i = 0; i < references.Length; i++)
@@ -182,7 +189,8 @@ public static class ProofWrapperCodec
             txsLength += references[i] ? ReferenceLength : Rlp.LengthOf(transaction);
         }
 
-        int depsLength = deps.Count * Rlp.LengthOfByteString(Eip8288Constants.DependencyTripleLength, 0);
+        int depCount = rawDeps.Length / Eip8288Constants.DependencyTripleLength;
+        int depsLength = depCount * Rlp.LengthOfByteString(Eip8288Constants.DependencyTripleLength, 0);
         int contentLength = Rlp.LengthOfSequence(txsLength) + Rlp.LengthOfSequence(depsLength) + Rlp.LengthOf(proof);
 
         byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
@@ -204,13 +212,7 @@ public static class ProofWrapperCodec
 
         writer.EndSequence(txs);
         RlpSequence depsSequence = writer.StartSequence(depsLength);
-        Span<byte> triple = stackalloc byte[Eip8288Constants.DependencyTripleLength];
-        foreach (AggregatedDependency dependency in deps)
-        {
-            dependency.WriteTo(triple);
-            writer.Write(triple);
-        }
-
+        for (int i = 0; i < depCount; i++) writer.Write(rawDeps.Slice(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength));
         writer.EndSequence(depsSequence);
         writer.Write(proof);
         writer.EndSequence(outer);
@@ -222,11 +224,14 @@ public static class ProofWrapperCodec
     /// <param name="resolve">Resolves a compact <c>[encoding-hash]</c> reference to a cached aggregate transaction encoding,
     /// or <see langword="null"/> when references are not allowed, as in a <c>compact = 0</c> response.</param>
     /// <param name="maxLength">The announced length the reconstructed wrapper may not exceed.</param>
+    /// <param name="canonicalHash">The hash of the reconstructed canonical wrapper, set whenever it was reconstructed, so that
+    /// a wrapper found invalid is attributed to the hash it really has.</param>
     public static Verdict TryDecode(ReadOnlySpan<byte> item, Func<ValueHash256, byte[]?>? resolve, int maxLength,
-        out ProofWrapper? wrapper, out string? error)
+        out ProofWrapper? wrapper, out string? error, out ValueHash256 canonicalHash)
     {
         wrapper = null;
         error = null;
+        canonicalHash = default;
         List<byte[]> encodedTransactions = [];
         List<Transaction> transactions = [];
         byte[] rawDeps;
@@ -290,6 +295,7 @@ public static class ProofWrapperCodec
         }
 
         if (transactions.Count == 0) return Fail(Verdict.Malformed, "wrapper carries no transaction", out error);
+        canonicalHash = ValueKeccak.Compute(Encode(encodedTransactions, rawDeps, proof, null));
         if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) return Fail(Verdict.Invalid, "wrapper proof is empty or too large", out error);
 
         List<AggregatedDependency> expected = [];
@@ -307,6 +313,10 @@ public static class ProofWrapperCodec
         wrapper = created;
         return Verdict.Valid;
     }
+
+    /// <inheritdoc cref="TryDecode(ReadOnlySpan{byte}, Func{ValueHash256, byte[]}?, int, out ProofWrapper?, out string?, out ValueHash256)"/>
+    public static Verdict TryDecode(ReadOnlySpan<byte> item, Func<ValueHash256, byte[]?>? resolve, int maxLength,
+        out ProofWrapper? wrapper, out string? error) => TryDecode(item, resolve, maxLength, out wrapper, out error, out _);
 
     /// <summary>Verifies <paramref name="wrapper"/>'s recursive proof against its exact dependency union.</summary>
     public static bool VerifyProof(ProofWrapper wrapper, ILeanProofVerifier verifier) =>

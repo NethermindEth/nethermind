@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.TxPool;
 using TxEventArgs = Nethermind.TxPool.TxEventArgs;
+using EncodingNode = System.Collections.Generic.LinkedListNode<(Nethermind.Core.Crypto.ValueHash256 Hash, byte[] Encoding)>;
 using WrapperNode = System.Collections.Generic.LinkedListNode<Nethermind.Consensus.ProofAggregation.ProofWrapper>;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V76;
@@ -45,7 +46,14 @@ public sealed class ProofWrapperRelay : IDisposable
     private const int MaxProducedTransactions = 256;
     private const int PeerRecordCapacity = 4096;
     private const int PeerTransactionCapacity = 16384;
-    private const int EncodingCacheCapacity = 16384;
+    private const long MaxEncodingBytes = 32 * 1024 * 1024;
+
+    /// <summary>Concurrent fetches from one peer; announcements beyond them are not fetched from it.</summary>
+    private const int MaxFetchesPerPeer = 4;
+
+    /// <summary>Proof failures after which a peer's announcements are no longer fetched. EIP-8518 forbids penalizing a peer for
+    /// them, but allows deprioritizing its fetches.</summary>
+    private const int MaxProofFailuresPerPeer = 8;
 
     /// <summary>Wrappers above this length are first compared with held coverage through their manifests.</summary>
     private const int ManifestThreshold = 256 * 1024;
@@ -67,7 +75,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
     private readonly Dictionary<ValueHash256, Fetch> _fetches = [];
     private readonly LruKeyCache<ValueHash256> _discarded = new(PeerRecordCapacity, "discarded proof wrappers");
-    private readonly LruCache<ValueHash256, byte[]> _encodings = new(EncodingCacheCapacity, "aggregate transaction encodings");
+    private readonly EncodingCache _encodings = new(MaxEncodingBytes);
     private readonly ConcurrentDictionary<IProofWrapperPeer, PeerState> _peers = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Timer? _timer;
@@ -149,6 +157,7 @@ public sealed class ProofWrapperRelay : IDisposable
         if (!IsActive || !_peers.TryGetValue(peer, out PeerState? state)) return Task.CompletedTask;
 
         List<ValueHash256> wanted = [];
+        bool fetches = Volatile.Read(ref state.ProofFailures) < MaxProofFailuresPerPeer && Volatile.Read(ref state.Fetches) < MaxFetchesPerPeer;
         lock (_lock)
         {
             foreach (WrapperAnnouncement announcement in announcements)
@@ -165,6 +174,7 @@ public sealed class ProofWrapperRelay : IDisposable
                 // Equal digests identify coverage held already, despite different proof bytes.
                 if (_discarded.Get(announcement.Hash) || _heldDigests.ContainsKey((announcement.DepsHash, announcement.TxsHash))) continue;
 
+                if (!fetches) continue;
                 if (_fetches.TryGetValue(announcement.Hash, out Fetch? fetch))
                 {
                     if (!fetch.Announcers.Contains(peer)) fetch.Announcers.Add(peer);
@@ -236,6 +246,7 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         if (!_peers.TryGetValue(peer, out PeerState? state)) return;
 
+        Interlocked.Increment(ref state.Fetches);
         try
         {
             Dictionary<ValueHash256, ValueHash256[]>? manifests = await FetchManifests(peer, state, hashes);
@@ -260,6 +271,10 @@ public sealed class ProofWrapperRelay : IDisposable
         {
             if (_logger.IsDebug) _logger.Debug($"Proof wrapper fetch failed: {exception}");
             foreach (ValueHash256 hash in hashes) TryNextAnnouncer(hash, peer);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref state.Fetches);
         }
     }
 
@@ -339,7 +354,7 @@ public sealed class ProofWrapperRelay : IDisposable
     {
         state.Announced.TryGet(served.Hash, out WrapperAnnouncement announcement);
         ProofWrapperCodec.Verdict verdict = ProofWrapperCodec.TryDecode(served.Item, compact ? ResolveEncoding : null, announcement.Length,
-            out ProofWrapper? wrapper, out string? error);
+            out ProofWrapper? wrapper, out string? error, out ValueHash256 canonicalHash);
         switch (verdict)
         {
             case ProofWrapperCodec.Verdict.CacheMiss when retryFull is not null:
@@ -347,6 +362,9 @@ public sealed class ProofWrapperRelay : IDisposable
                 return;
             case ProofWrapperCodec.Verdict.Malformed or ProofWrapperCodec.Verdict.CacheMiss:
                 throw new ProtocolViolation(error!);
+            // A wrapper is discarded only under the hash it really has, so a peer cannot have another's wrapper refused.
+            case ProofWrapperCodec.Verdict.Invalid or ProofWrapperCodec.Verdict.Unsupported when canonicalHash != served.Hash:
+                throw new ProtocolViolation("wrapper does not match its served hash");
             case ProofWrapperCodec.Verdict.Invalid or ProofWrapperCodec.Verdict.Unsupported:
                 Discard(served.Hash, error!);
                 return;
@@ -362,6 +380,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
         if (!ProofWrapperCodec.VerifyProof(wrapper, _proofCache))
         {
+            Interlocked.Increment(ref state.ProofFailures);
             Discard(served.Hash, "wrapper proof does not verify");
             return;
         }
@@ -380,17 +399,25 @@ public sealed class ProofWrapperRelay : IDisposable
 
         int admitted = 0;
         int rejected = 0;
+        int known = 0;
         foreach (Transaction transaction in wrapper.Transactions)
         {
             AcceptTxResult result = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
             if (result == AcceptTxResult.Accepted) admitted++;
-            else if (result == AcceptTxResult.AlreadyKnown) continue;
+            else if (result == AcceptTxResult.AlreadyKnown) known++;
             else if (FrameTxClaimVerifier.IsWitnessError(result.Message))
             {
                 Discard(wrapper.Hash.ValueHash256, $"retained witness of {transaction.Hash} failed: {result.Message}");
                 return;
             }
             else rejected++;
+        }
+
+        // A wrapper none of whose transactions is pending covers nothing this node can build or relay.
+        if (admitted == 0 && known == 0)
+        {
+            Discard(wrapper.Hash.ValueHash256, "no transaction of the wrapper is pending");
+            return;
         }
 
         bool relay = admitted > 0 && admitted >= rejected;
@@ -428,6 +455,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
         _heldOrder.Remove(node);
         _heldBytes -= wrapper.Length;
+        foreach (byte[] encoding in wrapper.EncodedTransactions) _encodings.Remove(ProofWrapperCodec.EncodingHash(encoding));
         Decrement(_heldDigests, (wrapper.DepsHash, wrapper.TxsHash));
         foreach (Hash256 txHash in wrapper.Manifest) Decrement(_coveredTxs, txHash.ValueHash256);
     }
@@ -497,7 +525,7 @@ public sealed class ProofWrapperRelay : IDisposable
         Complete(hash);
     }
 
-    private byte[]? ResolveEncoding(ValueHash256 encodingHash) => _encodings.TryGet(encodingHash, out byte[] encoding) ? encoding : null;
+    private byte[]? ResolveEncoding(ValueHash256 encodingHash) => _encodings.TryGet(encodingHash);
 
     private bool AllCovered(ValueHash256[] txHashes)
     {
@@ -714,6 +742,58 @@ public sealed class ProofWrapperRelay : IDisposable
         _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
     }
 
+    /// <summary>Aggregate transaction encodings by encoding hash, least recently used first out, bounded by their bytes.</summary>
+    private sealed class EncodingCache(long maxBytes)
+    {
+        private readonly Lock _lock = new();
+        private readonly Dictionary<ValueHash256, EncodingNode> _entries = [];
+        private readonly LinkedList<(ValueHash256 Hash, byte[] Encoding)> _order = [];
+        private long _bytes;
+
+        public void Set(in ValueHash256 hash, byte[] encoding)
+        {
+            if (encoding.Length > maxBytes) return;
+            lock (_lock)
+            {
+                if (_entries.TryGetValue(hash, out EncodingNode? node))
+                {
+                    _order.Remove(node);
+                    _order.AddLast(node);
+                    return;
+                }
+
+                _entries[hash] = _order.AddLast((hash, encoding));
+                _bytes += encoding.Length;
+                while (_bytes > maxBytes) RemoveCore(_order.First!.Value.Hash);
+            }
+        }
+
+        public byte[]? TryGet(in ValueHash256 hash)
+        {
+            lock (_lock) return _entries.TryGetValue(hash, out EncodingNode? node) ? node.Value.Encoding : null;
+        }
+
+        public void Remove(in ValueHash256 hash)
+        {
+            lock (_lock) RemoveCore(hash);
+        }
+
+        internal long Bytes
+        {
+            get
+            {
+                lock (_lock) return _bytes;
+            }
+        }
+
+        private void RemoveCore(in ValueHash256 hash)
+        {
+            if (!_entries.Remove(hash, out EncodingNode? node)) return;
+            _order.Remove(node);
+            _bytes -= node.Value.Encoding.Length;
+        }
+    }
+
     /// <summary>A wanted wrapper and the peers that announced it, the first of which it is being fetched from.</summary>
     private sealed class Fetch(IProofWrapperPeer announcer)
     {
@@ -723,6 +803,9 @@ public sealed class ProofWrapperRelay : IDisposable
     /// <summary>What one connection has exchanged: bounded records, so old entries may be forgotten.</summary>
     private sealed class PeerState
     {
+        public int Fetches;
+        public int ProofFailures;
+
         public LruCache<ValueHash256, WrapperAnnouncement> Announced { get; } = new(PeerRecordCapacity, "announced proof wrappers");
         public LruKeyCache<ValueHash256> AnnouncedTo { get; } = new(PeerRecordCapacity, "proof wrappers announced to a peer");
         public LruKeyCache<ValueHash256> Exchanged { get; } = new(PeerRecordCapacity, "proof wrappers exchanged with a peer");
