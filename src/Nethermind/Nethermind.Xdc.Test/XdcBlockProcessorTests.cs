@@ -18,9 +18,11 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Xdc.Test.Helpers;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
@@ -77,10 +79,40 @@ internal class XdcBlockProcessorTests
     }
 
     [Test]
+    public void CloneForProcessing_PreservesXdcHeaderFields()
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithValidators([Address.FromNumber(2)])
+            .WithPenalties([Address.FromNumber(3)])
+            .TestObject;
+
+        BlockHeader clone = header.CloneForProcessing();
+
+        Assert.That(clone, Is.TypeOf<XdcBlockHeader>());
+        XdcBlockHeader preparedHeader = (XdcBlockHeader)clone;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preparedHeader.Validators, Is.EqualTo(header.Validators));
+            Assert.That(preparedHeader.Penalties, Is.EqualTo(header.Penalties));
+        }
+    }
+
+    [Test]
+    public async Task ProducedBlock_HasNoBlobGasUsed_WhenEip4844Enabled()
+    {
+        using XdcTestBlockchain chain = await XdcTestBlockchain.Create(1);
+        chain.ChangeReleaseSpec(spec => spec.IsEip4844Enabled = true);
+
+        await chain.AddBlocks(1);
+
+        Assert.That(chain.BlockTree.Head!.Header.BlobGasUsed, Is.Null);
+    }
+
+    [Test]
     public void PostValidation_CopiesProcessedRewardsToSuggestedHeader()
     {
         XdcBlockHeader suggestedHeader = Build.A.XdcBlockHeader().TestObject;
-        XdcBlockHeader processedHeader = suggestedHeader.CreateHeaderForProcessing();
+        XdcBlockHeader processedHeader = (XdcBlockHeader)suggestedHeader.CloneForProcessing();
         XdcProcessedRewards rewards = new([new BlockReward(Address.FromNumber(1), (UInt256)42)], new XdcEpochRewards());
         processedHeader.ProcessedRewards = rewards;
         Block suggestedBlock = Build.A.Block.WithHeader(suggestedHeader).TestObject;

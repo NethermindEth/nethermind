@@ -106,7 +106,8 @@ public class XdcSubnetBlockHeader(
         return x;
     }
 
-    internal override XdcBlockHeader CreateHeaderForProcessing()
+    /// <inheritdoc/>
+    public override BlockHeader CloneForProcessing()
     {
         XdcSubnetBlockHeader header = new(
             ParentHash,
