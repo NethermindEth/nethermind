@@ -29,7 +29,7 @@ namespace Nethermind.Benchmarks.Consensus;
 /// <para>Linux only: the native backend and the tool that signs the claims ship for linux-x64 and linux-arm64. Each case
 /// appends a JSON line of what BenchmarkDotNet does not measure (CPU cores used, peak RSS, native calls, proof sizes, the
 /// broadcast time of each proof form and the final proof's verify time) to <c>$EIP8288_BENCH_RESULTS/builder.jsonl</c>. Run
-/// under <c>--quick</c>, as <c>scripts/eip8288-bench/builder.sh</c> does: each case runs in a process of its own, so its peak
+/// under <c>--quick</c>, as <c>tools/eip8288-bench/builder.sh</c> does: each case runs in a process of its own, so its peak
 /// RSS is its own.</para>
 /// </remarks>
 public class DependencyProofAggregationBenchmarks

@@ -6,7 +6,7 @@
 # production schedule (wide) and the former one (narrow), each BenchmarkDotNet case in a process
 # of its own so each peak RSS is its own.
 #
-# Usage: scripts/eip8288-bench/builder.sh [--profile whole|local-block-builder] [--claims "16 64 256 500"] [--out DIR]
+# Usage: tools/eip8288-bench/builder.sh [--profile whole|local-block-builder] [--claims "16 64 256 500"] [--out DIR]
 #
 # Profiles, by EIP-7870 name:
 #   whole                the whole machine
