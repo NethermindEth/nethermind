@@ -58,7 +58,7 @@ public class SnapServingBenchmark
     public void Setup()
     {
         Random random = new(42);
-        NodeStorage nodeStorage = new(new MemDb());
+        MemoryNodeStorage nodeStorage = new();
         StateTree stateTree = new(new RawScopedTrieStore(nodeStorage), NullLogManager.Instance);
         for (int i = 0; i < EoaCount; i++) stateTree.Set(Keccak.Compute(BitConverter.GetBytes(i)), new Account((UInt256)i));
 
@@ -102,7 +102,7 @@ public class SnapServingBenchmark
 
         StateId stateId = new(0, _rootHash.ValueHash256);
         RocksDbPersistence persistence = new(_columnsDb, NullLogManager.Instance, NullTrieNodeLog.Instance);
-        new Importer(nodeStorage, persistence, NullLogManager.Instance).Copy(stateId).GetAwaiter().GetResult();
+        FlatBenchmarkSeed.Copy(nodeStorage, persistence, stateId);
         _columnsDb.Flush();
         _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         SnapFlatStateServer stateServer = new(

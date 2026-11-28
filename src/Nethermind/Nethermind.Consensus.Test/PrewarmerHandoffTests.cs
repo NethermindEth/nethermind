@@ -332,7 +332,6 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             minPoolSize: 4,
             concurrency: 3,
             parallelExecutionBatchRead: true,
-            ProcessingScope.Resolve<NodeStorageCache>(),
             caches,
             LimboLogs.Instance,
             handoff: true);
@@ -586,7 +585,6 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             minPoolSize: 4,
             concurrency: 3,
             parallelExecutionBatchRead: true,
-            ProcessingScope.Resolve<NodeStorageCache>(),
             caches,
             LimboLogs.Instance,
             handoff: true);
@@ -2121,7 +2119,6 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
             minPoolSize: 4,
             concurrency: 3,
             parallelExecutionBatchRead: true,
-            ProcessingScope.Resolve<NodeStorageCache>(),
             caches,
             LimboLogs.Instance,
             senderRecovery: new LateSender(late, TestItem.AddressB),

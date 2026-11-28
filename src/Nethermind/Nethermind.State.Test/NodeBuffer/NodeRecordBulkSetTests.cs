@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -285,7 +286,7 @@ internal class NodeRecordBulkSetTests
         int fetchesBeforeBulkSet = source.FetchCount;
         (ValueHash256 Hash, ulong Pointer) newRoot = BulkSet(persistedBuffer, source, address, persistedRoot, [(items[0].key, NewValue)], canParallelize: false);
 
-        PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        PatriciaTree tree = new(new RawScopedTrieStore(new TestNodeStorage(new MemDb())), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
         tree.Set(items[0].key.Bytes, NewValue);
         tree.UpdateRootHash();
@@ -414,7 +415,7 @@ internal class NodeRecordBulkSetTests
         if (warmedSibling.Pointer != 0) Assert.That(warmed.TryLocate(warmedSibling.Pointer, out NodeRecord sibling) && sibling.Hash == warmedSibling.Data, Is.True);
         int before = source.FetchCount;
         (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, persistedRoot, [(CollapseKeyA, null)], false);
-        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        PatriciaTree expected = new(new RawScopedTrieStore(new TestNodeStorage(new MemDb())), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items.Where(item => item.key != CollapseKeyA)) expected.Set(key.Bytes, value);
         expected.UpdateRootHash();
         using (Assert.EnterMultipleScope())
@@ -844,7 +845,6 @@ internal class NodeRecordBulkSetTests
         public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
             TryLoadRlp(path, hash, flags) ?? throw new MissingTrieNodeException($"Trie node missing hash={hash} path={path}", null, path, hash);
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => this;
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode root, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
     }
 
@@ -872,7 +872,7 @@ internal class NodeRecordBulkSetTests
     }
 
     /// <summary>Keeps the path and RLP of every node committed since the last <see cref="TakeCommitted"/>.</summary>
-    private sealed class CommitRecordingTrieStore() : RawTrieStore(new MemDb())
+    private sealed class CommitRecordingTrieStore() : RawTrieStore(new MemoryNodeStorage())
     {
         private Dictionary<TreePath, byte[]> _committed = [];
 

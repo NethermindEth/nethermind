@@ -24,6 +24,5 @@ namespace Nethermind.Trie.Pruning
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? storageRoot) => this;
 
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }
 }

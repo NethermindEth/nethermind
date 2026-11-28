@@ -93,7 +93,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
                 .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
-                .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
+                .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
             // Register keyed IDb for code database
             _containerBuilder.RegisterInstance<IDb>(new TestMemDb()).Keyed<IDb>(DbNames.Code);
@@ -357,10 +357,10 @@ public class FlatOverridableWorldScopeTests
         // own snapshot resolves it in the main buffer.
         Hash256 addressHash = Keccak.Compute(TestItem.AddressB.Bytes);
         TestMemDb trieDb = new();
-        StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
+        StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(trieDb), addressHash), LimboLogs.Instance);
         storageTree.Set(1, [0x01]);
         storageTree.Commit();
-        StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
+        StateTree stateTree = new(new RawScopedTrieStore(new TestNodeStorage(trieDb)), LimboLogs.Instance);
         stateTree.Set(TestItem.AddressB, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
         stateTree.Commit();
         BlockHeader mainBlock = Build.A.BlockHeader.WithNumber(3).WithStateRoot(stateTree.RootHash).TestObject;

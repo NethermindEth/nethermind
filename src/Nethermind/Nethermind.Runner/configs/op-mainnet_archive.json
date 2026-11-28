@@ -20,12 +20,8 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Db": {
-    "SharedBlockCacheSize": 1073741824,
-    "StateDbRowCacheSize": 268435456
+    "SharedBlockCacheSize": 1073741824
   },
   "JsonRpc": {
     "Enabled": true,
@@ -48,6 +44,7 @@
     "SequencerUrl": "https://mainnet-sequencer.optimism.io"
   },
   "FlatDb": {
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

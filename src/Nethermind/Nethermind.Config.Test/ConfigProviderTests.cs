@@ -217,10 +217,10 @@ namespace Nethermind.Config.Test
         public void Setter_error_without_an_exit_code_is_wrapped_with_the_item_name()
         {
             ConfigProvider provider = new();
-            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Pruning.DirtyNodeShardBit"] = "0" }));
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["SetterFailure.Value"] = "-1" }));
 
             Assert.That(provider.Initialize, Throws.TypeOf<InvalidOperationException>()
-                .With.Message.EqualTo($"Cannot set value of {nameof(PruningConfig)}.{nameof(PruningConfig.DirtyNodeShardBit)}")
+                .With.Message.EqualTo($"Cannot set value of {nameof(SetterFailureConfig)}.{nameof(SetterFailureConfig.Value)}")
                 .And.InnerException.TypeOf<TargetInvocationException>());
         }
     }
@@ -537,4 +537,20 @@ namespace Nethermind.Config.Test
         public int Value { get; set; } = 4;
         public int Other { get; set; } = 5;
     }
+
+    public interface ISetterFailureConfig : IConfig
+    {
+        [ConfigItem(Description = "Test item whose setter rejects negative values without an exit code.", DefaultValue = "0")]
+        int Value { get; set; }
+    }
+
+    public class SetterFailureConfig : ISetterFailureConfig
+    {
+        public int Value
+        {
+            get => 0;
+            set => ArgumentOutOfRangeException.ThrowIfNegative(value);
+        }
+    }
+
 }

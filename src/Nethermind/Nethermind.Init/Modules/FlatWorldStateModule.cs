@@ -8,7 +8,6 @@ using Autofac;
 using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
@@ -17,13 +16,11 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.Core.Container;
-using Nethermind.Init.Steps;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Migration;
+using Nethermind.State.Healing;
+using Nethermind.Synchronization.Trie;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -53,8 +50,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 new FlatTrieVerifier(flatDbManager, persistence, logManager, VerifyTrieDirectory.GetApplicationResourcePath(initConfig.BaseDbPath)))
             .AddSingleton<FlatStateBoundary>()
 
-            // Stub out the pruning trie store admin RPC with a disabled response.
-            .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
@@ -99,6 +94,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<TrieReassembler>()
             .AddSingleton<FlatBalHealing>()
+            .AddSingleton<ICodeRecovery, CodeRecovery>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
@@ -127,9 +123,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
-            .AddSingleton<HalfPathMigrationCursor>()
             .Add<CarryForwardCachingPersistence>()
-            .Add<HalfPathFallbackPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
             .AddSingleton<FlatLayoutResolver>()
             .Intercept<IFlatDbConfig>((config, ctx) =>
@@ -148,10 +142,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
-                // Below the reader caches, so what they cache already includes the fallback.
-                if (ctx.Resolve<HalfPathMigrationCursor>().Current is not null)
-                    persistence = ctx.Resolve<HalfPathFallbackPersistence>(TypedParameter.From<IPersistence>(persistence));
-
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return flatDbConfig.EnableCarryForwardCache
                     ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader))
@@ -167,32 +157,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
         }
 
-        // Registered unconditionally so `nethermind import-flat-db` can always find it. Carrying
-        // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
-        builder
-            .AddSingleton<Importer>()
-            .AddStep(typeof(ImportFlatDb));
-
-        if (flatDbConfig.ImportFromPruningTrieState)
-            builder.SelectStepTarget(typeof(ImportFlatDb));
-
-        // Registered unconditionally: a migration, once started, continues whether or not it is still configured.
-        builder
-            .AddSingleton<HalfPathMigrator>()
-            .AddStep(typeof(PreparePruningTrieStateMigration))
-            .AddStep(typeof(StartPruningTrieStateMigration));
-
-        // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
-        if (flatDbConfig.DropPruningTrieState)
-        {
-            builder.AddStep(typeof(DropPruningTrieState));
-        }
-
         builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)
             .As<IHistoricalTrieVisitor>()
             .ExternallyOwned()
             .PreserveExistingDefaults();
-
         if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
         {
             throw new InvalidConfigurationException(
@@ -252,8 +220,4 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
-    {
-        public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
-    }
 }

@@ -45,13 +45,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
-        FlatArchiveMode.Apply(
-            configProvider.GetConfig<IFlatDbConfig>(),
-            configProvider.GetConfig<IPruningConfig>(),
-            configProvider.GetConfig<ISyncConfig>(),
-            configProvider,
-            logManager.GetClassLogger(typeof(FlatArchiveMode)));
-
         builder
             .AddServiceStopper()
             .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
@@ -66,9 +59,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             ))
             .AddModule(new DbMonitoringModule())
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
-            .AddModule(new PruningTrieStoreModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()))
-            .AddModule(new WorldStateDbDeciderModule())
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new DatabaseMigrationsModule())

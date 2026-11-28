@@ -19,6 +19,7 @@
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.State.Flat.Test\Nethermind.State.Flat.Test.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="ModuleTests\BlockForRpcFixtures\*.json" />

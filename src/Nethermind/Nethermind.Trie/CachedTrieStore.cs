@@ -32,9 +32,6 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
         throw new InvalidOperationException("unsupported");
 
-    public INodeStorage.KeyScheme Scheme => @base.Scheme;
-
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         @base.BeginCommit(root, writeFlags);
 }
-

@@ -567,13 +567,19 @@ public class OptimismEthRpcModuleTest
         // Null while the state can be read.
         public StateFailure? Failure { get; set; }
 
-        private static StateReader CorruptTrieReader()
+        private static IStateReader CorruptTrieReader()
         {
             IScopedTrieStore nodes = Substitute.For<IScopedTrieStore>();
             nodes.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>(), new byte[] { 0xc0 }));
-            ITrieStore trieStore = Substitute.For<ITrieStore>();
-            trieStore.GetTrieStore(null).Returns(nodes);
-            return new StateReader(trieStore, Substitute.For<IKeyValueStore>(), LimboLogs.Instance);
+            IStateReader reader = Substitute.For<IStateReader>();
+            reader.TryGetAccount(Arg.Any<BlockHeader?>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
+            {
+                StateTree tree = new(nodes, LimboLogs.Instance) { RootHash = call.ArgAt<BlockHeader?>(0)!.StateRoot! };
+                Account? account = tree.Get(call.ArgAt<Address>(1));
+                call[2] = account?.ToStruct() ?? default;
+                return account is not null;
+            });
+            return reader;
         }
 
         /// <summary>The next read sets <see cref="ReadHeld"/> once it has read the state, then waits for <see cref="ReleaseRead"/>.</summary>

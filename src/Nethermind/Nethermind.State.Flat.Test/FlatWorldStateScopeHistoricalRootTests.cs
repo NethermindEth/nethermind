@@ -200,7 +200,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         return new FlatWorldStateScope(
             currentStateId,
             bundle,
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new MemDb()),
+            new KeyValueWithBatchingBackedCodeDb(new MemDb()),
             Substitute.For<IFlatCommitTarget>(),
             new FlatDbConfig { CompactSize = 2, VerifyWithTrie = verifyWithTrie },
             new NoopTrieWarmer(),

@@ -176,7 +176,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         };
         // Every column owns its explicitly configured block cache; the factory's required shared cache is unused.
         using HyperClockCacheWrapper sharedCache = new(262144);
-        RocksDbFactory factory = new(new RocksDbConfigFactory(config, new PruningConfig(), new HardwareInfo(), logs, validateConfig: false),
+        RocksDbFactory factory = new(new RocksDbConfigFactory(config, new HardwareInfo(), logs, validateConfig: false),
             config, sharedCache, new RealFileSystem(), logs, path);
         ColumnsDb<BeaconChainDbColumns> db = (ColumnsDb<BeaconChainDbColumns>)factory.CreateColumnsDb<BeaconChainDbColumns>(
             new DbSettings("lightClientBeacon", path) { PersistRepairMarkerUntilAcknowledged = true, SkipMetricsTracking = true });

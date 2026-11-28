@@ -683,9 +683,6 @@ jobs:
           fi
 
           SETUP_ARGS="--chunk $CHUNK"
-          if [ "$FLATDB" != "1" ]; then
-            SETUP_ARGS="$SETUP_ARGS --triedb"
-          fi
           if [ "$PARALLEL" = "false" ]; then
             SETUP_ARGS="$SETUP_ARGS --bal-sequential"
           fi

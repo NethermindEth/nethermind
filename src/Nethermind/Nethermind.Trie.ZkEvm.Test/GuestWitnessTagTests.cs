@@ -95,6 +95,5 @@ public class GuestWitnessTagTests
         public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => rlp;
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => rlp;
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
     }
 }

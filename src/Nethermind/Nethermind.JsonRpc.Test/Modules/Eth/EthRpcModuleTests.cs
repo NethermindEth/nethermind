@@ -667,23 +667,6 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_get_storage_at_no_state_reports_state_unavailable_like_sibling_methods()
-    {
-        // A block with no state must fail with -32002 "No state available", matching eth_getBalance/getCode/
-        // getTransactionCount/call — not surface a backend exception through the generic -32603 handler.
-        using Context ctx = await Context.Create(useFlatDb: false);
-        await Task.Delay(100); // Wait a bit for pruning
-        ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
-        ctx.Test.StateDb.Clear();
-        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serialized, Does.Contain("\"code\":-32002"));
-            Assert.That(serialized, Does.Contain("No state available for block"));
-        }
-    }
-
     // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
     // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
     [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
@@ -761,9 +744,9 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_storage_values_match_the_per_slot_reads([Values] bool useFlatDb)
+    public async Task Eth_get_storage_values_match_the_per_slot_reads()
     {
-        using Context ctx = await Context.Create(useFlatDb: useFlatDb);
+        using Context ctx = await Context.Create();
         BlockHeader head = ctx.Test.BlockTree.Head!.Header;
         Dictionary<Address, UInt256[]> requests = new()
         {
@@ -862,11 +845,11 @@ public partial class EthRpcModuleTests
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithSyncMode(syncMode)
-            .WithFlatDb(false)
+
             .WithConfig(new JsonRpcConfig { Timeout = -1 })
             .Build();
         chain.WorldStateManager.FlushCache(CancellationToken.None);
-        chain.StateDb.Clear();
+        chain.BlockTree.Head!.Header.StateRoot = Keccak.Compute("unavailable state");
 
         string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, "latest");
         Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
@@ -3852,7 +3835,6 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null,
             int estimateErrorMargin = 0,
             IWallet? wallet = null)
         {
@@ -3867,12 +3849,6 @@ public partial class EthRpcModuleTests
                 .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
                 .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
 
-            // Left unset, the chain follows the suite-wide backend selection.
-            if (useFlatDb is not null)
-            {
-                testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
-            }
-
             if (wallet is not null)
             {
                 testBlockchainBuilder.WithWallet(wallet);
@@ -3880,7 +3856,11 @@ public partial class EthRpcModuleTests
 
             return Task.FromResult(new Context
             {
-                TestFactory = () => testBlockchainBuilder.Build(wrappedConfigurer).Result,
+                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                    .WithBlockchainBridge(blockchainBridge!)
+                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
+                    .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
+                    .Build(wrappedConfigurer).Result,
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(wrappedConfigurer).Result
             });

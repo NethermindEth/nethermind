@@ -48,7 +48,7 @@ public class BulkFillStorageCleanupBenchmarks
         _path = Path.Combine(Path.GetTempPath(), "nethermind-bulkfill-cleanup-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_path);
         DbConfig dbConfig = new();
-        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
+        RocksDbConfigFactory configFactory = new(dbConfig, new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
         _blockCache = new HyperClockCacheWrapper();
         RocksDbFactory factory = new(configFactory, dbConfig, _blockCache, new RealFileSystem(), NullLogManager.Instance, _path);
 

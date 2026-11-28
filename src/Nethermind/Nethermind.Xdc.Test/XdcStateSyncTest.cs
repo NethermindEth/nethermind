@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -10,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Test.FastSync;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -65,13 +67,21 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
                 syncConfig.PivotNumber.Returns(xdcFinalPivot.Number);
 
                 IStateReader stateReader = context.Resolve<IStateReader>();
-                return new XdcStateSyncPivot(blockTree, syncConfig, stateReader, snapshotManager, _logManager);
+                ITreeSyncStore treeSyncStore = context.Resolve<ITreeSyncStore>();
+                return new XdcStateSyncPivot(blockTree, syncConfig, stateReader, snapshotManager, _logManager, treeSyncStore);
             });
         });
 
         SafeContext ctx = container.Resolve<SafeContext>();
+        ITreeSyncStore treeSyncStore = container.Resolve<ITreeSyncStore>();
+        snapshotManager.When(manager => manager.StoreSnapshot(Arg.Any<XdcBlockHeader>())).Do(callInfo =>
+        {
+            XdcBlockHeader gapBlock = callInfo.Arg<XdcBlockHeader>();
+            Assert.That(treeSyncStore.NodeExists(null, TreePath.Empty, gapBlock.StateRoot!.ValueHash256), Is.True,
+                $"gap block {gapBlock.Number} state must be synced before its snapshot is stored");
+        });
 
-        await ActivateAndWait(ctx);
+        await ctx.RunFinalizingFeed(ctx.CancellationToken).WaitAsync(TimeSpan.FromMilliseconds(TimeoutLength));
 
         foreach (XdcBlockHeader gapBlock in gapBlocks)
         {
@@ -79,10 +89,6 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
         }
 
         IStateReader stateReader = container.Resolve<IStateReader>();
-        foreach (XdcBlockHeader gapBlock in gapBlocks)
-        {
-            Assert.That(stateReader.HasStateForBlock(gapBlock), Is.True, $"gap block {gapBlock.Number} state must be synced");
-        }
         Assert.That(stateReader.HasStateForBlock(xdcFinalPivot), Is.True, "final pivot state must be synced");
     }
 

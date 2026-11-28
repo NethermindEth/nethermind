@@ -28,11 +28,11 @@ namespace Nethermind.Trie.Test;
 public class VisitingTests
 {
     [TestCaseSource(nameof(GetOptions))]
-    public void Visitors_state(VisitingOptions options, INodeStorage.KeyScheme scheme)
+    public void Visitors_state(VisitingOptions options)
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
+        using ITrieStore trieStore = new TestRawTrieStore(memDb);
         PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
@@ -45,7 +45,7 @@ public class VisitingTests
             patriciaTree.Set(raw, Rlp.Encode(new Account(10UL, (ulong)(10_000_000 + i))));
         }
 
-        using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
+        patriciaTree.Commit();
 
         AppendingVisitor visitor = new(false);
 
@@ -69,16 +69,14 @@ public class VisitingTests
     }
 
     [TestCaseSource(nameof(GetOptions))]
-    public void Visitors_storage(VisitingOptions options, INodeStorage.KeyScheme scheme)
+    public void Visitors_storage(VisitingOptions options)
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
+        using ITrieStore trieStore = new TestRawTrieStore(memDb);
 
         byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
-
-        IBlockCommitter blockCommit = trieStore.BeginBlockCommit(0);
 
         for (int outerIndex = 0; outerIndex < 64; outerIndex++)
         {
@@ -112,7 +110,6 @@ public class VisitingTests
         }
 
         stateTree.Commit();
-        blockCommit.Dispose();
 
         AppendingVisitor visitor = new(true);
 
@@ -159,40 +156,39 @@ public class VisitingTests
     }
 
     [Test]
-    public void Batched_walk_reports_a_missing_node_and_visits_the_rest([Values(1, 4)] int workers)
+    public void Walk_reports_a_missing_node_and_visits_the_rest([Values(1, 4)] int workers)
     {
         using SixteenBranchTrie trie = SixteenBranchTrie.Build(removeChild: true);
 
         RecordingVisitor recursive = new(throwOnMissingNode: false);
-        Assert.That(Walk(trie, recursive, workers: 1, fullScanMemoryBudget: 0), Is.Null, "recursive walk");
-        RecordingVisitor batched = new(throwOnMissingNode: false);
-        Exception? thrown = Walk(trie, batched, workers, BatchedBudget);
+        Assert.That(Walk(trie, recursive, workers: 1), Is.Null, "recursive walk");
+        RecordingVisitor parallel = new(throwOnMissingNode: false);
+        Exception? thrown = Walk(trie, parallel, workers);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(thrown, Is.Null);
-            Assert.That(batched.Missing, Is.EqualTo(new[] { trie.Removed }));
-            Assert.That(batched.Branches, Is.EquivalentTo(trie.ExpectedBranches));
-            Assert.That(batched.Leaves, Is.EquivalentTo(trie.ExpectedLeaves));
-            Assert.That(batched.Branches, Is.EquivalentTo(recursive.Branches), "same branches as the recursive walk");
-            Assert.That(batched.Leaves, Is.EquivalentTo(recursive.Leaves), "same leaves as the recursive walk");
+            Assert.That(parallel.Missing, Is.EqualTo(new[] { trie.Removed }));
+            Assert.That(parallel.Branches, Is.EquivalentTo(trie.ExpectedBranches));
+            Assert.That(parallel.Leaves, Is.EquivalentTo(trie.ExpectedLeaves));
+            Assert.That(parallel.Branches, Is.EquivalentTo(recursive.Branches), "same branches as the recursive walk");
+            Assert.That(parallel.Leaves, Is.EquivalentTo(recursive.Leaves), "same leaves as the recursive walk");
             Assert.That(recursive.Missing, Is.EqualTo(new[] { trie.Removed }));
         }
     }
 
     [Test]
-    public void Batched_walk_rethrows_what_the_visitor_throws_on_a_missing_node([Values(1, 4)] int workers)
+    public void Walk_rethrows_what_the_visitor_throws_on_a_missing_node([Values(1, 4)] int workers)
     {
-        // The full pruning shape: the copy visitor throws on a missing node. Deliberately not a TrieException.
         using SixteenBranchTrie trie = SixteenBranchTrie.Build(removeChild: true);
 
-        Exception? thrown = Walk(trie, new RecordingVisitor(throwOnMissingNode: true), workers, BatchedBudget);
+        Exception? thrown = Walk(trie, new RecordingVisitor(throwOnMissingNode: true), workers);
 
         AssertFailedWithOnly<InvalidOperationException>(thrown);
     }
 
     [Test]
-    public void Batched_walk_rethrows_the_cancellation_of_stats_collection([Values(1, 4)] int workers)
+    public void Walk_rethrows_the_cancellation_of_stats_collection([Values(1, 4)] int workers)
     {
         // The verify trie shape: the stats collector throws on its first branch once cancelled.
         using SixteenBranchTrie trie = SixteenBranchTrie.Build(removeChild: false);
@@ -200,23 +196,20 @@ public class VisitingTests
         cancelled.Cancel();
         TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance, cancelled.Token);
 
-        Exception? thrown = Walk(trie, new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), workers, BatchedBudget);
+        Exception? thrown = Walk(trie, new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), workers);
 
         AssertFailedWithOnly<OperationCanceledException>(thrown);
     }
 
-    /// <summary>A single partition, so the root's 16 children form one batch.</summary>
-    private const long BatchedBudget = 1;
-
     /// <summary>Elapses only when a walk is stuck: its workers then wait for jobs that nobody will finish.</summary>
     private static readonly TimeSpan WalkTimeout = TimeSpan.FromSeconds(30);
 
-    private static Exception? Walk<TContext>(SixteenBranchTrie trie, ITreeVisitor<TContext> visitor, int workers, long fullScanMemoryBudget)
+    private static Exception? Walk<TContext>(SixteenBranchTrie trie, ITreeVisitor<TContext> visitor, int workers)
         where TContext : struct, INodeContext<TContext>
     {
         // A fresh tree, so that Accept cannot start from an in-memory root that still holds the removed node.
-        PatriciaTree tree = new(trie.Container.Resolve<ITrieStore>(), LimboLogs.Instance);
-        VisitingOptions options = new() { MaxDegreeOfParallelism = workers, FullScanMemoryBudget = fullScanMemoryBudget };
+        PatriciaTree tree = new(trie.Store, LimboLogs.Instance);
+        VisitingOptions options = new() { MaxDegreeOfParallelism = workers };
 
         Task walk = Task.Run(() => tree.Accept(visitor, trie.RootHash, options));
 
@@ -227,29 +220,25 @@ public class VisitingTests
 
     private static void AssertFailedWithOnly<TException>(Exception? thrown) where TException : Exception
     {
-        Assert.That(thrown, Is.InstanceOf<AggregateException>());
-        AggregateException aggregate = (AggregateException)thrown!;
-        Assert.That(aggregate.InnerExceptions, Is.Not.Empty.And.All.InstanceOf<TException>());
+        IEnumerable<Exception> failures = thrown is AggregateException aggregate
+            ? aggregate.Flatten().InnerExceptions
+            : thrown is null ? [] : [thrown];
+        Assert.That(failures, Is.Not.Empty.And.All.InstanceOf<TException>());
     }
 
     /// <summary>
     /// A Hash-keyed trie whose root is a branch of 16 hashed branches, each with a few hashed account leaves; optionally
     /// with the root's child at nibble 8 removed from the state DB.
     /// </summary>
-    private sealed record SixteenBranchTrie(IContainer Container, Hash256 RootHash, Hash256 Removed, List<Hash256> ExpectedBranches, List<Hash256> ExpectedLeaves) : IDisposable
+    private sealed record SixteenBranchTrie(MemDb Database, ITrieStore Store, Hash256 RootHash, Hash256 Removed, List<Hash256> ExpectedBranches, List<Hash256> ExpectedLeaves) : IDisposable
     {
         private const int RemovedChild = 8;
         private const int LeavesPerChild = 3;
 
         public static SixteenBranchTrie Build(bool removeChild)
         {
-            IContainer container = new ContainerBuilder()
-                .AddModule(new TestNethermindModule(new InitConfig { StateDbKeyScheme = INodeStorage.KeyScheme.Hash }))
-                // Production registers no ITrieStore, and its pruning trie store caches the nodes it commits and reads.
-                // The walks must load every node from the state DB, so this store reads the node storage directly.
-                .AddSingleton<ITrieStore, TestRawTrieStore>()
-                .Build();
-            ITrieStore trieStore = container.Resolve<ITrieStore>();
+            MemDb database = new();
+            ITrieStore trieStore = new TestRawTrieStore(database);
             PatriciaTree tree = new(trieStore, LimboLogs.Instance);
             byte[] key = new byte[32];
             for (int child = 0; child < 16; child++)
@@ -262,7 +251,7 @@ public class VisitingTests
                 }
             }
 
-            using (trieStore.BeginBlockCommit(0)) { tree.Commit(); }
+            tree.Commit();
 
             // Read the shape back from the store rather than from the tree that built it.
             IScopedTrieStore store = trieStore.GetTrieStore(null);
@@ -286,16 +275,15 @@ public class VisitingTests
             int children = removeChild ? 15 : 16;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(trieStore.Scheme, Is.EqualTo(INodeStorage.KeyScheme.Hash), "only a Hash-keyed full scan takes the batched walk");
                 Assert.That(branches, Has.Count.EqualTo(children + 1).And.None.Null, "every child branch is stored by its hash");
                 Assert.That(leaves, Has.Count.EqualTo(children * LeavesPerChild).And.None.Null.And.Unique, "every leaf is stored by its hash");
             }
 
-            if (removeChild) container.ResolveKeyed<IDb>(DbNames.State).Remove(removed.Bytes);
-            return new SixteenBranchTrie(container, tree.RootHash, removed, branches, leaves);
+            if (removeChild) database.Remove(removed.Bytes);
+            return new SixteenBranchTrie(database, trieStore, tree.RootHash, removed, branches, leaves);
         }
 
-        public void Dispose() => Container.Dispose();
+        public void Dispose() => Database.Dispose();
 
         private static TrieNode Resolve(IScopedTrieStore store, Hash256 hash)
         {
@@ -331,23 +319,12 @@ public class VisitingTests
     {
         yield return new TestCaseData(new VisitingOptions
         {
-        }, INodeStorage.KeyScheme.HalfPath).SetName("Default");
-
-        yield return new TestCaseData(new VisitingOptions
-        {
-        }, INodeStorage.KeyScheme.Hash).SetName("Default Hash");
+        }).SetName("Default");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB,
-        }, INodeStorage.KeyScheme.HalfPath).SetName("Parallel");
-
-        yield return new TestCaseData(new VisitingOptions
-        {
-            MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB,
-        }, INodeStorage.KeyScheme.Hash).SetName("Parallel Hash");
+        }).SetName("Parallel");
     }
 
     public class AppendingVisitor(bool expectAccount) : ITreeVisitor<AppendingVisitor.PathGatheringContext>
@@ -379,7 +356,7 @@ public class VisitingTests
                 return new PathGatheringContext(@new);
             }
 
-            public PathGatheringContext AddStorage(Hash256? storage) => this;
+            public PathGatheringContext AddStorage(in ValueHash256 storage) => this;
         }
 
         public bool IsFullDbScan => true;

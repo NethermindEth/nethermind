@@ -7,7 +7,6 @@ namespace Nethermind.Db
 {
     public interface IDbProvider : IDisposable
     {
-        public IDb StateDb => GetDb<IDb>(DbNames.State);
         public IDb CodeDb => GetDb<IDb>(DbNames.Code);
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
         public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);

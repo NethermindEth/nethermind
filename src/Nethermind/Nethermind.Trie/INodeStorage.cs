@@ -9,16 +9,6 @@ using Nethermind.Trie;
 
 public interface INodeStorage
 {
-    /// <summary>
-    /// What is the current key scheme
-    /// </summary>
-    public KeyScheme Scheme { get; set; }
-
-    /// <summary>
-    /// When running completely from hash based db, some code path that calculate path can be ignored.
-    /// </summary>
-    public bool RequirePath { get; }
-
     byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
 
     /// <summary>Passes the RLP of the node <see cref="Get"/> returns to <paramref name="action"/>, borrowed for the duration of the call.</summary>
@@ -41,22 +31,6 @@ public interface INodeStorage
     /// Used by StateSync
     /// </summary>
     bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash);
-
-    /// <summary>
-    /// Used by StateSync to make sure values are flushed.
-    /// </summary>
-    /// <param name="onlyWal">True if only WAL file should be flushed, not memtable.</param>
-    void Flush(bool onlyWal);
-    void Compact();
-
-    public enum KeyScheme
-    {
-        Hash,
-        HalfPath,
-
-        // The default setting in config, which for some reason, can't be a null enum.
-        Current,
-    }
 
     public interface IWriteBatch : IDisposable
     {

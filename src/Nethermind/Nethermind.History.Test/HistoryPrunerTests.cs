@@ -164,20 +164,20 @@ public class HistoryPrunerTests
     private const ulong BalOnlyHead = 500_000;
 
     // Head 500_000, plus one epoch of slack: the 14299-epoch chain floor keeps 457_600 blocks, a one-epoch retention keeps 64.
-    [TestCase(null, PruningMode.Hybrid, true, 42_400UL)]
-    [TestCase(1u, PruningMode.Hybrid, true, 499_936UL)]
-    [TestCase(uint.MaxValue, PruningMode.Hybrid, true, 0UL)] // keeps them all
-    [TestCase(null, PruningMode.None, true, 42_400UL)]
-    [TestCase(1u, PruningMode.None, true, 499_936UL)]
-    [TestCase(uint.MaxValue, PruningMode.None, true, 0UL)]
-    [TestCase(null, PruningMode.Hybrid, false, null)]
-    [TestCase(null, PruningMode.None, false, null)]
-    public void Bals_are_pruned_when_history_pruning_is_disabled(uint? balRetentionEpochs, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
+    [TestCase(null, false, true, 42_400UL)]
+    [TestCase(1u, false, true, 499_936UL)]
+    [TestCase(uint.MaxValue, false, true, 0UL)] // keeps them all
+    [TestCase(null, true, true, 42_400UL)]
+    [TestCase(1u, true, true, 499_936UL)]
+    [TestCase(uint.MaxValue, true, true, 0UL)]
+    [TestCase(null, false, false, null)]
+    [TestCase(null, true, false, null)]
+    public void Bals_are_pruned_when_history_pruning_is_disabled(uint? balRetentionEpochs, bool stateHistoryEnabled, bool chainHasAccessLists, ulong? expectedCutoff)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptPruner receiptPruner = Substitute.For<IReceiptPruner>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
-        using IContainer container = CreateBalOnlyContainer(blockTree, receiptPruner, balStore, balRetentionEpochs, stateMode, chainHasAccessLists);
+        using IContainer container = CreateBalOnlyContainer(blockTree, receiptPruner, balStore, balRetentionEpochs, stateHistoryEnabled, chainHasAccessLists);
         HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
         IDb metadataDb = container.Resolve<IDbProvider>().MetadataDb;
 
@@ -342,7 +342,7 @@ public class HistoryPrunerTests
         IReceiptPruner receiptPruner,
         IBlockAccessListStore balStore,
         uint? balRetentionEpochs = null,
-        PruningMode stateMode = PruningMode.Hybrid,
+        bool stateHistoryEnabled = false,
         bool chainHasAccessLists = true,
         IBackgroundTaskScheduler scheduler = null,
         ulong minBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs)
@@ -354,7 +354,7 @@ public class HistoryPrunerTests
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(
                 new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = balRetentionEpochs, PruningInterval = 0 },
-                new PruningConfig { Mode = stateMode },
+                new FlatDbConfig { HistoryEnabled = stateHistoryEnabled },
                 BlocksConfig,
                 SyncConfig))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = minBalRetentionEpochs }))

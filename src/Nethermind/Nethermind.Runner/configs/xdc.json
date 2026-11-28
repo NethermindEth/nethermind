@@ -3,8 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc",
-    "LogFileName": "xdc.log",
-    "StateDbKeyScheme": "Hash"
+    "LogFileName": "xdc.log"
   },
   "Network": {
     "FilterDiscoveryNodesByRecentIp": false,
@@ -16,9 +15,6 @@
   },
   "Pruning": {
     "PruningBoundary": 4096
-  },
-  "FlatDb": {
-    "Enabled": false
   },
   "Blocks": {
     "TargetBlockGasLimit": 420000000,

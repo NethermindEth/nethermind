@@ -16,17 +16,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
     [Parallelizable(ParallelScope.All)]
-    public class PatriciaTreeTests(bool useFullTrieStore)
+    public class PatriciaTreeTests
     {
         [Test]
         public void Create_commit_change_balance_get()
         {
             Account account = new(1);
             using ITrieStore trieStore = CreateTrieStore();
-            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit();
@@ -47,7 +44,6 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             {
-                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Set(TestItem.AddressB, account);
                 stateTree.Commit();
@@ -64,14 +60,11 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_commit_reset_change_balance_get()
         {
-            if (useFullTrieStore) Assert.Ignore("immediate key count does not work with pruning try store");
-
             MemDb db = new();
             Account account = new(1);
             using ITrieStore trieStore = CreateTrieStore(db);
 
             {
-                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
@@ -86,7 +79,6 @@ namespace Nethermind.Store.Test
                 stateTree.Commit();
             }
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
         }
 
         [TestCase(true, false)]
@@ -99,7 +91,6 @@ namespace Nethermind.Store.Test
 
             Hash256 stateRoot;
             {
-                using IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0);
                 StateTree stateTree = new(trieStore, LimboLogs.Instance);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.UpdateRootHash();
@@ -135,7 +126,6 @@ namespace Nethermind.Store.Test
             using ITrieStore trieStore = CreateTrieStore();
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             {
-                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, new Account(1));
                 stateTree.Commit();
             }
@@ -152,9 +142,7 @@ namespace Nethermind.Store.Test
         private ITrieStore CreateTrieStore(IDb db = null)
         {
             db ??= new MemDb();
-            return useFullTrieStore
-                ? TestTrieStoreFactory.Build(db, LimboLogs.Instance)
-                : new TestRawTrieStore(new NodeStorage(db));
+            return new TestRawTrieStore(db);
         }
     }
 }

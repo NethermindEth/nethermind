@@ -22,6 +22,7 @@ using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -229,7 +230,7 @@ public class SnapFlatStateServerTests
     }
 
     [Test]
-    public void RangeRequests_ServeWhatTheTrieSnapServerServes([Values] bool storageRanges)
+    public void RangeRequests_MatchDirectTrieTraversal([Values] bool storageRanges)
     {
         TestRawTrieStore trieStore = new(new MemDb());
         StateTree stateTree = new(trieStore, LimboLogs.Instance);
@@ -246,7 +247,7 @@ public class SnapFlatStateServerTests
         stateTree.Set(addressHash, account);
         stateTree.Commit();
 
-        SnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
+        ServeFlatTrieState(stateTree, addressHash, storageTree);
 
         // Starting mid-range and stopping at the byte limit, so both boundaries need proofs.
         ValueHash256 startingHash = new("0x4000000000000000000000000000000000000000000000000000000000000000");
@@ -255,34 +256,41 @@ public class SnapFlatStateServerTests
             PathWithAccount[] accounts = [new(addressHash, account.ToStruct())];
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> flatSlots, IByteArrayList? flatProofs) =
                 _server.GetStorageRanges(_rootHash, accounts, startingHash, null, 4000, CancellationToken.None);
-            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> trieSlots, IByteArrayList? trieProofs) =
-                trieServer.GetStorageRanges(_rootHash, accounts, startingHash, null, 4000, CancellationToken.None);
+            using EncodedStorageRanges trieSlots = new(1);
+            using IOwnedReadOnlyList<byte[]> trieProofs = CollectRange(trieSlots.Collector, addressHash, storageTree.RootHash);
+            Assert.That(trieSlots.TryCompleteAccount(), Is.True);
             using (flatProofs)
-            using (trieProofs)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(flatSlots.Single().Select(static s => (s.Path, s.SlotRlpValue)), Is.EqualTo(trieSlots.Single().Select(static s => (s.Path, s.SlotRlpValue))));
-                Assert.That(ToArrays(flatProofs!), Is.EqualTo(ToArrays(trieProofs!)).And.Not.Empty);
+                Assert.That(ToArrays(flatProofs!), Is.EqualTo(trieProofs.ToArray()).And.Not.Empty);
             }
 
             flatSlots.DisposeRecursive();
-            trieSlots.DisposeRecursive();
         }
         else
         {
             (IOwnedReadOnlyList<PathWithAccount> flatAccounts, IByteArrayList flatProofs) =
                 _server.GetAccountRanges(_rootHash, startingHash, null, 4000, CancellationToken.None);
-            (IOwnedReadOnlyList<PathWithAccount> trieAccounts, IByteArrayList trieProofs) =
-                trieServer.GetAccountRanges(_rootHash, startingHash, null, 4000, CancellationToken.None);
+            AccountCollector collector = new(4000);
+            using IOwnedReadOnlyList<byte[]> trieProofs = CollectRange(collector);
+            using EncodedSnapEntries<PathWithAccount> trieAccounts = collector.Accounts;
             using (flatAccounts)
             using (flatProofs)
-            using (trieAccounts)
-            using (trieProofs)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(flatAccounts.Select(static a => (a.Path, a.Account.Balance)), Is.EqualTo(trieAccounts.Select(static a => (a.Path, a.Account.Balance))).And.Not.Empty);
-                Assert.That(ToArrays(flatProofs), Is.EqualTo(ToArrays(trieProofs)).And.Not.Empty);
+                Assert.That(ToArrays(flatProofs), Is.EqualTo(trieProofs.ToArray()).And.Not.Empty);
             }
+        }
+
+        IOwnedReadOnlyList<byte[]> CollectRange(RangeQueryVisitor.ILeafValueCollector collector, Hash256? storage = null, Hash256? root = null)
+        {
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+            using RangeQueryVisitor visitor = new(startingHash, ValueKeccak.MaxValue, collector, 4000,
+                ISnapStateServer.HardResponseNodeLimit, ReadFlags.HintCacheMiss, CancellationToken.None);
+            tree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), stateTree.RootHash, new VisitingOptions(), storageAddr: storage, storageRoot: root);
+            return visitor.GetProofs();
         }
 
         static byte[][] ToArrays(IByteArrayList list) => Enumerable.Range(0, list.Count).Select(i => list[i].ToArray()).ToArray();
@@ -296,7 +304,7 @@ public class SnapFlatStateServerTests
     }
 
     [Test]
-    public void RangeRequests_ReturnPooledEntries_WhenTraversalThrows([Values] bool flat, [Values] RangeFailure failure)
+    public void RangeRequests_ReturnPooledEntries_WhenTraversalThrows([Values] RangeFailure failure)
     {
         TestRawTrieStore trieStore = new(new MemDb());
         StateTree stateTree = new(trieStore, LimboLogs.Instance);
@@ -321,8 +329,8 @@ public class SnapFlatStateServerTests
         };
         stateTree.Set(failingPath.Bytes, failingLeaf);
         stateTree.Commit();
-        SnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
-        ISnapStateServer server = flat ? _server : trieServer;
+        ServeFlatTrieState(stateTree, addressHash, storageTree);
+        ISnapStateServer server = _server;
         PathWithAccount[] accounts = [new(addressHash, default), new(failingPath, default)];
 
         using SharedByteBufferRentals rentals = new(minimumLength: 1 << 19);
@@ -343,8 +351,7 @@ public class SnapFlatStateServerTests
     /// Serves the trie state from the flat server as well: its persistence reader reads the nodes from the trie, and the
     /// storage nodes of <paramref name="addressHash"/> only.
     /// </summary>
-    /// <returns>The trie server of the same state.</returns>
-    private SnapStateServer ServeTrieState(TestRawTrieStore trieStore, StateTree stateTree, Hash256 addressHash, StorageTree storageTree)
+    private void ServeFlatTrieState(StateTree stateTree, Hash256 addressHash, StorageTree storageTree)
     {
         _rootHash = stateTree.RootHash;
         _stateId = new StateId(0, _rootHash.ValueHash256);
@@ -355,7 +362,6 @@ public class SnapFlatStateServerTests
             .Returns(ci => addressHash.Equals(ci[0]) ? storageTree.GetNodeByPath(((TreePath)ci[1]).ToNibble()) : null);
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
-        return new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance);
     }
 
     /// <summary>
@@ -390,7 +396,7 @@ public class SnapFlatStateServerTests
 
     private static byte[] BuildRootRlp(out Hash256 rootHash)
     {
-        using MemDb trieDb = new();
+        MemoryNodeStorage trieDb = new();
         RawScopedTrieStore trieStore = new(trieDb);
         StateTree tree = new(trieStore, LimboLogs.Instance);
 
@@ -406,7 +412,7 @@ public class SnapFlatStateServerTests
 
     private static Hash256 BuildAndPersistStorageRoot(Hash256 addressHash, int slotCount, out byte[] rootRlp)
     {
-        using MemDb storageDb = new();
+        MemoryNodeStorage storageDb = new();
         RawScopedTrieStore storageStore = new(storageDb, addressHash);
         StorageTree storageTree = new(storageStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
@@ -425,7 +431,7 @@ public class SnapFlatStateServerTests
 
     private static byte[] BuildSingleAccountStateRoot(Hash256 addressHash, byte[] accountRlp, out Hash256 rootHash)
     {
-        using MemDb trieDb = new();
+        MemoryNodeStorage trieDb = new();
         RawScopedTrieStore trieStore = new(trieDb);
         StateTree tree = new(trieStore, LimboLogs.Instance);
 

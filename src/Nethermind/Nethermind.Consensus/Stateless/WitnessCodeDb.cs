@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Stateless;
 internal sealed class WitnessCodeDb : MemDb, IWorldStateScopeProvider.ICodeDb
 {
     private readonly Dictionary<ValueHash256, ReadOnlyMemory<byte>> _codes;
-    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _deployed;
+    private readonly KeyValueWithBatchingBackedCodeDb _deployed;
 
     public WitnessCodeDb(IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> codes)
     {
@@ -29,7 +29,7 @@ internal sealed class WitnessCodeDb : MemDb, IWorldStateScopeProvider.ICodeDb
             _codes[hash] = code;
         }
 
-        _deployed = new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(this);
+        _deployed = new KeyValueWithBatchingBackedCodeDb(this);
     }
 
     public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) =>

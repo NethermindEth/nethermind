@@ -29,14 +29,8 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         Resolve(address).TryLoadRlp(in path, hash, flags);
 
-    public INodeStorage.KeyScheme Scheme =>
-        _adapter?.Scheme ?? INodeStorage.KeyScheme.HalfPath;
-
     // ITrieStore
     public bool HasRoot(Hash256 stateRoot) => true;
-
-    public bool HasRoot(Hash256 stateRoot, ulong blockNumber) =>
-        flatDbManager.HasStateForBlock(new StateId(blockNumber, stateRoot));
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
@@ -49,8 +43,6 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
-
-    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 

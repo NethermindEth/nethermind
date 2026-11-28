@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
@@ -17,7 +16,7 @@ namespace Nethermind.Trie
 
         public OldStyleTrieVisitContext Add(byte nibble) => new(Level + 1, IsStorage, nibble);
 
-        public OldStyleTrieVisitContext AddStorage(Hash256? storage) => new(Level + 1, true, null);
+        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage) => new(Level + 1, true, null);
     }
 
     public class TrieVisitContext : IDisposable
@@ -35,35 +34,10 @@ namespace Nethermind.Trie
 
         public bool IsStorage { get; set; }
 
+        internal VisitingStats? Diagnostics { get; init; }
+
         public void Dispose()
         {
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct SmallTrieVisitContext
-    {
-        public SmallTrieVisitContext(TrieVisitContext trieVisitContext) => IsStorage = trieVisitContext.IsStorage;
-
-        public byte Level { get; internal set; }
-        private byte _flags = 0;
-
-        private const byte StorageFlag = 1;
-
-        public bool IsStorage
-        {
-            readonly get => (_flags & StorageFlag) == StorageFlag;
-            internal set
-            {
-                if (value)
-                {
-                    _flags = (byte)(_flags | StorageFlag);
-                }
-                else
-                {
-                    _flags = (byte)(_flags & ~StorageFlag);
-                }
-            }
         }
     }
 }

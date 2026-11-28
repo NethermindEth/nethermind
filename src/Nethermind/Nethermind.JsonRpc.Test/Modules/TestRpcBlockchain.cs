@@ -145,12 +145,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Builder<T> WithFlatDb(bool useFlatDb)
-            {
-                _blockchain.UseFlatDb = useFlatDb;
-                return this;
-            }
-
             public Builder<T> WithSyncMode(SyncMode syncMode)
             {
                 _blockchain.SyncMode = syncMode;

@@ -1203,7 +1203,8 @@
           "Nethermind.JsonRpc": "[2.4.0-preview, )",
           "Nethermind.Network.Discovery": "[2.4.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.4.0-preview, )",
-          "Nethermind.State": "[2.4.0-preview, )"
+          "Nethermind.State": "[2.4.0-preview, )",
+          "Nethermind.State.Flat": "[2.4.0-preview, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {

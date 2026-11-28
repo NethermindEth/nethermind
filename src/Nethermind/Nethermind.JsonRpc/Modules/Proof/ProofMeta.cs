@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public long NodeLookups { get; set; }
 
         /// <summary>
-        /// Subset of <see cref="NodeLookups"/> served from the in-process trie store cache.
+        /// Subset of <see cref="NodeLookups"/> served from in-memory state without a database read.
         /// </summary>
         public long CacheHits { get; set; }
 

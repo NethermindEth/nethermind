@@ -57,7 +57,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private readonly ISenderRecoveryTracker? _senderRecovery;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
-    private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
     private readonly BlockCodeCache? _blockCodeCache;
     private readonly bool _handoff;
@@ -110,7 +109,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
-        NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         ISenderRecoveryTracker? senderRecovery = null,
@@ -120,7 +118,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
-        nodeStorageCache,
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
@@ -140,7 +137,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         int minPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
-        NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         int speculativeConcurrency = 0,
@@ -161,7 +157,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = Math.Max(minPoolSize, _concurrencyLevel * 3 + 1) }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
-        _nodeStorageCache = nodeStorageCache;
         _warmupQueue = new WarmupQueue(this);
         // A consumer scope and a speculative pass never overlap: the session is stopped the moment a consumer opens.
         if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += StopSpeculative;
@@ -191,19 +186,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         WarmMarker? marker = TryConsumeWarmMarker(suggestedBlock.ParentHash, spec);
         ISet<Hash256>? speculativelyWarmed = carried ? marker?.WarmedTxHashes : null;
-        if (speculativelyWarmed is not null)
-        {
-            // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.
-            _nodeStorageCache.Enabled = true;
-        }
-        else
-        {
-            _nodeStorageCache.ClearCaches();
-            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
-            if (skipReactiveWarming) return null;
-            _nodeStorageCache.Enabled = true;
-        }
-
         if (skipReactiveWarming) return null;
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, marker?.Footprints, cancellationToken);
     }
@@ -1238,8 +1220,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             ClearWarmMarker();
             _warmedTxHashes.Clear();
             _preBlockCaches.PrepareFor(head.StateRoot, _logger);
-            _nodeStorageCache.ClearCaches();
-            _nodeStorageCache.Enabled = true;
 
             return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token), CancellationToken.None);
         }
@@ -1447,7 +1427,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
         _blockCodeCache?.ClearBlock();
-        _nodeStorageCache.ClearCaches();
     }
 
     public void Dispose()

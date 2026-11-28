@@ -13,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Proof;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
@@ -24,7 +23,6 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
@@ -40,13 +38,16 @@ public class ProofRpcModuleTests
 {
     private IProofRpcModule _proofRpcModule = null!;
     private IBlockTree _blockTree = null!;
-    private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
-    private WorldStateManager _worldStateManager = null!;
+    private IWorldStateManager _worldStateManager = null!;
+    private IContainer _worldStateContainer = null!;
     private IHeaderFinder _headerFinder = null!;
     private TestStateHeaderProvider _stateHeaderProvider = null!;
     private IReceiptStorage _receiptStorage = null!;
-    private IContainer _container;
+    private IContainer _container = null!;
+
+    /// <summary>The flat world state's databases; owned and disposed by <see cref="_worldStateContainer"/>.</summary>
+    private IDbProvider DbProvider => _worldStateContainer.Resolve<IDbProvider>();
 
     private const string NullResultResponse = """{"jsonrpc":"2.0","result":null,"id":67}""";
     private const string PrunedHistoryResponse = """{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}""";
@@ -64,15 +65,14 @@ public class ProofRpcModuleTests
     private const int StaleReceiptIndexLogsOnRequested = 2;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
-        _dbProvider = await TestMemDbProvider.InitAsync();
         // The proof tests target block 1, whose parent is the genesis header built below.
         _stateHeaderProvider = new();
-        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, _stateHeaderProvider, LimboLogs.Instance);
+        (IWorldState worldState, _, _worldStateContainer) = TestWorldStateFactory.CreateFlatForTestWithStateReader(stateHeaderProvider: _stateHeaderProvider);
+        _worldStateManager = _worldStateContainer.Resolve<IWorldStateManager>();
 
         Hash256 stateRoot;
-        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -95,7 +95,7 @@ public class ProofRpcModuleTests
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
-            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IDbProvider>(DbProvider)
             .AddSingleton<IHeaderFinder>(_headerFinder)
             .AddSingleton<IReceiptStorage>(_receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
@@ -104,7 +104,11 @@ public class ProofRpcModuleTests
     }
 
     [TearDown]
-    public void TearDown() => _container.Dispose();
+    public void TearDown()
+    {
+        _container.Dispose();
+        _worldStateContainer.Dispose();
+    }
 
     [Test]
     public async Task Can_get_transaction([Values] bool withHeader, [Values(0, 1)] int txIndex)
@@ -662,7 +666,7 @@ public class ProofRpcModuleTests
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IReceiptFinder>(receiptFinder)
-            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IDbProvider>(DbProvider)
             .AddSingleton<IHeaderFinder>(_headerFinder)
             .AddSingleton<IReceiptStorage>(_receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager);

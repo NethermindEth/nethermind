@@ -12,6 +12,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 using System;
 
@@ -25,10 +26,9 @@ namespace Nethermind.Store.Test
         {
             MemDb codeDb = new();
             MemDb stateDb = new();
-            NodeStorage nodeStorage = new(stateDb);
+            TestNodeStorage nodeStorage = new(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
             WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
             BlockHeader baseBlock;
 
             using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
@@ -66,7 +66,7 @@ namespace Nethermind.Store.Test
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions, diagnostics: null);
+            new PatriciaTree(trieStore, LimboLogs.Instance).Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(statsCollector), baseBlock.StateRoot, visitingOptions);
             TrieStats stats = statsCollector.Stats;
 
             using (Assert.EnterMultipleScope())

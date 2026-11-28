@@ -27,7 +27,7 @@ namespace Ethereum.Trie.Test
         }
 
         private StorageTree CreateStorageTrie() =>
-            new(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            new(new TestRawTrieStore(new MemDb()).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
 
         [TestCase(new byte[0], TestName = "Storage_trie_set_reset_with_empty")]
         [TestCase(new byte[] { 0, 0, 0, 0, 0 }, TestName = "Storage_trie_set_reset_with_long_zero")]

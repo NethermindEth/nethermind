@@ -30,7 +30,7 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
 
     private static ColumnsDb<BeaconChainDbColumns> Open(string path, HyperClockCacheWrapper cache) =>
         (ColumnsDb<BeaconChainDbColumns>)new RocksDbFactory(
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            new RocksDbConfigFactory(new DbConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             new DbConfig(), cache, new Testably.Abstractions.RealFileSystem(), LimboLogs.Instance, path)
             .CreateColumnsDb<BeaconChainDbColumns>(new DbSettings("beaconChain", path));
 

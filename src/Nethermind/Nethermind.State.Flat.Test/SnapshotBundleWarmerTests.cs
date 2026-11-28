@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -67,7 +68,7 @@ public class SnapshotBundleWarmerTests
 
         (ValueHash256 Hash, ulong Pointer) root = FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
         (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer, 0).ToArray();
-        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        PatriciaTree expected = new(new RawScopedTrieStore(new TestNodeStorage(new MemDb())), LimboLogs.Instance);
         foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
         buffer.SetRoot(address, root.Hash, root.Pointer);
         expected.UpdateRootHash();
@@ -577,7 +578,7 @@ public class SnapshotBundleWarmerTests
             trie.BulkSet(change, canParallelize: false);
         }
 
-        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        PatriciaTree expected = new(new RawScopedTrieStore(new TestNodeStorage(new MemDb())), LimboLogs.Instance);
         for (int i = 0; i < keys.Length; i++) expected.Set(keys[i].Bytes, [(byte)(i + 1)]);
         expected.Set(keys[0].Bytes, newValue);
         expected.UpdateRootHash();

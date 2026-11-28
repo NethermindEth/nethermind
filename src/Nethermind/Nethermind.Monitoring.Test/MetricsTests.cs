@@ -441,9 +441,10 @@ public class MetricsTests
             TestErrorLogManager logManager = new();
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new MonitoringModule())
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IMetricsConfig>(metricsConfig)
                 .AddSingleton<ISyncConfig>(new SyncConfig())
-                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IFlatDbConfig>(new FlatDbConfig())
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<ILogManager>(logManager)
                 .Build();
@@ -475,6 +476,32 @@ public class MetricsTests
         finally
         {
             Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task PruningMode_tag_tells_flat_archive_nodes_apart([Values] bool historyEnabled)
+    {
+        string pruningMode = ProductInfo.PruningMode;
+        try
+        {
+            MetricsConfig metricsConfig = new() { Enabled = true };
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new MonitoringModule())
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .AddSingleton<IMetricsConfig>(metricsConfig)
+                .AddSingleton<ISyncConfig>(new SyncConfig())
+                .AddSingleton<IFlatDbConfig>(new FlatDbConfig { HistoryEnabled = historyEnabled })
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .Build();
+            container.Resolve<IMetricsController>();
+
+            Assert.That(ProductInfo.PruningMode, Is.EqualTo(historyEnabled ? "FlatArchive" : "Flat"));
+        }
+        finally
+        {
+            ProductInfo.PruningMode = pruningMode;
         }
     }
 

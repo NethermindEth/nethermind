@@ -23,7 +23,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -107,12 +106,6 @@ public abstract partial class BlockchainTestBase
     /// Null means use the default (TestLogManager at Warn level).
     /// </summary>
     protected virtual ILogManager? ComponentLogManagerOverride => null;
-
-    /// <summary>
-    /// Whether to run under the flat state layout, from the suite-wide selection.
-    /// See <see cref="TestStateBackend.UseFlatDb"/>.
-    /// </summary>
-    protected static bool UseFlatDb => TestStateBackend.UseFlatDb;
 
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
@@ -486,7 +479,6 @@ public abstract partial class BlockchainTestBase
 
         IConfigProvider configProvider = new ConfigProvider();
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-        flatDbConfig.Enabled = UseFlatDb;
         // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
         // and a fire-and-forget background convert from one test can race another test's files. Long finality is
         // irrelevant at EF-test chain lengths, so keep the on-disk tier off.

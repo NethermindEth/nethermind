@@ -17,9 +17,13 @@ namespace Nethermind.Init.Snapshot;
 /// The download is resumable and idempotent: a checkpoint file tracks progress so that
 /// restarts skip already-completed stages.
 /// </summary>
+/// <remarks>
+/// <see cref="ValidateFlatState"/> opens the flat DB, so it waits for the extraction: the snapshot must be in place
+/// before any database under <see cref="IInitConfig.BaseDbPath"/> is opened or inspected.
+/// </remarks>
 [RunnerStepDependencies(
     dependencies: [],
-    dependents: [typeof(InitializeBlockTree), typeof(DatabaseMigrations), typeof(StartLogIndex)])]
+    dependents: [typeof(ValidateFlatState), typeof(InitializeBlockTree), typeof(DatabaseMigrations), typeof(StartLogIndex)])]
 public class InitDatabaseSnapshot(
     INethermindApi api,
     [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep

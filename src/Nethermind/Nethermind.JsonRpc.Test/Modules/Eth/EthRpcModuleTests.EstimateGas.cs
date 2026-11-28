@@ -175,12 +175,12 @@ public partial class EthRpcModuleTests
     [TestCase("eth_estimateGas", false)]
     public async Task FrameGas_RejectsLikeExplicitLimits(string method, bool missingState)
     {
-        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), useFlatDb: false);
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         object? blockOverride = null;
         if (missingState)
         {
             ctx.Test.WorldStateManager.FlushCache(System.Threading.CancellationToken.None);
-            ctx.Test.StateDb.Clear();
+            ctx.Test.BlockTree.Head!.Header.StateRoot = Keccak.Compute("unavailable state");
         }
         else blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{ctx.Test.RpcConfig.GasCap!.Value + 1:x}}"}""");
         FrameTransactionForRpc omitted = FrameGasRequest();
@@ -322,9 +322,9 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task FrameGas_EstimateGas_BlockNumberOverrideUsesBaseState([Values] bool useFlatDb)
+    public async Task FrameGas_EstimateGas_BlockNumberOverrideUsesBaseState()
     {
-        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), useFlatDb: useFlatDb);
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         object blockOverride = JsonSerializer.Deserialize<object>("""{"number":"0x100"}""")!;
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", FrameGasRequest(), "latest", null, blockOverride);

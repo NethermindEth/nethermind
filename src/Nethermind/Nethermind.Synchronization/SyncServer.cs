@@ -636,7 +636,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State)
         {
             int lookups = Math.Min(keys.Count, NodeDataLookupLimit);
             // One entry per key looked up, after the root entry

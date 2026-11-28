@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -22,17 +21,8 @@ internal static partial class WitnessNodeStorage
     /// operation reaches.</summary>
     public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state) => new ValidatingTrieStore(CreateValidating(state));
 
-    private static ValidatingNodeStorage CreateValidating(IOwnedReadOnlyList<byte[]> state)
-    {
-        IKeyValueStore db = MemDb.WithCapacity(state.Count);
-        foreach (byte[] stateElement in state)
-        {
-            ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-            db.Set(hash, stateElement);
-        }
-
-        return new ValidatingNodeStorage(new NodeStorage(db, INodeStorage.KeyScheme.Hash));
-    }
+    private static ValidatingNodeStorage CreateValidating(IOwnedReadOnlyList<byte[]> state) =>
+        new(new HashKeyedNodeStorage(state.AsSpan()));
 
     private sealed class ValidatingTrieStore(ValidatingNodeStorage nodeStorage) : RawTrieStore(nodeStorage)
     {
@@ -54,14 +44,6 @@ internal static partial class WitnessNodeStorage
     /// embedded in its parent is not loaded here; <see cref="ValidatingScopedTrieStore"/> checks it.</remarks>
     private sealed class ValidatingNodeStorage(INodeStorage inner) : INodeStorage
     {
-        public INodeStorage.KeyScheme Scheme
-        {
-            get => inner.Scheme;
-            set => inner.Scheme = value;
-        }
-
-        public bool RequirePath => inner.RequirePath;
-
         public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         {
             byte[]? node = inner.Get(address, path, keccak, readFlags);
@@ -91,8 +73,5 @@ internal static partial class WitnessNodeStorage
 
         public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) => inner.KeyExists(address, path, hash);
 
-        public void Flush(bool onlyWal) => inner.Flush(onlyWal);
-
-        public void Compact() => inner.Compact();
     }
 }

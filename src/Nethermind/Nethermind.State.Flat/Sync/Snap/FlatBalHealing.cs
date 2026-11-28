@@ -38,8 +38,6 @@ public class FlatBalHealing(
     internal const int BalsChunkSize = 16;
     private const int MaxInitialCapacity = 1024;
 
-    public bool IsAvailable => true;
-
     public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
     {
         // A new healing run starts here; hashes from an abandoned run may no longer be referenced.

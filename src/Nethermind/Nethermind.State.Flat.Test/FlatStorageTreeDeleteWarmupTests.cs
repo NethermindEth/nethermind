@@ -160,7 +160,7 @@ public class FlatStorageTreeDeleteWarmupTests
         public Hash256 ExpectedRootWithout(UInt256[] deleted)
         {
             HashSet<UInt256> gone = [.. deleted];
-            StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+            StorageTree expected = new(new RawScopedTrieStore(new TestNodeStorage(new TestMemDb())), LimboLogs.Instance);
             for (int i = 0; i < TrieSlots; i++)
             {
                 UInt256 slot = Slot(i);

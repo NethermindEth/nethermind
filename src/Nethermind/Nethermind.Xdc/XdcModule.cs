@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -81,6 +82,7 @@ public class XdcModule : Module
                 IMasternodeVotingContract,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
+            .AddSingleton<XdcSyncReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IMintedRecordContract, MintedRecordContract>()
 
             // sealer

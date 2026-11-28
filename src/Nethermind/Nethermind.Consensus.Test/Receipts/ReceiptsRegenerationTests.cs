@@ -469,6 +469,6 @@ public class ReceiptsRegenerationTests
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() =>
-            [.. base.CreateConfigs(), new ReceiptConfig { DeriveFromState = true }, new FlatDbConfig { Enabled = true, HistoryEnabled = true }];
+            [.. base.CreateConfigs(), new ReceiptConfig { DeriveFromState = true }, new FlatDbConfig { HistoryEnabled = true }];
     }
 }

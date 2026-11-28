@@ -10,10 +10,6 @@ namespace Nethermind.Trie.Pruning;
 
 public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : IScopedTrieStore
 {
-    public RawScopedTrieStore(IKeyValueStoreWithBatching kv, Hash256? address = null) : this(new NodeStorage(kv), address)
-    {
-    }
-
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
     public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -28,8 +24,6 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
         throw new MissingTrieNodeException($"Node missing hash={hash} addr={address} path={path}", address, path, hash);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
-
-    public INodeStorage.KeyScheme Scheme => nodeStorage.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
 
@@ -56,6 +50,6 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
+        static void ThrowUnknownHash(TrieNode node) => throw new TrieException($"The hash of {node} should be known at the time of committing.");
     }
 }

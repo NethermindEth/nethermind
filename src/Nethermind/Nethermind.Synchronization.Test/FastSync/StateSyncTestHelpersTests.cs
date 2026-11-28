@@ -40,7 +40,8 @@ public class StateSyncTestHelpersTests : StateSyncFeedTestsBase
         await using IContainer container = PrepareDownloader(new RemoteDbContext(_logManager),
             configureBuilder: builder => builder.AddSingleton<IStateSyncRunner>(runner));
 
-        await Assert.ThatAsync(() => ActivateAndWait(container.Resolve<SafeContext>()), expected);
+        SafeContext context = container.Resolve<SafeContext>();
+        await Assert.ThatAsync(() => ActivateAndWait(context, runFeed: context.RunFinalizingFeed), expected);
     }
 
     [Test]

@@ -443,8 +443,7 @@ public class HistoryRowScannerTests
         HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
         ValueHash256 address = Keccak.Compute("scratch account").ValueHash256;
         ValueHash256 slot = Keccak.Compute("scratch slot").ValueHash256;
-        using MemDb storageDb = new();
-        StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
+        StorageTree storageTree = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         if (clearAt <= 5) storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
         storageTree.UpdateRootHash();
         Account account = new(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString);
@@ -456,8 +455,7 @@ public class HistoryRowScannerTests
         Span<byte> encoded = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int length = BaseFlatPersistence.EncodeSlotValue(new UInt256(128), rlpWrapped, encoded);
         RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageHistory), FlatHistoryColumns.StorageHistory, storageKey, 5, encoded[..length]);
-        using MemDb accountsDb = new();
-        StateTree accountsTree = new(new RawScopedTrieStore(accountsDb), LimboLogs.Instance);
+        StateTree accountsTree = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         AccountRowRlp.Set(accountsTree, address, accountRow);
         accountsTree.UpdateRootHash();
         BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
@@ -521,7 +519,7 @@ public class HistoryRowScannerTests
         ValueHash256 orphan = new(orphanBytes);
         ValueHash256 slot = Keccak.Compute("scratch slot").ValueHash256;
         using MemDb storageDb = new();
-        StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
+        StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(storageDb)), LimboLogs.Instance);
         storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
         storageTree.UpdateRootHash();
         byte[] accountRow = AccountDecoder.Slim.Encode(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
@@ -533,7 +531,7 @@ public class HistoryRowScannerTests
         if (owner == SlotOwner.DeletedAccountClearedAfterSlot)
             RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageClears), FlatHistoryColumns.StorageClears, orphan.Bytes, 4, []);
         using MemDb accountsDb = new();
-        StateTree accountsTree = new(new RawScopedTrieStore(accountsDb), LimboLogs.Instance);
+        StateTree accountsTree = new(new RawScopedTrieStore(new TestNodeStorage(accountsDb)), LimboLogs.Instance);
         AccountRowRlp.Set(accountsTree, live, accountRow);
         accountsTree.UpdateRootHash();
         BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
@@ -567,8 +565,7 @@ public class HistoryRowScannerTests
             if (sharedBytes == 30) BinaryPrimitives.WriteUInt16BigEndian(keys[index].BytesAsSpan[30..], (ushort)index);
         }
         Array.Sort(keys, static (first, second) => first.Bytes.SequenceCompareTo(second.Bytes));
-        using MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+        StateTree tree = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         using SortedStateRoot streamed = new();
         for (int index = 0; index < keys.Length; index++)
         {
@@ -969,7 +966,7 @@ public class HistoryRowScannerTests
             {
                 DbConfig dbConfig = new();
                 return new RocksDbFactory(
-                        new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                        new RocksDbConfigFactory(dbConfig, new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
                         dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory)
                     .CreateColumnsDb<T>(new DbSettings("TransactionIndexScratch", directory));
             }

@@ -12,7 +12,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Db;
-using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -37,7 +36,6 @@ public class StandardDbInitializerTests
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, true, "mem");
         Type receiptsType = GetReceiptsType(useReceipts, typeof(SnapshotableMemColumnsDb<ReceiptsColumns>));
         AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
-        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
     [Test]
@@ -46,7 +44,6 @@ public class StandardDbInitializerTests
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, false, $"rocks_{useReceipts}");
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
-        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
     [Test]
@@ -57,38 +54,6 @@ public class StandardDbInitializerTests
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
         AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
-            Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
-        }
-    }
-
-    [Test]
-    public async Task InitializerTests_WithPruning()
-    {
-        using IDbProvider dbProvider = await InitializeStandardDb(false, true, "pruning");
-        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
-    }
-
-    [Test]
-    public void MemDbFactory_outside_MemDb_mode_skips_the_full_pruning_layout([Values] bool initConfigGiven)
-    {
-        IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        using IContainer container = new ContainerBuilder()
-            // Without an init config the module looks for one in the container, which has none here.
-            .AddModule(initConfigGiven ? new PruningTrieStoreModule(new InitConfig()) : new PruningTrieStoreModule())
-            .AddSingleton<IDbFactory, MemDbFactory>()
-            .AddSingleton(fileSystem)
-            .Build();
-
-        IDb stateDb = container.ResolveKeyed<IDb>(DbNames.State);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stateDb, Is.TypeOf<FullPruningDb>());
-            Assert.That(fileSystem.ReceivedCalls(), Is.Empty);
-        }
     }
 
     private Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
@@ -107,8 +72,6 @@ public class StandardDbInitializerTests
             {
                 DownloadReceiptsInFastSync = useReceipts
             }))
-            .AddModule(new PruningTrieStoreModule()) // For the full pruning db
-            .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IInitConfig>(initConfig)
             .AddSingleton<ILogManager>(LimboLogs.Instance)

@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>A node storage that maps a witness node's keccak straight to its bytes.</summary>
 /// <remarks>
-/// The alternative is a <c>MemDb</c> behind <see cref="NodeStorage"/>, which keys a dictionary by
+/// A byte-array-keyed dictionary indexes a witness by
 /// <c>byte[]</c>: every witness node pays a key-array allocation on load, and every read builds a
 /// key span, hashes its bytes and compares them against the stored array. Here the keccak is the key,
 /// so witness-bucket reads compare the keccak word-wise. After the first write, reads first probe the
@@ -28,17 +28,14 @@ namespace Nethermind.Consensus.Stateless;
 /// witness entries consume separate slots, and overflow entries remain retained in both representations.
 /// </para>
 /// <para>
-/// Only the zkEVM guest uses this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
-/// the host commits storage tries in parallel — <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>
-/// — so the host keeps the <c>MemDb</c> form, whose dictionary is concurrent.
+/// The witness buckets are immutable. The host's overlay supports concurrent storage-trie commits;
+/// the single-threaded guest uses a plain dictionary.
 /// </para>
 /// </remarks>
-internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
+internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
 {
     private static readonly NodeKey EmptyRootKey = new(ValueKeccak.EmptyTreeHash);
 
-    // Created by the first write, so a probe tests a reference rather than the map's count, two narrow loads in the guest.
-    private OptimizedDictionary<NodeKey, byte[]?>? _nodes;
     private readonly OptimizedDictionary<NodeKey, byte[]> _overflow = [];
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
@@ -113,19 +110,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     }
 
     /// <inheritdoc/>
-    /// <remarks>The scheme is fixed: only <c>FullPruner</c> reassigns it, and it does not run in the guest.</remarks>
-    public INodeStorage.KeyScheme Scheme
-    {
-        get => INodeStorage.KeyScheme.Hash;
-        set => throw new NotSupportedException();
-    }
-
-    public bool RequirePath => true;
-
-    /// <inheritdoc/>
     /// <remarks>
-    /// <see cref="NodeStorage"/> falls back to a half-path key when the hash key misses. Nothing writes
-    /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
     /// The keccak is viewed as a <see cref="NodeKey"/>, which wraps it alone, rather than copied into one: a copy
     /// holds its four words in callee-saved registers across the whole inlined resolve.
     /// </remarks>
@@ -135,7 +120,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[]? Find(in NodeKey key)
     {
-        if (_nodes is not null && _nodes.TryGetValue(key, out byte[]? value)) return value;
+        if (TryGetOverlay(key, out byte[]? value)) return value;
         // Buckets are masked into the heads and chains only link stored entries, so the arrays are read unchecked.
         nint head = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_heads), key.Bucket(_bucketMask));
         if (head == Overflowed) return _overflow.TryGetValue(key, out byte[]? overflowed) ? overflowed : null;
@@ -150,10 +135,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Null <paramref name="data"/> evicts the node. <see cref="NodeStorage"/>'s direct <c>Set</c> keeps
-    /// the hash-keyed entry and removes only the half-path one, but every stateless write arrives
-    /// through <see cref="INodeStorage.IWriteBatch"/>, whose <see cref="NodeStorage"/> form removes the
-    /// hash key as well.
+    /// Null <paramref name="data"/> evicts the node, including an original witness entry.
     /// </remarks>
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
@@ -163,14 +145,13 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             return;
         }
 
-        _nodes ??= [];
         if (data.IsNull())
         {
-            _nodes[key] = null;
+            SetOverlay(key, null);
         }
         else
         {
-            _nodes[key] = data.ToArray();
+            SetOverlay(key, data.ToArray());
         }
     }
 

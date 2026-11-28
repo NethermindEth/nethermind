@@ -12,6 +12,7 @@ public class BuiltInStepsModule : Module
     public static readonly StepInfo[] BuiltInSteps =
     [
         typeof(ConfigureMemoryAllocators),
+        typeof(ValidateFlatState),
         typeof(DatabaseMigrations),
         typeof(InitializeBlockchain),
         typeof(EvmWarmer),

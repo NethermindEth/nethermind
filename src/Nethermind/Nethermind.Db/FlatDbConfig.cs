@@ -36,10 +36,6 @@ public class FlatDbConfig : IFlatDbConfig
     public int ArchiveProofEpochLog2 { get; set; } = 0;
     public int ArchiveProofRecentEpochs { get; set; } = 0;
     public int ArchiveProofFineEpochs { get; set; } = 0;
-    public bool ImportFromPruningTrieState { get; set; } = false;
-    public bool DropPruningTrieState { get; set; } = false;
-    public bool MigrateFromPruningTrieState { get; set; } = false;
-    public int MigrationChunkNodes { get; set; } = 1000;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;

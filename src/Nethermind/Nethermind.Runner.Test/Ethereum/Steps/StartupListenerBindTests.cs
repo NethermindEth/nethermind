@@ -85,7 +85,7 @@ public class StartupListenerBindTests
         api.EthereumJsonSerializer.Returns(new EthereumJsonSerializer());
 
         StartRpc step = new(api, new Lazy<IJsonRpcServiceConfigurer[]>([]), new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), new Lazy<IJsonRpcService>(Substitute.For<IJsonRpcService>()),
-            new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("pipeline warmup is disabled")), []);
+            []);
 
         Assert.That(() => step.Execute(CancellationToken.None),
             Throws.TypeOf(portInUse ? typeof(PortInUseException) : typeof(ListenerBindException)));
@@ -169,7 +169,7 @@ public class StartupListenerBindTests
         api.LogManager.Returns(TestLogManager.Instance);
 
         StartRpc step = new(api, new Lazy<IJsonRpcServiceConfigurer[]>([]), new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), new Lazy<IJsonRpcService>(Substitute.For<IJsonRpcService>()),
-            new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("JSON-RPC is disabled")), []);
+            []);
 
         await step.Execute(CancellationToken.None);
         return jsonRpcConfig;

@@ -32,7 +32,6 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore, bool boundWho
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException("Get storage trie node resolver not supported");
 
-    public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), boundWholePath, LowerBound, UpperBound);
 

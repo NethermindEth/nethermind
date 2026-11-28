@@ -5,10 +5,10 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Benchmarks.State;
@@ -39,7 +39,7 @@ public class StateTreeRootBenchmark
     [Params(1, 8, 64, 1000)]
     public int DirtyAccounts { get; set; }
 
-    private MemDb _backingDb = null!;
+    private MemoryNodeStorage _backingDb = null!;
     private Address[] _addresses = null!;
     private Account[] _variantA = null!;
     private Account[] _variantB = null!;
@@ -53,7 +53,7 @@ public class StateTreeRootBenchmark
     {
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
-        _backingDb = new MemDb();
+        _backingDb = new MemoryNodeStorage();
         _addresses = new Address[MaxAccounts];
         _variantA = new Account[MaxAccounts];
         _variantB = new Account[MaxAccounts];

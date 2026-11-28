@@ -22,12 +22,8 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Db": {
-    "SharedBlockCacheSize": 2147483648,
-    "StateDbRowCacheSize": 536870912
+    "SharedBlockCacheSize": 2147483648
   },
   "JsonRpc": {
     "Enabled": true,
@@ -45,7 +41,6 @@
     "DiscoveryVersion": "All"
   },
   "FlatDb": {
-    "Enabled": true,
     "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }

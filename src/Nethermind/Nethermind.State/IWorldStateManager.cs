@@ -31,8 +31,7 @@ public interface IWorldStateManager
 
     /// <summary>
     /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
-    /// For trie mode, returns the existing read-only trie store.
-    /// For flat mode, returns an adapter over the flat DB's trie node data.
+    /// For flat state, returns an adapter over the flat database's trie node data.
     /// </summary>
     IReadOnlyTrieStore CreateReadOnlyTrieStore();
 

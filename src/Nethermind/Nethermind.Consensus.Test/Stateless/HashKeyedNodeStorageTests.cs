@@ -6,12 +6,12 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -183,19 +183,6 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Fixes_the_key_scheme()
-    {
-        HashKeyedNodeStorage storage = Storage();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(storage.Scheme, Is.EqualTo(INodeStorage.KeyScheme.Hash));
-            Assert.That(storage.RequirePath, Is.True);
-        }
-        Assert.Throws<NotSupportedException>(() => storage.Scheme = INodeStorage.KeyScheme.HalfPath);
-    }
-
-    [Test]
     public void Reads_the_same_as_the_MemDb_backed_store_it_replaces()
     {
         HashKeyedNodeStorage storage = Storage(Nodes);
@@ -215,20 +202,14 @@ public class HashKeyedNodeStorageTests
         {
             Assert.That(storage.Get(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.Get(null, TreePath.Empty, UnknownHash)));
             Assert.That(storage.KeyExists(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.KeyExists(null, TreePath.Empty, UnknownHash)));
-            Assert.That(storage.Scheme, Is.EqualTo(reference.Scheme));
         }
     }
 
-    /// <summary>The host's form of the same store: a <see cref="MemDb"/> behind a hash-scheme <see cref="NodeStorage"/>.</summary>
     private static INodeStorage ReferenceStorage(params byte[][] state)
     {
-        IKeyValueStore db = MemDb.WithCapacity(state.Length);
-        foreach (byte[] stateElement in state)
-        {
-            db.Set(ValueKeccak.Compute(stateElement).Bytes, stateElement);
-        }
-
-        return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
+        MemoryNodeStorage storage = new();
+        foreach (byte[] node in state) storage.Set(null, TreePath.Empty, HashOf(node), node);
+        return storage;
     }
 
     /// <summary>The entries the store moved to its overflow dictionary, which no read can tell apart from the bucketed ones.</summary>
@@ -236,6 +217,53 @@ public class HashKeyedNodeStorageTests
     {
         object overflow = typeof(HashKeyedNodeStorage).GetField("_overflow", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(storage)!;
         return (int)overflow.GetType().GetProperty("Count")!.GetValue(overflow)!;
+    }
+
+    [Test]
+    public void Host_witness_storage_supports_concurrent_reads_writes_and_deletes()
+    {
+        const int NodeCount = 4096;
+        byte[][] nodes = new byte[NodeCount][];
+        for (int i = 0; i < nodes.Length; i++) nodes[i] = [(byte)i, (byte)(i >> 8), 0xa5];
+
+        INodeStorage storage = Storage(nodes);
+        ValueHash256[] hashes = Array.ConvertAll(nodes, HashOf);
+
+        Parallel.Invoke(
+            () => Parallel.For(0, nodes.Length, i => _ = storage.Get(null, TreePath.Empty, hashes[i])),
+            () => Parallel.For(0, nodes.Length, i =>
+            {
+                using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
+                batch.Set(null, TreePath.Empty, hashes[i], null, WriteFlags.None);
+            }),
+            () => Parallel.For(0, nodes.Length, i => _ = storage.KeyExists(null, TreePath.Empty, hashes[i])));
+
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.Null);
+                Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.False);
+            }
+        }
+
+        Parallel.Invoke(
+            () => Parallel.For(0, nodes.Length, i => _ = storage.Get(null, TreePath.Empty, hashes[i])),
+            () => Parallel.For(0, nodes.Length, i =>
+            {
+                using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
+                batch.Set(null, TreePath.Empty, hashes[i], nodes[i], WriteFlags.None);
+            }),
+            () => Parallel.For(0, nodes.Length, i => _ = storage.KeyExists(null, TreePath.Empty, hashes[i])));
+
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.EqualTo(nodes[i]));
+                Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.True);
+            }
+        }
     }
 
     private static void Write(HashKeyedNodeStorage storage, bool throughBatch, in ValueHash256 hash, byte[] data)

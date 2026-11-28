@@ -54,7 +54,6 @@ public abstract partial class BlockchainTestBase
 
         IConfigProvider configProvider = new ConfigProvider();
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-        flatDbConfig.Enabled = UseFlatDb;
         flatDbConfig.EnableLongFinality = false;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         ApplyPreWarming(blocksConfig, PreWarmingOverride);

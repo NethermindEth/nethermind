@@ -91,9 +91,6 @@ internal class Program
         public static Option<string> Chunk { get; } =
             new("--chunk", "-c") { Description = "Run only the Nth of M interleaved chunks of the collected fixture files, e.g. '2of8'. Used to split a large fixture set across CI jobs." };
 
-        public static Option<bool> TrieDb { get; } =
-            new("--triedb") { Description = "Run with the patricia-trie state layout." };
-
         public static Option<bool> BalSequential { get; } =
             new("--bal-sequential") { Description = "Run every block on the sequential executor instead of the BAL parallel one, which runs by default. [Only for Blockchain/Engine Test]" };
 
@@ -143,7 +140,6 @@ internal class Program
             Options.JsonOutput,
             Options.Workers,
             Options.Chunk,
-            Options.TrieDb,
             Options.BalSequential,
             Options.BalWithhold,
             Options.BatchRead,
@@ -249,11 +245,6 @@ internal class Program
 
         // Set before any fixture is loaded: the parse workers only ever read the table.
         ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
-
-        if (parseResult.GetValue(Options.TrieDb))
-        {
-            Environment.SetEnvironmentVariable("TEST_USE_TRIE", "1");
-        }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
         // Cap at processor count to avoid thermal throttling on laptops.

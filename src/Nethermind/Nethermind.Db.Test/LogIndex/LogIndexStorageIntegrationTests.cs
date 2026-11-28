@@ -305,7 +305,7 @@ namespace Nethermind.Db.Test.LogIndex
             Directory.CreateDirectory(_dbPath);
 
             DbConfig config = new();
-            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+            RocksDbConfigFactory configFactory = new(config, new TestHardwareInfo(0), LimboLogs.Instance);
             _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new RealFileSystem(), new TestLogManager(), _dbPath);
         }
 

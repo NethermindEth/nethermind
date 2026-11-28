@@ -10,8 +10,7 @@ namespace Nethermind.Synchronization.FastSync;
 
 /// <summary>
 /// High-level storage interface for TreeSync that abstracts both storage operations
-/// and verification operations. Allows different backends (Patricia, Flat) to provide
-/// completely different implementations.
+/// and verification operations.
 /// </summary>
 public interface ITreeSyncStore
 {

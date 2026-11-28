@@ -463,13 +463,17 @@ public class BlockProcessingBenchmark
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
         // with TestSpecProvider(Spec) and in-memory databases.
         // Includes PrewarmerModule (via NethermindModule) for block cache pre-warming.
+        // The processing scope opens each block's parent through this provider (target-aware scopes),
+        // and the benchmark's genesis header never enters the block tree.
+        TestStateHeaderProvider stateHeaderProvider = new();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Spec))
+            .AddSingleton<IStateHeaderProvider>(stateHeaderProvider)
             .Build();
 
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
-        _processingScope = BlockProcessingBenchmarkSetup.BeginProcessingScope(_container, out TestStateHeaderProvider stateHeaderProvider);
+        _processingScope = BlockProcessingBenchmarkSetup.BeginProcessingScope(_container, out stateHeaderProvider);
 
         IWorldState stateProvider = _processingScope.Resolve<IWorldState>();
 

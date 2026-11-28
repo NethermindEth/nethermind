@@ -54,7 +54,6 @@ public class PrunedReceiptRetentionModuleTests
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig
             {
-                Enabled = true,
                 HistoryEnabled = true,
                 HistoryRetention = HistoryRetentionMode.Rolling,
                 HistoryRetentionBlocks = 1024,
@@ -70,7 +69,7 @@ public class PrunedReceiptRetentionModuleTests
     public void WithoutFlatHistory_TheDefaultNeverRetains()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = false }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = false }))
             .Build();
 
         Assert.That(container.Resolve<IPrunedReceiptRetention>(), Is.TypeOf<NullPrunedReceiptRetention>());

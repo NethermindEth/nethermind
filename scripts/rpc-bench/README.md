@@ -12,12 +12,12 @@ and post-process it to XML.
 `arm64` is `reproducible-benchmarks-arm` with snapshots under `/data`. Every
 path below follows that choice. **Never compare timings across the two boxes.**
 
-The amd64 box holds the full snapshot set, so it serves every `client`,
-`reference_client` and `state_layout`. The arm64 box carries the Nethermind
+The amd64 box holds the full snapshot set, so it serves every `client` and
+`reference_client`. The arm64 box carries the Nethermind
 **flat** set plus one directory per additionally provisioned client
 (`/data/<client>/<client>-<block>`), so there any single provisioned `client`
-runs in single-node mode, `reference_client` is held to `none`, `state_layout`
-to `flat`, and an image it would have to build is refused as well (that box's
+runs in single-node mode, `reference_client` is held to `none`, and an image it
+would have to build is refused as well (that box's
 small root disk dies under a build). Sweeps resolve their sets differently
 (below), so those per-client sets serve single-node runs only. `resolve` checks
 those limits against the selected runner, and the benchmark job's
@@ -135,8 +135,8 @@ which uses the same snapshots on this runner:
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
   including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
   fallback).
-- The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
-  `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
+- The node is isolated from network noise (`--Init.DiscoveryEnabled=false`,
+  `--Network.MaxActivePeers=0`) but otherwise runs
   production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
   inside the measured window; treat a run's first test/rate as warm-up, or for
   `jsonbench` set `corpus_warmup_duration` (see below). One-off code-gen

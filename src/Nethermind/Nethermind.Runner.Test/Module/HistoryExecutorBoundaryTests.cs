@@ -36,7 +36,7 @@ public class HistoryExecutorBoundaryTests
         specs.GetSpec(Arg.Any<ForkActivation>()).Returns(call =>
             call.Arg<ForkActivation>().Timestamp >= 100 ? Amsterdam.Instance : Prague.Instance);
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
             .AddSingleton(tree)
             .AddSingleton(specs)
             .Build();

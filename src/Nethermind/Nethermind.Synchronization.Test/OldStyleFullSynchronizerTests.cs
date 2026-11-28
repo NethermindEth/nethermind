@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -20,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.History;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -44,12 +44,6 @@ namespace Nethermind.Synchronization.Test
             ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
             syncConfig.FastSync = false;
 
-            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-            initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
-
-            IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
-            pruningConfig.Mode = PruningMode.Full;
-
             IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
@@ -64,10 +58,10 @@ namespace Nethermind.Synchronization.Test
         public Task TearDown() =>
             _container.DisposeAsync().AsTask();
 
-        private IDb _stateDb => _container.Resolve<IDbProvider>().StateDb;
         private IBlockTree _blockTree = null!;
         private IBlockTree _remoteBlockTree = null!;
         private Block _genesisBlock = null!;
+        private IDb _codeDb => _container.Resolve<IDbProvider>().CodeDb;
         private ISyncPeerPool SyncPeerPool => _container.Resolve<ISyncPeerPool>();
         private ISyncServer SyncServer => _container.Resolve<ISyncServer>();
         private ISynchronizer Synchronizer => _container.Resolve<ISynchronizer>()!;
@@ -307,60 +301,6 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Can_retrieve_node_values()
-        {
-            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            using IByteArrayList data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
-
-            Assert.That(data, Is.Not.Null);
-            Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "data[0]");
-            Assert.That(data[1].IsEmpty, Is.True, "data[1]");
-        }
-
-        [Test]
-        public void Node_values_response_stops_after_the_byte_limit([Values] bool code)
-        {
-            IDbProvider dbProvider = _container.Resolve<IDbProvider>();
-            (code ? dbProvider.CodeDb : dbProvider.StateDb).Set(TestItem.KeccakA, new byte[Synchronization.SyncServer.NodeDataSoftResponseByteLimit / 2 + 1]);
-            using IByteArrayList data = SyncServer.GetNodeData([TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA], CancellationToken.None);
-
-            Assert.That(data.Count, Is.EqualTo(2));
-        }
-
-        /// <remarks>The response has one item per key looked up, so its count is the number of lookups.</remarks>
-        [TestCase(2047, 2047)]
-        [TestCase(2048, 2048)]
-        [TestCase(2049, 2048)]
-        public void Node_values_response_stops_after_the_lookup_limit(int keyCount, int expectedCount)
-        {
-            Hash256[] keys = new Hash256[keyCount];
-            Array.Fill(keys, TestItem.KeccakA);
-            using IByteArrayList data = SyncServer.GetNodeData(keys, CancellationToken.None);
-
-            Assert.That(data.Count, Is.EqualTo(expectedCount));
-        }
-
-        [Test]
-        public void Node_values_response_holds_the_first_keys_up_to_the_lookup_limit()
-        {
-            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            _stateDb.Set(TestItem.KeccakC, TestItem.RandomDataC);
-            Hash256[] keys = new Hash256[2049];
-            Array.Fill(keys, TestItem.KeccakB);
-            keys[0] = TestItem.KeccakA;
-            keys[^1] = TestItem.KeccakC;
-            using IByteArrayList data = SyncServer.GetNodeData(keys, CancellationToken.None);
-
-            Assert.That(data.Count, Is.EqualTo(2048));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "the first key is looked up");
-                Assert.That(data[2047].IsEmpty, Is.True, "the last key looked up is a miss");
-            }
-        }
-
-        [Test]
         public void Can_retrieve_empty_receipts()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
@@ -372,6 +312,59 @@ namespace Nethermind.Synchronization.Test
                 Assert.That(SyncServer.GetReceipts(block0!.Hash!), Is.Empty);
                 Assert.That(SyncServer.GetReceipts(block1!.Hash!), Is.Null);
                 Assert.That(SyncServer.GetReceipts(TestItem.KeccakA), Is.Null);
+            }
+        }
+
+        [Test]
+        public void Can_retrieve_code_node_values()
+        {
+            _codeDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
+            using IByteArrayList data = SyncServer.GetNodeData([TestItem.KeccakA, TestItem.KeccakB], CancellationToken.None, NodeDataType.Code);
+
+            Assert.That(data, Is.Not.Null);
+            Assert.That(data.Count, Is.EqualTo(2), "data.Length");
+            Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "data[0]");
+            Assert.That(data[1].IsEmpty, Is.True, "data[1]");
+        }
+
+        [Test]
+        public void Code_node_values_response_stops_after_the_byte_limit()
+        {
+            _codeDb.Set(TestItem.KeccakA, new byte[Synchronization.SyncServer.NodeDataSoftResponseByteLimit / 2 + 1]);
+            using IByteArrayList data = SyncServer.GetNodeData([TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA], CancellationToken.None, NodeDataType.Code);
+
+            Assert.That(data.Count, Is.EqualTo(2));
+        }
+
+        /// <remarks>The response has one item per key looked up, so its count is the number of lookups.</remarks>
+        [TestCase(2047, 2047)]
+        [TestCase(2048, 2048)]
+        [TestCase(2049, 2048)]
+        public void Code_node_values_response_stops_after_the_lookup_limit(int keyCount, int expectedCount)
+        {
+            Hash256[] keys = new Hash256[keyCount];
+            Array.Fill(keys, TestItem.KeccakA);
+            using IByteArrayList data = SyncServer.GetNodeData(keys, CancellationToken.None, NodeDataType.Code);
+
+            Assert.That(data.Count, Is.EqualTo(expectedCount));
+        }
+
+        [Test]
+        public void Code_node_values_response_holds_the_first_keys_up_to_the_lookup_limit()
+        {
+            _codeDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
+            _codeDb.Set(TestItem.KeccakC, TestItem.RandomDataC);
+            Hash256[] keys = new Hash256[2049];
+            Array.Fill(keys, TestItem.KeccakB);
+            keys[0] = TestItem.KeccakA;
+            keys[^1] = TestItem.KeccakC;
+            using IByteArrayList data = SyncServer.GetNodeData(keys, CancellationToken.None, NodeDataType.Code);
+
+            Assert.That(data.Count, Is.EqualTo(2048));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "the first key is looked up");
+                Assert.That(data[2047].IsEmpty, Is.True, "the last key looked up is a miss");
             }
         }
     }

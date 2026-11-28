@@ -64,26 +64,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("fast", true)]
     public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.FastSync, fastSyncEnabled);
 
-    [TestCase("archive")]
-    public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
-
-    [Test]
-    public void Fast_sync_without_snap_stays_on_patricia()
-    {
-        int fastWithoutSnapConfigs = 0;
-        foreach (string configFile in AllConfigFiles())
-        {
-            ISyncConfig sync = GetConfigFromFile<ISyncConfig>(configFile);
-            if (!sync.FastSync || sync.SnapSync)
-                continue;
-
-            fastWithoutSnapConfigs++;
-            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.False, configFile);
-        }
-
-        Assert.That(fastWithoutSnapConfigs, Is.GreaterThan(0));
-    }
-
     [TestCase("archive", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]
@@ -125,14 +105,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 2147483648UL, 536870912UL)]
-    [TestCase("op-mainnet_archive.json", 1073741824UL, 268435456UL)]
-    [TestCase("^archive", 536870912UL, 134217728UL)]
-    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize, ulong stateDbRowCacheSize)
-    {
+    [TestCase("mainnet archive", 2147483648UL)]
+    [TestCase("op-mainnet_archive.json", 1073741824UL)]
+    [TestCase("^archive", 536870912UL)]
+    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize) =>
         Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, sharedBlockCacheSize);
-        Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
-    }
 
     [Test]
     public void Removed_memory_hint_settings_are_accepted_and_reported_as_deprecated()
@@ -141,9 +118,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         {
             { "NETHERMIND_INITCONFIG_MEMORYHINT", "2000000000" },
             { "NETHERMIND_DBCONFIG_SKIPMEMORYHINTSETTING", "true" },
-            { "NETHERMIND_SYNCCONFIG_FASTBLOCKS", "true" },
-            // Changes the derived, obsolete Pruning.Enabled without setting it.
-            { "NETHERMIND_PRUNINGCONFIG_MODE", "None" }
+            { "NETHERMIND_SYNCCONFIG_FASTBLOCKS", "true" }
         };
         IEnvironment environment = Substitute.For<IEnvironment>();
         environment.GetEnvironmentVariables().Returns(variables);
@@ -468,8 +443,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Assert.That(errors, Is.Empty, errorMsg);
     }
 
+    // FlatDb.Enabled=false is refused at startup, so no shipped config may pin it (fast sync without snap included).
     [Test]
-    public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
+    public void No_config_disables_flat_db()
+    {
+        foreach (string configFile in AllConfigFiles())
+        {
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.True, configFile);
+        }
+    }
+
+    [Test]
+    public void Archive_named_configs_enable_flat_history_in_all_runner_configs()
     {
         int archiveConfigs = 0;
         foreach (string configFile in AllConfigFiles())
@@ -480,8 +465,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             }
 
             archiveConfigs++;
-            IPruningConfig pruningConfig = GetConfigFromFile<IPruningConfig>(configFile);
-            Assert.That(pruningConfig.Mode, Is.EqualTo(PruningMode.None), configFile);
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).HistoryEnabled, Is.True, configFile);
         }
 
         Assert.That(archiveConfigs, Is.GreaterThan(0));
@@ -528,15 +512,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Assert.That(syncConfig.FastSync, Is.True);
             Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
         }
-    }
-
-    // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
-    // WorldStateManager.HashServer — non-null solely on the patricia backend with hash-keyed nodes.
-    [Test]
-    public void Xdc_configs_can_serve_node_data([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard)
-    {
-        Test<IFlatDbConfig, bool>(configWildcard, static c => c.Enabled, false);
-        Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
     }
 
     // NeedToWaitForHeader would hold state sync back until the reverse header sync reaches genesis. XdcStateSyncPivot

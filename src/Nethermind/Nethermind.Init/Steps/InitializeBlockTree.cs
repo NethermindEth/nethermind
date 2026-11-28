@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(SetupKeyStore), typeof(ValidateFlatState))]
     public class InitializeBlockTree(
         IInitConfig initConfig,
         IBlockTree blockTree,

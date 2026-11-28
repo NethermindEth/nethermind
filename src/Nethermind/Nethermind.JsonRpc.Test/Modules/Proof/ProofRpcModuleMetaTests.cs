@@ -14,7 +14,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -23,7 +22,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Serialization.Json;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -36,21 +34,21 @@ public class ProofRpcModuleMetaTests
 {
     private IProofRpcModule _proofRpcModule = null!;
     private IBlockTree _blockTree = null!;
-    private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
-    private WorldStateManager _worldStateManager = null!;
+    private IWorldStateManager _worldStateManager = null!;
+    private IContainer _worldStateContainer = null!;
     private IContainer _container = null!;
 
     private const int StorageSlotCount = 64;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
-        _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
+        (IWorldState worldState, _, _worldStateContainer) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+        _worldStateManager = _worldStateContainer.Resolve<IWorldStateManager>();
+        IDbProvider dbProvider = _worldStateContainer.Resolve<IDbProvider>();
 
         Hash256 stateRoot;
-        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (System.IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100_000);
@@ -76,7 +74,7 @@ public class ProofRpcModuleMetaTests
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
-            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IDbProvider>(dbProvider)
             .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
             .AddSingleton<IReceiptStorage>(receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
@@ -85,7 +83,11 @@ public class ProofRpcModuleMetaTests
     }
 
     [TearDown]
-    public void TearDown() => _container.Dispose();
+    public void TearDown()
+    {
+        _container.Dispose();
+        _worldStateContainer.Dispose();
+    }
 
     [Test]
     public void Returns_proof_payload_alongside_meta()

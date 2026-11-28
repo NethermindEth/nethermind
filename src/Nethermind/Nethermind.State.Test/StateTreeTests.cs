@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -96,7 +97,7 @@ public class StateTreeTests
     private static (MemDb db, StateTree tree) CreateTree()
     {
         MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+        StateTree tree = new(new RawScopedTrieStore(new TestNodeStorage(db)), LimboLogs.Instance);
         return (db, tree);
     }
 

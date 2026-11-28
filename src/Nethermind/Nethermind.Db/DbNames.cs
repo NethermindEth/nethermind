@@ -5,7 +5,7 @@ namespace Nethermind.Db
 {
     public static class DbNames
     {
-        public const string Storage = "storage";
+        /// <summary>Directory of the removed patricia state database; the node only probes it, to refuse a legacy database at startup.</summary>
         public const string State = "state";
         public const string Flat = "flat";
         public const string FlatHistory = "flatHistory";

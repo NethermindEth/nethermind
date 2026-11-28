@@ -16,8 +16,6 @@ namespace Nethermind.State.Flat;
 /// </remarks>
 public class FlatStateBoundary(IPersistence persistence) : IStateBoundary
 {
-    public ulong? RetentionWindowBlocks => null;
-
     public ulong? OldestStateBlock => CurrentPersistedBlock();
 
     public ulong? BestPersistedState => CurrentPersistedBlock();

@@ -487,7 +487,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<ProgressTracker>()
-            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>()
             .AddSingleton<ISimpleSyncFeed<SnapSyncBatch>, SnapSyncFeed>()
             .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
@@ -545,7 +544,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<IStateSyncPivot, StateSyncPivot>()
-            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<TreeSync>()
             .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()

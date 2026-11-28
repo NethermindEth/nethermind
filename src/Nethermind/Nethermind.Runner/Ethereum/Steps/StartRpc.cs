@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
 public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, Lazy<IJsonRpcService> lazyJsonRpcService,
-    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IBatchConcurrencyStrategy[] batchConcurrencyStrategies, IRpcAuthentication? authentication = null) : IStep
+    IBatchConcurrencyStrategy[] batchConcurrencyStrategies, IRpcAuthentication? authentication = null) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -68,9 +68,8 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         }
         else
         {
-            bool flatState = flatStateActivationPolicy.Value.ShouldTurnOnFlatDb();
             await StartupWarmupTask.RunAsync(token =>
-                StartupPipelineWarmer.WarmupAsync(api.ChainSpec, api.ConfigProvider, flatState, token, auth, logger, liveBlockTree: api.BlockTree),
+                StartupPipelineWarmer.WarmupAsync(api.ChainSpec, api.ConfigProvider, token, auth, logger, liveBlockTree: api.BlockTree),
                 logger, StartupWarmupTask.SafetyTimeout, cancellationToken);
         }
 

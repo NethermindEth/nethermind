@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Migration;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -20,12 +19,9 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IStateHeaderProvider stateHeaderProvider,
     FlatTrieVerifier trieVerifier,
-    Lazy<HalfPathMigrationCursor> migrationCursor,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<FlatWorldStateManager>();
-
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
@@ -61,17 +57,8 @@ public class FlatWorldStateManager(
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();
 
-    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
-    {
-        // The flat iterators the verification compares against only see what the migration has copied.
-        if (migrationCursor.Value.Current is not null)
-        {
-            if (_logger.IsWarn) _logger.Warn("The flat DB cannot be verified until its migration from the patricia trie state completes.");
-            return false;
-        }
-
-        return trieVerifier.Verify(stateAtBlock, cancellationToken);
-    }
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) =>
+        trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 

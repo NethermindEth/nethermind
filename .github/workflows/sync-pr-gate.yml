@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [HalfPath, Flat]
+        mode: [Flat]
         consensus: ${{ fromJSON(needs.select-consensus.outputs.clients) }}
     steps:
       - name: Checkout
@@ -115,11 +115,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [HalfPath, Flat]
+        mode: [Flat]
         consensus: ${{ fromJSON(needs.select-consensus.outputs.clients) }}
         include:
-          - mode: HalfPath
-            flatdb: false
           - mode: Flat
             flatdb: true
 
@@ -281,7 +279,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [HalfPath, Flat]
+        mode: [Flat]
         consensus: ${{ fromJSON(needs.select-consensus.outputs.clients) }}
     steps:
       - name: Checkout

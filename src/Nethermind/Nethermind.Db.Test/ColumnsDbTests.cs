@@ -47,7 +47,7 @@ public class ColumnsDbTests
                 DeleteOnStart = true,
             },
             dbConfig,
-            factory ?? new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false)
+            factory ?? new RocksDbConfigFactory(dbConfig, new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false)
         );
 
     [TearDown]
@@ -57,7 +57,7 @@ public class ColumnsDbTests
     public void Snapshots_and_views_do_not_resolve_read_settings_again([Values] bool sequentialReadAhead)
     {
         DbConfig config = new();
-        CountingRocksDbConfigFactory factory = new(new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
+        CountingRocksDbConfigFactory factory = new(new RocksDbConfigFactory(config, new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
         using ColumnsDb<ReceiptsColumns> db = CreateDb(DbPath + "-read-settings", config, factory);
         IDb column = db.GetColumnDb(ReceiptsColumns.Blocks);
         column.Set([1], [2]);
@@ -809,7 +809,7 @@ public class ColumnsDbTests
         _db = TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(DbPath,
             new("Blocks", DbPath),
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
+            new RocksDbConfigFactory(new DbConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
 
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(value));
     }

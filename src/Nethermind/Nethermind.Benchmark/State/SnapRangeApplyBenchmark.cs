@@ -101,7 +101,7 @@ public class SnapRangeApplyBenchmark
         state.Commit();
         Hash256 stateRoot = state.RootHash;
         PathWithAccount owner = new(keys[0], ownerAccount.ToStruct());
-        SnapStateServer server = new(store.AsReadOnly(), NullLogManager.Instance);
+        TestTrieSnapStateServer server = new(store, NullLogManager.Instance);
         List<Func<ISnapTrieFactory, AddRangeResult>> ranges = [];
         ValueHash256 origin = ValueKeccak.Zero;
         while (true)

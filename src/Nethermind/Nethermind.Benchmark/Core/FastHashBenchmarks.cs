@@ -6,46 +6,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Benchmarks.Core;
-
-[ShortRunJob]
-[MemoryDiagnoser]
-public class TinyTreePathHashBenchmarks
-{
-    private const int OperationsPerInvoke = 1024;
-    private readonly HashAndTinyPath[] _keys = new HashAndTinyPath[OperationsPerInvoke];
-
-    [Params(false, true)]
-    public bool WithAddress;
-
-    [GlobalSetup]
-    public void Setup()
-    {
-        GuestHashSeed.Apply();
-        Random random = new(42);
-        for (int i = 0; i < _keys.Length; i++)
-        {
-            byte[] bytes = new byte[Hash256.Size];
-            random.NextBytes(bytes);
-            TinyTreePath path = new(new TreePath(new ValueHash256(bytes), i % (TinyTreePath.MaxNibbleLength + 1)));
-            random.NextBytes(bytes);
-            _keys[i] = new HashAndTinyPath(WithAddress ? new Hash256(bytes) : null, path);
-        }
-    }
-
-    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int HashAndTinyPath()
-    {
-        int hash = 0;
-        for (int i = 0; i < _keys.Length; i++) hash = unchecked(hash + _keys[i].GetHashCode());
-        return hash;
-    }
-}
 
 [ShortRunJob]
 [DisassemblyDiagnoser]

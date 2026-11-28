@@ -17,6 +17,5 @@ namespace Nethermind.Trie.Pruning
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? storage) => this;
 
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }
 }

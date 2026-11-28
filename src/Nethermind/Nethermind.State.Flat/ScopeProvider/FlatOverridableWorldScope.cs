@@ -49,7 +49,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             this,
             configuration,
             new NoopTrieWarmer(),
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
+            new KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
             headerProvider,
             logManager));
     }

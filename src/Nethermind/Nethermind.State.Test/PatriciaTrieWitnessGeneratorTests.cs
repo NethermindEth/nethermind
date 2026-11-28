@@ -28,7 +28,7 @@ public class PatriciaTrieWitnessGeneratorTests
         int expectedBudget = budget != 0 ? budget : parallelize ? Core.Cpu.RuntimeInformation.ProcessorCount : 0;
         CollectingSink sink = new(() => Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0, Is.EqualTo(expectedBudget)));
 
-        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(db), root, BuildEntries(scenario), sink, parallelize);
+        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(new TestNodeStorage(db)), root, BuildEntries(scenario), sink, parallelize);
 
         using (Assert.EnterMultipleScope())
         {
@@ -64,11 +64,11 @@ public class PatriciaTrieWitnessGeneratorTests
     {
         (TestMemDb db, Hash256 root) = BuildTrie(scenario.Existing);
 
-        Hash256 expectedRoot = ApplyWrites(new RawScopedTrieStore(db), root, scenario, out Dictionary<Hash256AsKey, byte[]> readValues);
+        Hash256 expectedRoot = ApplyWrites(new RawScopedTrieStore(new TestNodeStorage(db)), root, scenario, out Dictionary<Hash256AsKey, byte[]> readValues);
 
-        // Rebuild a store holding ONLY the witness nodes; Hash key scheme addresses nodes purely by keccak.
+        // Rebuild a store holding ONLY the witness nodes; Nodes are addressed by their hash.
         Dictionary<Hash256AsKey, byte[]> witness = CollectWitness(db, root, scenario);
-        NodeStorage witnessStorage = new(new TestMemDb(), INodeStorage.KeyScheme.Hash);
+        TestNodeStorage witnessStorage = new(new TestMemDb());
         foreach ((Hash256AsKey hash, byte[] rlp) in witness)
         {
             witnessStorage.Set(null, TreePath.Empty, new ValueHash256(hash.Value.Bytes), rlp);
@@ -121,13 +121,13 @@ public class PatriciaTrieWitnessGeneratorTests
     private static HashSet<Hash256AsKey> RunGenerator(TestMemDb db, Hash256 root, PatriciaTrieWitnessGenerator.PathEntry[] entries)
     {
         CollectingSink sink = new();
-        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(db), root, entries, sink);
+        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(new TestNodeStorage(db)), root, entries, sink);
         return [.. sink.Nodes.Keys];
     }
 
     private static HashSet<Hash256AsKey> CaptureOrdered(TestMemDb db, Hash256 root, params (Hash256 key, byte[] value)[] ops)
     {
-        CapturingScopedTrieStore store = new(new RawScopedTrieStore(db));
+        CapturingScopedTrieStore store = new(new RawScopedTrieStore(new TestNodeStorage(db)));
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = root };
         foreach ((Hash256 key, byte[] value) in ops) tree.Set(key.Bytes, value);
         tree.UpdateRootHash();
@@ -137,7 +137,7 @@ public class PatriciaTrieWitnessGeneratorTests
     private static HashSet<Hash256AsKey> RunGenerator(TestMemDb db, Hash256 root, Scenario scenario, bool parallelize)
     {
         CollectingSink sink = new();
-        IScopedTrieStore store = new RawScopedTrieStore(db);
+        IScopedTrieStore store = new RawScopedTrieStore(new TestNodeStorage(db));
         PatriciaTrieWitnessGenerator.Generate(store, root, BuildEntries(scenario), sink, parallelize);
         return [.. sink.Nodes.Keys];
     }
@@ -145,7 +145,7 @@ public class PatriciaTrieWitnessGeneratorTests
     private static Dictionary<Hash256AsKey, byte[]> CollectWitness(TestMemDb db, Hash256 root, Scenario scenario)
     {
         CollectingSink sink = new();
-        IScopedTrieStore store = new RawScopedTrieStore(db);
+        IScopedTrieStore store = new RawScopedTrieStore(new TestNodeStorage(db));
         PatriciaTrieWitnessGenerator.Generate(store, root, BuildEntries(scenario), sink);
         return sink.Nodes;
     }
@@ -161,7 +161,7 @@ public class PatriciaTrieWitnessGeneratorTests
 
     private static HashSet<Hash256AsKey> CaptureDuringMutation(TestMemDb db, Hash256 root, Scenario scenario, out Hash256 postRoot)
     {
-        CapturingScopedTrieStore store = new(new RawScopedTrieStore(db));
+        CapturingScopedTrieStore store = new(new RawScopedTrieStore(new TestNodeStorage(db)));
         postRoot = ApplyWrites(store, root, scenario, out _);
         return [.. store.Captured.Keys];
     }
@@ -182,7 +182,7 @@ public class PatriciaTrieWitnessGeneratorTests
     private static (TestMemDb db, Hash256 root) BuildTrie(List<(Hash256 key, byte[] value)> items)
     {
         TestMemDb db = new();
-        IScopedTrieStore store = new RawScopedTrieStore(db);
+        IScopedTrieStore store = new RawScopedTrieStore(new TestNodeStorage(db));
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = Keccak.EmptyTreeHash };
         foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
         tree.Commit();
@@ -338,8 +338,6 @@ public class PatriciaTrieWitnessGeneratorTests
         }
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseStore.GetStorageTrieNodeResolver(address);
-
-        public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
 
         public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseStore.BeginCommit(root, writeFlags);
     }

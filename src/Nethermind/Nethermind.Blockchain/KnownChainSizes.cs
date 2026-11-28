@@ -10,7 +10,6 @@ namespace Nethermind.Blockchain
     public interface IChainEstimations
     {
         long? StateSize { get; }
-        long? PruningSize { get; }
     }
 
     public static class ChainSizes
@@ -18,18 +17,13 @@ namespace Nethermind.Blockchain
         public class UnknownChain : IChainEstimations
         {
             public long? StateSize => null;
-            public long? PruningSize => null;
 
             public static readonly IChainEstimations Instance = new UnknownChain();
         }
 
-        private class ChainEstimations(
-            LinearExtrapolation? stateSizeEstimator = null,
-            LinearExtrapolation? prunedStateEstimator = null)
-            : IChainEstimations
+        private class ChainEstimations(LinearExtrapolation? stateSizeEstimator = null) : IChainEstimations
         {
             public long? StateSize => stateSizeEstimator?.Estimate;
-            public long? PruningSize => prunedStateEstimator?.Estimate;
         }
 
         private class LinearExtrapolation
@@ -60,10 +54,8 @@ namespace Nethermind.Blockchain
         /// </summary>
         public static IChainEstimations CreateChainSizeInfo(ulong chainId) => chainId switch
         {
-            BlockchainIds.Mainnet => new ChainEstimations(new LinearExtrapolation(156.GB, 90.MB, new DateTime(2024, 07, 17)),
-                new LinearExtrapolation(180.GB, 95.MB, new DateTime(2024, 07, 17))),
-            BlockchainIds.Sepolia => new ChainEstimations(new LinearExtrapolation(38.GB, 90.MB, new DateTime(2024, 07, 17)),
-                new LinearExtrapolation(45.GB, 95.MB, new DateTime(2024, 07, 17))),
+            BlockchainIds.Mainnet => new ChainEstimations(new LinearExtrapolation(156.GB, 90.MB, new DateTime(2024, 07, 17))),
+            BlockchainIds.Sepolia => new ChainEstimations(new LinearExtrapolation(38.GB, 90.MB, new DateTime(2024, 07, 17))),
 
             BlockchainIds.Holesky => new ChainEstimations(new LinearExtrapolation(17.GB, 30.MB, new DateTime(2024, 07, 17))),
 

@@ -22,7 +22,6 @@ public class ArchiveProofModuleTests
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig
             {
-                Enabled = true,
                 HistoryEnabled = true,
                 ArchiveProofBuildEnabled = true,
                 ArchiveProofServeEnabled = true

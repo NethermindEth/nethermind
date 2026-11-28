@@ -59,8 +59,8 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
 
     /// <summary>Whether an exception thrown by the verify-trie run represents cancellation rather than a fault.</summary>
     /// <remarks>
-    /// The stats walk runs in parallel (<c>BatchedTrieVisitor</c> / <c>FlatTrieVerifier</c> do
-    /// <c>Task.WaitAll</c>), so shutdown cancellation surfaces as an <see cref="AggregateException"/> of
+    /// The stats walk runs in parallel (<c>FlatTrieVerifier</c> does <c>Task.WaitAll</c>), so shutdown
+    /// cancellation surfaces as an <see cref="AggregateException"/> of
     /// <see cref="OperationCanceledException"/>s, not a single one. Only an aggregate whose leaves are
     /// <em>all</em> cancellations counts as cancelled: a real fault raised alongside the cancellation
     /// leaves a non-cancellation leaf and is still surfaced as an error.

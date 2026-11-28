@@ -31,27 +31,6 @@ namespace Nethermind.Runner.Test.Module;
 public class FlatWorldStateModuleTests
 {
     [Test]
-    public void Drop_step_is_registered_before_InitializeBlockchain_only_when_flagged([Values] bool drop)
-    {
-        // The dependent edge is what keeps the deletion inside init rather than under block processing.
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new FlatWorldStateModule(new FlatDbConfig { DropPruningTrieState = drop }))
-            .Build();
-
-        StepInfo step = container.Resolve<IEnumerable<StepInfo>>().SingleOrDefault(s => s.StepBaseType == typeof(DropPruningTrieState));
-
-        Assert.That(step is not null, Is.EqualTo(drop));
-        if (drop)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(step.Dependencies, Does.Contain(typeof(InitializeBlockTree)));
-                Assert.That(step.Dependents, Does.Contain(typeof(InitializeBlockchain)));
-            }
-        }
-    }
-
-    [Test]
     public void Auto_layout_is_resolved_with_the_config()
     {
         using TempPath baseDbPath = TempPath.GetTempDirectory();

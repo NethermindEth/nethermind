@@ -4,10 +4,9 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Trie;
 
 namespace Nethermind.State
@@ -46,7 +45,6 @@ namespace Nethermind.State
             stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB, // Gonna guess that if you are running this, you have a decent setup.
             }, diagnostics: null);
             collector.Finish();
             return collector.Stats;

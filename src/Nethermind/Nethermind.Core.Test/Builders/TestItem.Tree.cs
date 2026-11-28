@@ -81,7 +81,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static (StateTree stateTree, StorageTree storageTree, Hash256 accountAddr) GetTrees(ITrieStore? store)
             {
-                store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
+                store ??= new TestRawTrieStore(new MemDb());
 
                 StorageTree storageTree = new(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static (StateTree stateTree, StorageTree storageTree, Hash256 accountAddr) GetTrees(ITrieStore? store, int slotNumber)
             {
-                store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
+                store ??= new TestRawTrieStore(new MemDb());
 
                 StorageTree storageTree = new(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 

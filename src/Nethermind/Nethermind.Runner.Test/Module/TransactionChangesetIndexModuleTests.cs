@@ -156,7 +156,7 @@ public class TransactionChangesetIndexModuleTests
     [TestCase(4, TestName = "BulkReplay_AfterNestedClearRevert_PreservesEarlierClear")]
     public void BulkReplay_WhenProcessingConsecutiveBlocks_PreservesWithdrawalsAndTransactionState(int clearMode)
     {
-        FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(config))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance))
@@ -548,7 +548,7 @@ public class TransactionChangesetIndexModuleTests
     public void An_executor_can_be_built_from_the_node_container()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
             .Build();
 
         using IHistoryBlockExecutor executor = container.Resolve<IHistoryBlockExecutorFactory>().Create();
@@ -561,7 +561,7 @@ public class TransactionChangesetIndexModuleTests
     public void The_read_overlay_follows_the_index_switch(bool indexEnabled)
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
             .Build();
 
         IOverridableEnv traceEnv = container.Resolve<ITraceEnvFactory>().CreateForTracing();
@@ -581,7 +581,7 @@ public class TransactionChangesetIndexModuleTests
     public void The_debug_and_trace_module_factories_build_with_the_index_on()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
             .Build();
 
         using (Assert.EnterMultipleScope())
@@ -595,7 +595,7 @@ public class TransactionChangesetIndexModuleTests
     public void The_builder_resolves_with_the_index_on()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true, HistoryTransactionIndexWorkers = 2 }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true, HistoryTransactionIndexEnabled = true, HistoryTransactionIndexWorkers = 2 }))
             .Build();
 
         TransactionChangesetBuilder builder = container.Resolve<TransactionChangesetBuilder>();
@@ -611,7 +611,7 @@ public class TransactionChangesetIndexModuleTests
     {
         IServiceStopper stopper = Substitute.For<IServiceStopper>();
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true }))
             .AddSingleton<IServiceStopper>(stopper)
             .Build();
 

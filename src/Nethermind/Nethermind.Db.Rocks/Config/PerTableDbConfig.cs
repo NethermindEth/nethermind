@@ -81,11 +81,6 @@ public class PerTableDbConfig : IRocksDbConfig
             return [];
         }
 
-        if (_tableName.StartsWith("State"))
-        {
-            return ["StateDb"];
-        }
-
         if (_columnName != null)
         {
             return [

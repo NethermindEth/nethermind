@@ -27,7 +27,7 @@ internal static class RocksHistoryTestDb
         using IContainer configs = CreateConfigs();
         IDbConfig config = configs.Resolve<IDbConfig>();
         // The registered factory validates per-column options in Debug, and IDbConfig defines none for most history columns.
-        RocksDbConfigFactory factory = new(config, configs.Resolve<IPruningConfig>(), configs.Resolve<IHardwareInfo>(),
+        RocksDbConfigFactory factory = new(config, configs.Resolve<IHardwareInfo>(),
             LimboLogs.Instance, validateConfig: false);
         return (ColumnsDb<FlatHistoryColumns>)CreateFactory(path, config, factory)
             .CreateColumnsDb<FlatHistoryColumns>(new DbSettings("FlatHistory", "history"));
