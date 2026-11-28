@@ -3,7 +3,6 @@
 
 using System.IO.Abstractions;
 using Nethermind.Logging;
-using ZstdSharp;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -15,8 +14,6 @@ internal sealed class StreamingSnapshotInitializer(
     SnapshotStreamSettings settings,
     ILogManager logManager)
 {
-    private const int MaxSourceChangedRestarts = 3;
-
     private readonly ILogger _logger = logManager.GetClassLogger<StreamingSnapshotInitializer>();
 
     public async Task InitializeAsync(SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
@@ -25,56 +22,42 @@ internal sealed class StreamingSnapshotInitializer(
         DeleteStaleArchive();
         using SnapshotHttpClient client = new();
 
-        for (int attempt = 1; attempt <= MaxSourceChangedRestarts; attempt++)
+        SnapshotRemoteInfo remoteInfo = await ProbeWithRetryAsync(client, cancellationToken).ConfigureAwait(false);
+        EnsureIntegrityDetectable(remoteInfo);
+        LogMode(remoteInfo);
+        CheckDiskSpace(remoteInfo.Length);
+
+        // Before the first byte lands, and outside the try: a marker that cannot be written leaves no extraction behind,
+        // and a stop requested by now leaves no marker.
+        cancellationToken.ThrowIfCancellationRequested();
+        SnapshotDatabase.BeginExtraction(dbPath);
+
+        bool verified;
+        try
         {
-            SnapshotRemoteInfo remoteInfo = await ProbeWithRetryAsync(client, cancellationToken).ConfigureAwait(false);
-            EnsureIntegrityDetectable(remoteInfo);
-            LogMode(remoteInfo);
-            CheckDiskSpace(remoteInfo.Length);
-
-            bool verified;
-            try
-            {
-                verified = await StreamAndExtractAsync(client, remoteInfo, checkpoint, cancellationToken).ConfigureAwait(false);
-            }
-            catch (SnapshotSourceChangedException e)
-            {
-                if (_logger.IsWarn)
-                    _logger.Warn($"{(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)} Restarting the snapshot download.");
-                DeleteDatabase();
-                continue;
-            }
-            catch (Exception e) when (e is IOException or InvalidDataException or EndOfStreamException or ZstdException)
-            {
-                if (_logger.IsError)
-                    _logger.Error($"Snapshot streaming failed: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)} Deleting the partially extracted database.");
-                DeleteDatabase();
-                LogContinuingWithoutSnapshot();
-                return;
-            }
-            catch (Exception e) when (e is not OperationCanceledException)
-            {
-                if (_logger.IsError)
-                    _logger.Error("Snapshot streaming failed. Deleting the partially extracted database.", SensitiveLogMasking.Enabled ? null : e);
-                DeleteDatabase();
-                throw;
-            }
-
-            if (!verified)
-            {
-                DeleteDatabase();
-                LogContinuingWithoutSnapshot();
-            }
-
-            return;
+            verified = await StreamAndExtractAsync(client, remoteInfo, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Neither deleted nor retried over, also when the source changed: the operator empties the database directory.
+            if (_logger.IsError)
+                _logger.Error($"Snapshot streaming did not finish. {SnapshotDatabase.UnfinishedExtraction(dbPath)}");
+            throw;
         }
 
-        if (_logger.IsError)
-            _logger.Error($"The snapshot kept changing on the server across {MaxSourceChangedRestarts} attempts. Giving up; the node will continue running.");
+        if (!verified)
+            throw new IOException($"The streamed snapshot did not pass its checksum verification. {SnapshotDatabase.UnfinishedExtraction(dbPath)}");
+
+        // The marker goes first: a stop or a failed checkpoint write after it leaves a complete database, which the next
+        // start keeps, rather than a complete database that every later start refuses.
+        SnapshotDatabase.CompleteExtraction(dbPath);
+        checkpoint.Advance(SnapshotStage.Completed);
+        if (_logger.IsInfo)
+            _logger.Info("Database successfully initialized from streamed snapshot.");
     }
 
     private async Task<bool> StreamAndExtractAsync(
-        SnapshotHttpClient client, SnapshotRemoteInfo remoteInfo, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
+        SnapshotHttpClient client, SnapshotRemoteInfo remoteInfo, CancellationToken cancellationToken)
     {
         string? expectedChecksum = config.Checksum;
         byte[]? checksum;
@@ -93,14 +76,11 @@ internal sealed class StreamingSnapshotInitializer(
                 _logger.Warn("Snapshot checksum is not configured.");
         }
         else if (checksum is null
-                 || !SnapshotChecksum.Verify(checksum, expectedChecksum, "Deleting the extracted database.", _logger))
+                 || !SnapshotChecksum.Verify(checksum, expectedChecksum, "The extracted database is kept for the operator.", _logger))
         {
             return false;
         }
 
-        checkpoint.Advance(SnapshotStage.Completed);
-        if (_logger.IsInfo)
-            _logger.Info("Database successfully initialized from streamed snapshot.");
         return true;
     }
 
@@ -187,24 +167,5 @@ internal sealed class StreamingSnapshotInitializer(
         }
 
         SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(snapshotLength.Value), "extract");
-    }
-
-    private void LogContinuingWithoutSnapshot()
-    {
-        if (_logger.IsInfo)
-            _logger.Info("The node will continue running without a snapshot.");
-    }
-
-    private void DeleteDatabase()
-    {
-        try
-        {
-            SnapshotDatabase.Delete(dbPath);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            throw new IOException(
-                $"Could not clean up the database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)}, so the node must not start on top of it. Delete it manually before restarting.", SensitiveLogMasking.Enabled ? null : e);
-        }
     }
 }

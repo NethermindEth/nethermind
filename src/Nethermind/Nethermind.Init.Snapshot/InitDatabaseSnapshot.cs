@@ -25,11 +25,11 @@ public class InitDatabaseSnapshot(
     [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
     private const int MaxStreamingConnections = 16;
-    private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
     private const int MaxRetryDelaySeconds = 300;
     private const int ChecksumBufferSize = 65536;
     private const int ChecksumProgressIntervalSeconds = 30;
+    private const string LockFileSuffix = ".snapshot.lock";
 
     private readonly ILogger _logger = api.LogManager.GetClassLogger<InitDatabaseSnapshot>();
 
@@ -59,26 +59,44 @@ public class InitDatabaseSnapshot(
         if (snapshotConfig.Streaming && snapshotConfig.StreamingConnections is < 1 or > MaxStreamingConnections)
             throw new InvalidOperationException($"Snapshot.StreamingConnections must be between 1 and {MaxStreamingConnections}, got {snapshotConfig.StreamingConnections}.");
 
+        // Held until this method returns, on every path: before the checkpoint, the marker or the database is read.
+        using FileStream? databaseLock = LockDatabase(dbPath);
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
-        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        if (SnapshotDatabase.Exists(dbPath))
+        // This step deletes nothing in the database directory but its own marker, after a successful extraction or when the
+        // claim finds content beside it. The checkpoint lives in the snapshot directory, which can change or be lost, and
+        // cannot tell a partial extraction from a synced database; the marker can: a successful extraction removes it, and an
+        // unfinished one keeps it until the operator has emptied the directory. The content is read first: an extraction
+        // creates its marker before its first file, so a start that saw its files also sees its marker while that extraction
+        // remains unfinished.
+        bool populated = SnapshotDatabase.Exists(dbPath);
+        if (SnapshotDatabase.HasUnfinishedExtraction(dbPath))
+            throw new IOException(SnapshotDatabase.UnfinishedExtraction(dbPath));
+
+        if (populated)
         {
             if (checkpoint.Read() < SnapshotStage.Extracted)
             {
-                if (_logger.IsInfo)
-                    _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
-                await Task.Delay(TimeSpan.FromSeconds(ExtractionRestartDelaySeconds), cancellationToken).ConfigureAwait(false);
-                SnapshotDatabase.Delete(dbPath);
+                if (_logger.IsWarn)
+                    _logger.Warn($"The database directory {dbPath:hide} holds content and no snapshot extraction marker, so it is kept and snapshot initialization is skipped. To initialize from the snapshot instead, empty the directory first. A partial extraction left by an older version looks the same.{StagedArchiveNote(snapshotConfig.SnapshotFileName, snapshotPath)}");
             }
-            else
+            else if (_logger.IsInfo)
             {
-                if (_logger.IsInfo)
-                    _logger.Info($"Database already exists at {dbPath:hide}. Skipping snapshot initialization.");
-                return;
+                _logger.Info($"Database already exists at {dbPath:hide}. Skipping snapshot initialization.");
             }
+
+            return;
         }
-        else if (checkpoint.Read() >= SnapshotStage.Extracted)
+
+        // The archive, the checkpoint and its temporary file go into the snapshot directory, so it must lie outside the
+        // database directory, which the extraction claims only while it is empty, and the file name must name a file in it.
+        if (!IsPlainFileName(snapshotConfig.SnapshotFileName))
+            throw new InvalidOperationException($"Snapshot.SnapshotFileName must be a plain file name, without a directory, got '{(SensitiveLogMasking.Enabled ? "[redacted]" : snapshotConfig.SnapshotFileName)}'.");
+        if (IsWithin(snapshotConfig.SnapshotDirectory, dbPath))
+            throw new InvalidOperationException($"Snapshot.SnapshotDirectory ({(SensitiveLogMasking.Enabled ? "[redacted]" : snapshotConfig.SnapshotDirectory)}) is the database directory at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} or lies inside it, and the snapshot extraction must find that directory empty. Nothing was downloaded. Set Snapshot.SnapshotDirectory to a directory outside the database directory, then restart.");
+        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
+
+        if (checkpoint.Read() >= SnapshotStage.Extracted)
         {
             if (_logger.IsWarn)
                 _logger.Warn($"The snapshot checkpoint indicates a completed extraction, but the database at {dbPath:hide} is missing or empty. Reinitializing from the snapshot.");
@@ -131,6 +149,83 @@ public class InitDatabaseSnapshot(
         File.Delete(snapshotPath);
         checkpoint.Advance(SnapshotStage.Completed);
     }
+
+    /// <summary>
+    /// Keeps a second start on the same database path out until this one returns. It would otherwise download into the
+    /// same archive and checkpoint while this one works; the marker alone keeps it from extracting into the same
+    /// directory. The lock is a file next to the database directory, held open with <see cref="FileShare.None"/>: on Unix
+    /// an advisory flock, which the kernel releases when the process exits. The file is never deleted: a process that
+    /// opened it just before would then hold its lock on a file that the next start no longer finds.
+    /// </summary>
+    private FileStream? LockDatabase(string dbPath)
+    {
+        // As configured, links not resolved: a link and its target are two paths, with two locks.
+        string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dbPath));
+        string? parent = Path.GetDirectoryName(fullPath);
+        if (parent is null)
+        {
+            // Not refused: such a database started before the lock existed.
+            if (_logger.IsWarn)
+                _logger.Warn($"The database directory {dbPath:hide} is a filesystem root, which has no place outside it for a lock file, so a second process starting on it at the same time is not kept out of the snapshot initialization.");
+            return null;
+        }
+
+        string lockPath = fullPath + LockFileSuffix;
+        // Opening a link would create or lock whatever it leads to, a file in the database directory included.
+        if (new FileInfo(lockPath).LinkTarget is not null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"The lock file {lockPath:hide} is a link, which the step does not follow, so a second process starting on the database at {dbPath:hide} at the same time is not kept out of the snapshot initialization.");
+            return null;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(parent);
+            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 0);
+        }
+        catch (IOException e) when (IsHeldElsewhere(e))
+        {
+            throw new IOException(
+                $"Another process is initializing the database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} from a snapshot: it holds the lock file {(SensitiveLogMasking.Enabled ? "[redacted]" : lockPath)}. Let it finish, then restart.",
+                SensitiveLogMasking.Enabled ? null : e);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Such as a parent directory the node may not write to: a node that started before the lock existed still starts.
+            if (_logger.IsWarn)
+                _logger.Warn($"Could not take the lock file {lockPath:hide}, so a second process starting on the database at {dbPath:hide} at the same time is not kept out of the snapshot initialization. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
+            return null;
+        }
+    }
+
+    // No directory part, so not rooted either.
+    private static bool IsPlainFileName(string name) => name is not ("" or "." or "..") && Path.GetFileName(name) == name;
+
+    // A staged archive can be large, and nothing deletes it while the database is kept. Only a plain file name names a file
+    // in the snapshot directory; the name is checked when the snapshot is initialized.
+    private static string StagedArchiveNote(string fileName, string snapshotPath) =>
+        IsPlainFileName(fileName) && File.Exists(snapshotPath)
+            ? $" A snapshot archive also stays at {(SensitiveLogMasking.Enabled ? "[redacted]" : snapshotPath)}; delete it by hand if the snapshot is not wanted."
+            : "";
+
+    // Whether the path is the directory or lies inside it, comparing full paths as configured: links are not resolved, and
+    // only whole path components match. Letter case is ignored on Windows and macOS, whose filesystems usually ignore it.
+    // A case-insensitive mount on Linux or another alias of the same directory (a link, a bind mount) is not detected: the
+    // snapshot directory must be physically separate from the database directory.
+    private static bool IsWithin(string path, string directory)
+    {
+        StringComparison comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        string fullDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        return string.Equals(fullPath, fullDirectory, comparison)
+            || fullPath.StartsWith(Path.EndsInDirectorySeparator(fullDirectory) ? fullDirectory : fullDirectory + Path.DirectorySeparatorChar, comparison);
+    }
+
+    // How a FileShare.None handle held elsewhere is reported: ERROR_SHARING_VIOLATION on Windows, and on Unix the errno
+    // EWOULDBLOCK of the flock behind it (11 on Linux, 35 on macOS). A permission error is an UnauthorizedAccessException.
+    private static bool IsHeldElsewhere(IOException e) =>
+        e.HResult == (OperatingSystem.IsWindows() ? unchecked((int)0x80070020) : OperatingSystem.IsLinux() ? 11 : 35);
 
     private async Task DownloadWithRetryAsync(
         SnapshotDownloader downloader, string url, string destinationPath, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
@@ -211,8 +306,25 @@ public class InitDatabaseSnapshot(
 
         SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
 
+        // A stop requested by now leaves no marker behind for an extraction that would not run.
+        cancellationToken.ThrowIfCancellationRequested();
+        SnapshotDatabase.BeginExtraction(dbPath);
         SnapshotExtractor extractor = new(api.LogManager);
-        await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Nothing is deleted: the marker keeps every later start from taking the partial extraction for a database.
+            if (_logger.IsError)
+                _logger.Error($"Snapshot extraction did not finish. {SnapshotDatabase.UnfinishedExtraction(dbPath)}");
+            throw;
+        }
+
+        // The marker goes first: a stop or a failed checkpoint write after it leaves a complete database, which the next
+        // start keeps, rather than a complete database that every later start refuses.
+        SnapshotDatabase.CompleteExtraction(dbPath);
         checkpoint.Advance(SnapshotStage.Extracted);
     }
 

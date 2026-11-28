@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.ObjectModel;
 using System.Formats.Tar;
 using System.IO.Compression;
 using Nethermind.Logging;
@@ -72,11 +73,69 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
     private static void ExtractZip(string archivePath, string destinationPath, CancellationToken cancellationToken)
     {
-        // ZipFile.ExtractToDirectory has no overload accepting a CancellationToken,
-        // so check before entering the uncooperative call.
         cancellationToken.ThrowIfCancellationRequested();
-        ZipFile.ExtractToDirectory(archivePath, destinationPath);
+        using ZipArchive archive = ZipFile.OpenRead(archivePath);
+        string destinationRoot = Path.GetFullPath(destinationPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        ReadOnlyCollection<ZipArchiveEntry> entries = archive.Entries;
+
+        // Every entry is checked before the first one is extracted.
+        string[] entryPaths = new string[entries.Count];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            ZipArchiveEntry entry = entries[i];
+            string entryPath = Path.GetFullPath(Path.Combine(destinationRoot, SanitizeZipEntryName(entry.FullName)));
+            // As the runtime does, an entry whose path ends with a separator is taken for a directory.
+            bool isDirectory = Path.EndsInDirectorySeparator(entryPath);
+            if (!entryPath.StartsWith(destinationRoot, StringComparison.Ordinal)
+                || !IsInsideByOriginalName(destinationRoot, entry.FullName)
+                || SnapshotDatabase.IsReservedDestination(destinationRoot, entryPath, isDirectory))
+                throw new IOException($"Zip entry '{entry.FullName}' would extract outside the destination directory, into its lost+found or at the extraction marker.");
+            // As the runtime does, a directory entry must not hold data: it is refused rather than extracted as a directory.
+            if (isDirectory && entry.Length != 0)
+                throw new IOException($"Zip entry '{entry.FullName}' is a directory entry that holds data.");
+            entryPaths[i] = entryPath;
+        }
+
+        // Entry by entry, in archive order, creating parent directories and never overwriting a file; the directory entry
+        // of lost+found is skipped.
+        Directory.CreateDirectory(destinationPath);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string entryPath = entryPaths[i];
+            if (Path.EndsInDirectorySeparator(entryPath))
+            {
+                if (!SnapshotDatabase.IsRecoveryDirectory(destinationRoot, entryPath))
+                    Directory.CreateDirectory(entryPath);
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(entryPath)!);
+                entries[i].ExtractToFile(entryPath, overwrite: false);
+            }
+        }
     }
+
+    // On Windows the renaming below turns the colon of a drive-absolute name into an underscore, which makes it a
+    // relative name inside the destination: ZipFile.ExtractToDirectory extracts such an entry there. This extraction
+    // refuses an entry whose original name resolves outside the destination.
+    private static bool IsInsideByOriginalName(string destinationRoot, string name) =>
+        !OperatingSystem.IsWindows()
+        || Path.GetFullPath(Path.Combine(destinationRoot, name.Replace('\0', '_'))).StartsWith(destinationRoot, StringComparison.Ordinal);
+
+    // As the runtime names extracted entries: NUL becomes an underscore, and on Windows so do the control characters and
+    // the characters a file name may not hold.
+    private static string SanitizeZipEntryName(string name) =>
+        !OperatingSystem.IsWindows()
+            ? name.Replace('\0', '_')
+            : string.Create(name.Length, name, static (span, source) =>
+            {
+                for (int i = 0; i < source.Length; i++)
+                {
+                    char c = source[i];
+                    span[i] = c < 32 || c is '"' or '*' or ':' or '<' or '>' or '?' or '|' ? '_' : c;
+                }
+            });
 
     private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken)
     {
@@ -111,8 +170,14 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             if (!destinationEntryPath.StartsWith(destinationRoot, StringComparison.Ordinal))
                 throw new IOException($"Tar entry '{entry.Name}' would extract outside the destination directory.");
 
+            if (SnapshotDatabase.IsReservedDestination(destinationRoot, destinationEntryPath, entry.EntryType is TarEntryType.Directory))
+                throw new IOException($"Tar entry '{entry.Name}' would extract into lost+found, which stays the filesystem's, or at the extraction marker.");
+
             if (entry.EntryType is TarEntryType.Directory)
-                Directory.CreateDirectory(destinationEntryPath);
+            {
+                if (!SnapshotDatabase.IsRecoveryDirectory(destinationRoot, destinationEntryPath))
+                    Directory.CreateDirectory(destinationEntryPath);
+            }
             else if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
                 entry.ExtractToFile(destinationEntryPath, overwrite: true);
             else

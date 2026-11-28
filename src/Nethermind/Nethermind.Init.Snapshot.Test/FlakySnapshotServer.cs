@@ -43,8 +43,6 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public bool OmitContentLength { get; set; }
 
-    public bool RotateETagEveryRequest { get; set; }
-
     public int? HangOnceAfterBytes { get; set; }
 
     public bool IgnoreRangeOnce { get; set; }
@@ -113,8 +111,6 @@ internal sealed class FlakySnapshotServer : IDisposable
         int requestNumber = Interlocked.Increment(ref _requestCount);
         byte[] content = requestNumber > _switchAfterRequests ? _newContent : Content;
         string? etag = requestNumber > _switchAfterRequests ? _newETag : ETag;
-        if (RotateETagEveryRequest)
-            etag = $"\"v{requestNumber}\"";
         if (DropETagAfterRequests is int dropEtagAfter && requestNumber > dropEtagAfter)
             etag = null;
         HttpListenerResponse response = context.Response;

@@ -14,23 +14,90 @@ internal static class TestArchive
         using (TarWriter writer = new(tarBuffer, leaveOpen: true))
         {
             writer.WriteEntry(new PaxGlobalExtendedAttributesTarEntry(new Dictionary<string, string> { ["comment"] = "test" }));
-            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "db"));
-            HashSet<string> directories = [];
-            foreach (string name in files.Keys)
-            {
-                string? parent = Path.GetDirectoryName(name);
-                if (!string.IsNullOrEmpty(parent) && directories.Add(parent))
-                    writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"db/{parent}"));
-            }
-
-            foreach ((string name, byte[] data) in files)
-            {
-                PaxTarEntry entry = new(TarEntryType.RegularFile, $"db/{name}") { DataStream = new MemoryStream(data) };
-                writer.WriteEntry(entry);
-            }
+            WriteFiles(writer, files);
         }
 
         return Compress(tarBuffer);
+    }
+
+    /// <summary>
+    /// An uncompressed tar of <paramref name="files"/> under <c>db/</c>. With <paramref name="endWithLink"/> a link entry
+    /// follows the files, so an extraction writes them all and then fails. <paramref name="emptyDirectory"/> adds an entry
+    /// for a directory with nothing in it.
+    /// </summary>
+    public static byte[] BuildTar(IReadOnlyDictionary<string, byte[]> files, bool endWithLink = false, string? emptyDirectory = null)
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            WriteFiles(writer, files);
+            if (emptyDirectory is not null)
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"db/{emptyDirectory}/"));
+            if (endWithLink)
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, "db/escape") { LinkName = "/tmp" });
+        }
+
+        return tarBuffer.ToArray();
+    }
+
+    /// <summary>
+    /// A zip of <paramref name="files"/>, named as they are, without a top-level directory. <paramref name="emptyDirectory"/>
+    /// adds an entry for a directory with nothing in it, first.
+    /// </summary>
+    public static byte[] BuildZip(IReadOnlyDictionary<string, byte[]> files, string? emptyDirectory = null)
+    {
+        using MemoryStream zipBuffer = new();
+        using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            if (emptyDirectory is not null)
+                zip.CreateEntry($"{emptyDirectory}/");
+            foreach ((string name, byte[] data) in files)
+            {
+                using Stream entry = zip.CreateEntry(name).Open();
+                entry.Write(data);
+            }
+        }
+
+        return zipBuffer.ToArray();
+    }
+
+    /// <summary>
+    /// A zip with a directory entry, <paramref name="directory"/>, that holds data, and <paramref name="files"/>: the
+    /// directory entry first, or with <paramref name="directoryLast"/> after the files.
+    /// </summary>
+    public static byte[] BuildZipWithDataInADirectoryEntry(string directory, IReadOnlyDictionary<string, byte[]> files, bool directoryLast = false)
+    {
+        using MemoryStream zipBuffer = new();
+        using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            if (!directoryLast)
+                WriteZipEntry(zip, $"{directory}/", [1, 2, 3]);
+            foreach ((string name, byte[] data) in files)
+                WriteZipEntry(zip, name, data);
+            if (directoryLast)
+                WriteZipEntry(zip, $"{directory}/", [1, 2, 3]);
+        }
+
+        return zipBuffer.ToArray();
+    }
+
+    /// <summary>A zip of exactly <paramref name="entries"/>, in order, so a name may occur more than once.</summary>
+    public static byte[] BuildZipOfEntries(params (string Name, byte[] Data)[] entries)
+    {
+        using MemoryStream zipBuffer = new();
+        using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach ((string name, byte[] data) in entries)
+                WriteZipEntry(zip, name, data);
+        }
+
+        return zipBuffer.ToArray();
+    }
+
+    private static void WriteZipEntry(System.IO.Compression.ZipArchive zip, string name, byte[] data)
+    {
+        using Stream entry = zip.CreateEntry(name).Open();
+        entry.Write(data);
     }
 
     public static byte[] BuildTar(int payloadSize = 1000)
@@ -112,6 +179,24 @@ internal static class TestArchive
             [$"state/a{seed}.sst"] = state,
             [$"headers/b{seed}.sst"] = headers,
         };
+    }
+
+    private static void WriteFiles(TarWriter writer, IReadOnlyDictionary<string, byte[]> files)
+    {
+        writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "db"));
+        HashSet<string> directories = [];
+        foreach (string name in files.Keys)
+        {
+            string? parent = Path.GetDirectoryName(name);
+            if (!string.IsNullOrEmpty(parent) && directories.Add(parent))
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"db/{parent}"));
+        }
+
+        foreach ((string name, byte[] data) in files)
+        {
+            PaxTarEntry entry = new(TarEntryType.RegularFile, $"db/{name}") { DataStream = new MemoryStream(data) };
+            writer.WriteEntry(entry);
+        }
     }
 
     private static byte[] Compress(MemoryStream tarBuffer)
