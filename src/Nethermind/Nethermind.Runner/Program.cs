@@ -281,6 +281,8 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     }
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
+    if (DeterministicBenchmark.Enabled && logger.IsWarn)
+        logger.Warn("NETHERMIND_DETERMINISTIC_BENCHMARK=1 fixes the hash seeds and changes block processing for benchmarks; never set it on a node that serves the network.");
 
     ProcessExitSource exitSource = new(CancellationToken.None);
     processExitSource = exitSource;
