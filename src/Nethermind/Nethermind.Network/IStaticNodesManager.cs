@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network;
 
@@ -21,6 +22,17 @@ public interface IStaticNodesManager : INodeSource
     /// <returns><see langword="true"/> when the node was removed; <see langword="false"/> when it was not present.</returns>
     Task<bool> RemoveAsync(NetworkNode node, bool updateFile = true, CancellationToken cancellationToken = default);
     bool IsStatic(NetworkNode node);
+
+    /// <summary>Returns <see langword="true"/> when a managed static node has <paramref name="publicKey"/> as its identity.</summary>
+    bool ContainsNode(PublicKey publicKey)
+    {
+        foreach (NetworkNode node in Nodes)
+        {
+            if (node.NodeId == publicKey) return true;
+        }
+
+        return false;
+    }
 
     bool ContainsIp(IPAddress ip);
 }

@@ -31,6 +31,7 @@ internal sealed class BootnodeOptions
     public required string? PrivateKeyFile { get; init; }
     public required bool GenKey { get; init; }
     public required bool WriteAddress { get; init; }
+    public bool FilterDiscoveryNodesByRecentIp { get; init; } = true;
 }
 
 internal static class BootnodeOptionDefaults

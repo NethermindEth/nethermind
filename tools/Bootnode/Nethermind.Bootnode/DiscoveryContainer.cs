@@ -59,7 +59,8 @@ internal static class DiscoveryContainer
             ExternalIpV4 = options.ExternalIpV4,
             ExternalIpV6 = options.ExternalIpV6,
             Bootnodes = NetworkNode.ParseNodes(options.Bootnodes, logManager.GetLogger("Nethermind.Bootnode.DiscoveryContainer")),
-            MaxCandidatePeerCount = 10000
+            MaxCandidatePeerCount = 10000,
+            FilterDiscoveryNodesByRecentIp = options.FilterDiscoveryNodesByRecentIp
         };
 
         DiscoveryConfig discoveryConfig = new()

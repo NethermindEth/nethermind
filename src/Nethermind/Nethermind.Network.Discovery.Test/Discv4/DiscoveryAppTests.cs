@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -286,6 +287,73 @@ public class DiscoveryAppTests
         kademlia.Received(1).Remove(Arg.Is<Node>(node =>
             node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
         kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+    }
+
+    [Test]
+    public async Task AddNodeToDiscovery_admits_static_and_trusted_nodes_past_a_saturated_subnet()
+    {
+        NetworkConfig networkConfig = new()
+        {
+            LocalIp = "127.0.0.1",
+            ExternalIp = "127.0.0.1",
+            DiscoveryPort = 30303,
+            P2PPort = 30303
+        };
+        DiscoveryConfig discoveryConfig = new() { DiscoveryVersion = DiscoveryVersion.V4 };
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(true);
+
+        ContainerBuilder builder = new();
+        builder.AddModule(new TestNethermindModule(networkConfig, discoveryConfig));
+        builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        await using IContainer root = builder.Build();
+
+        NetworkListenerState listenerState = root.Resolve<NetworkListenerState>();
+        listenerState.SetDiscoveryAddress(IPAddress.Loopback);
+        listenerState.SetRlpxAddress(IPAddress.Loopback);
+
+        await using TestDiscoveryApp app = new(
+            root,
+            root.Resolve<IEnode>(),
+            networkConfig,
+            discoveryConfig,
+            root.Resolve<IIPResolver>(),
+            root.Resolve<IProcessExitSource>(),
+            LimboLogs.Instance,
+            listenerState);
+
+        app.AddNodeToDiscovery(new Node(TestItem.PublicKeyB, "192.0.2.1", 30303));
+        app.AddNodeToDiscovery(new Node(TestItem.PublicKeyC, "192.0.2.2", 30303));
+        app.AddNodeToDiscovery(new Node(TestItem.PublicKeyD, "192.0.2.3", 30303));
+
+        Node staticNode = new(TestItem.PublicKeyE, "192.0.2.4", 30303) { IsStatic = true };
+        Node trustedNode = new(TestItem.PublicKeyF, "192.0.2.5", 30303) { IsTrusted = true };
+        app.AddNodeToDiscovery(staticNode);
+        app.AddNodeToDiscovery(trustedNode);
+
+        PublicKey[] admitted = [.. app.Table.IterateNodes()
+            .Where(node => node.Id != root.Resolve<IEnode>().PublicKey)
+            .Select(static node => node.Id)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Has.Length.EqualTo(4));
+            Assert.That(admitted, Is.SupersetOf(new[] { staticNode.Id, trustedNode.Id }));
+            Assert.That(admitted, Does.Not.Contain(TestItem.PublicKeyD));
+        }
+    }
+
+    private sealed class TestDiscoveryApp(
+        ILifetimeScope rootScope,
+        IEnode enode,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        IIPResolver ipResolver,
+        IProcessExitSource processExitSource,
+        ILogManager logManager,
+        NetworkListenerState listenerState)
+        : DiscoveryApp(rootScope, enode, networkConfig, discoveryConfig, ipResolver, processExitSource, logManager, listenerState)
+    {
+        public IKademlia<PublicKey, Node> Table => Kademlia;
     }
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>

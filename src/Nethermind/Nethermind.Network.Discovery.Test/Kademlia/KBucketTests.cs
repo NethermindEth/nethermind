@@ -7,6 +7,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
+#pragma warning disable NUnit2045 // Assertions are interleaved with bucket mutations; a failure must stop the sequence.
+
 public class KBucketTests
 {
     [Test]
@@ -76,11 +78,12 @@ public class KBucketTests
     }
 
     [Test]
-    public void RemoveAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
+    public void Remove_and_TryPromote_should_replace_node_with_latest_in_replacement_cache()
     {
         (KBucket<int, int> bucket, int[] toAdd) = BuildFullBucket();
 
-        bucket.RemoveAndReplace(toAdd[0]);
+        Assert.That(bucket.Remove(toAdd[0]), Is.True);
+        Assert.That(bucket.TryPromote(null), Is.True);
 
         int[] expected = [.. toAdd[1..5], toAdd[9]];
         using (Assert.EnterMultipleScope())
@@ -101,10 +104,47 @@ public class KBucketTests
         AddNodes(bucket, nodes);
         foreach (int node in nodes[..bucketSize])
         {
-            bucket.RemoveAndReplace(node);
+            bucket.Remove(node);
+            bucket.TryPromote(null);
         }
 
         Assert.That(bucket.Count, Is.EqualTo(KBucket<int, int>.DefaultReplacementCacheSize));
+    }
+
+    [Test]
+    public void Remove_should_reject_an_unknown_hash()
+    {
+        KBucket<int, int> bucket = new(5);
+        AddNodes(bucket, [1, 2]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.Remove(3), Is.False);
+            Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(new[] { 1, 2 }));
+        }
+    }
+
+    [TestCase(new[] { 0, 1, 2, 3 }, 0, false, new[] { 1, 3 }, true, true)]
+    [TestCase(new[] { 0, 1, 2, 3 }, 0, true, new[] { 1, 2 }, false, true)]
+    [TestCase(new[] { 0, 1 }, 1, false, new[] { 0 }, false, false)]
+    public void TryPromote_should_promote_the_newest_accepted_candidate(
+        int[] added,
+        int removed,
+        bool rejectNewest,
+        int[] expected,
+        bool secondPromoteResult,
+        bool firstPromoteResult)
+    {
+        KBucket<int, int> bucket = new(2);
+        AddNodes(bucket, added);
+
+        Assert.That(bucket.Remove(removed), Is.True);
+        Assert.That(bucket.TryPromote(rejectNewest ? static node => node != 3 : null), Is.EqualTo(firstPromoteResult));
+        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
+
+        // The second promotion reports whether the cache still holds a candidate: a rejected
+        // head was popped, not left in place, and an empty cache promotes nothing.
+        Assert.That(bucket.TryPromote(null), Is.EqualTo(secondPromoteResult));
     }
 
     private static (KBucket<int, int> Bucket, int[] Nodes) BuildFullBucket()

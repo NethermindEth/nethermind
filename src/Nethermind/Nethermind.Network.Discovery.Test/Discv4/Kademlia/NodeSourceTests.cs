@@ -36,6 +36,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private DiscoveryConfig _discoveryConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
         private IForkInfo _forkInfo = null!;
+        private IRoutingTableNodeLimiter<Node> _nodeLimiter = null!;
         private Channel<Node> _peerCandidates = null!;
 
         [SetUp]
@@ -55,6 +56,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _forkInfo = Substitute.For<IForkInfo>();
             _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>())
                 .Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
+            _nodeLimiter = Substitute.For<IRoutingTableNodeLimiter<Node>>();
+            _nodeLimiter.WouldAdmit(Arg.Any<Node>()).Returns(true);
+            _kademliaConfig.NodeLimiter = _nodeLimiter;
             _nodeSource = new NodeSource(
                 _kademliaDiscovery,
                 _adapter,
@@ -146,6 +150,27 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(await moveNext.AsTask(), Is.True);
 #pragma warning restore NUnit2045
             Assert.That(enumerator.Current.Id, Is.EqualTo(node.Id));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_drop_a_candidate_the_table_would_reject(CancellationToken token)
+        {
+            Node atCap = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node belowCap = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            _nodeLimiter.WouldAdmit(Arg.Is<Node>(node => node.Id == atCap.Id)).Returns(false);
+            _nodeLimiter.WouldAdmit(Arg.Is<Node>(node => node.Id == belowCap.Id)).Returns(true);
+
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            ValueTask<bool> moveNext = enumerator.MoveNextAsync();
+            await _kademliaDiscovery.Started.Task.WaitAsync(token);
+            RaisePeerCandidate(atCap);
+            RaisePeerCandidate(belowCap);
+
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
+            Assert.That(await moveNext.AsTask(), Is.True);
+#pragma warning restore NUnit2045
+            Assert.That(enumerator.Current.Id, Is.EqualTo(belowCap.Id));
         }
 
         [Test]

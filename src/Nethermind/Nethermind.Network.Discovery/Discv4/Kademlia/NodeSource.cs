@@ -69,7 +69,18 @@ public sealed class NodeSource(
         }
     }
 
-    private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash) || HasIncompatibleForkId(node);
+    private bool IsExcluded(Node node)
+    {
+        if (node.IdHash.Equals(_currentNodeHash) || HasIncompatibleForkId(node)) return true;
+
+        if (kademliaConfig.NodeLimiter?.WouldAdmit(node) is false)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Dropping peer candidate {node.ToString("s"):hide} at the subnet table cap");
+            return true;
+        }
+
+        return false;
+    }
 
     private bool HasIncompatibleForkId(Node node)
     {

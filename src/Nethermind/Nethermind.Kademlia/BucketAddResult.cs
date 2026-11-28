@@ -7,5 +7,6 @@ public enum BucketAddResult
 {
     Added,
     Refreshed,
-    Full
+    Full,
+    Rejected
 }
