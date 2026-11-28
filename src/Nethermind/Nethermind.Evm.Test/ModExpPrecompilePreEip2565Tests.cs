@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -80,6 +81,23 @@ public class ModExpPrecompilePreEip2565Tests : PrecompileTests<ModExpPrecompileP
     )]
     public void NormalizedInput_SameOutput(string input, string trailing) =>
         RunEffectiveInputTest(ModExpPrecompilePreEip2565.Instance, input, trailing, Byzantium.Instance);
+
+    // baseLength = 0, expLength = 2^243 + 32 with a zero head, modulusLength = 2^200: the EIP-198 price is
+    // about 2^637, and its unchecked 256-bit product wrapped to exactly 0.
+    [Test]
+    public void DataGasCost_SaturatesWhenThePriceOverflows()
+    {
+        byte[] input = Bytes.FromHexString(
+            "0000000000000000000000000000000000000000000000000000000000000000"
+            + "0008000000000000000000000000000000000000000000000000000000000020"
+            + "0000000000000100000000000000000000000000000000000000000000000000");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ModExpPrecompilePreEip2565.Instance.DataGasCost(input, Byzantium.Instance), Is.EqualTo(ulong.MaxValue));
+            Assert.That(ModExpPrecompile.Instance.DataGasCost(input, Byzantium.Instance), Is.EqualTo(ulong.MaxValue));
+        }
+    }
 
     [TestCaseSource(typeof(ModExpPrecompileTests), nameof(ModExpPrecompileTests.OversizedLengths))]
     public void TestOversizedLengths(string input, string expectedOutput, bool status) =>
