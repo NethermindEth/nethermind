@@ -484,8 +484,11 @@ public class ProtocolsManagerTests
 
         public Context VerifySnappyEnabled(bool enabled)
         {
-            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(_pipeline.Get<ZeroNettyP2PHandler>().SnappyEnabled, Is.EqualTo(enabled));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(_pipeline.Get<ZeroNettyP2PHandler>().SnappyEnabled, Is.EqualTo(enabled));
+            }
             return this;
         }
 
