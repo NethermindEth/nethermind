@@ -89,12 +89,9 @@ internal sealed class ConfigEndpoints(BeaconChainSpec spec)
         data["BLOB_SCHEDULE"] = spec.BlobSchedule
             .Select(entry => new Dictionary<string, string> { ["EPOCH"] = entry.Epoch.ToString(), ["MAX_BLOBS_PER_BLOCK"] = entry.MaxBlobsPerBlock.ToString() })
             .ToArray();
-        data["GAS_LIMIT_SCHEDULE"] = spec.ChainId switch
-        {
-            BlockchainIds.Sepolia => new Dictionary<string, string>[] { new() { ["EPOCH"] = "353024", ["GAS_LIMIT"] = "200000000" } },
-            BlockchainIds.Hoodi => new Dictionary<string, string>[] { new() { ["EPOCH"] = "143616", ["GAS_LIMIT"] = "200000000" } },
-            _ => Array.Empty<Dictionary<string, string>>(),
-        };
+        data["GAS_LIMIT_SCHEDULE"] = spec.ChainId is BlockchainIds.Sepolia or BlockchainIds.Hoodi && spec.GloasForkEpoch != Presets.FarFutureEpoch
+            ? new Dictionary<string, string>[] { new() { ["EPOCH"] = spec.GloasForkEpoch.ToString(), ["GAS_LIMIT"] = "200000000" } }
+            : Array.Empty<Dictionary<string, string>>();
 
         return ApiResults.Data(data);
     }

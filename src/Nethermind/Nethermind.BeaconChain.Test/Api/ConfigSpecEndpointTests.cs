@@ -54,13 +54,21 @@ public class ConfigSpecEndpointTests
         Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
     }
 
-    [TestCase("sepolia", "353024")]
-    [TestCase("hoodi", "143616")]
-    public async Task Serves_the_gas_limit_schedule_of_the_network(string network, string epoch)
+    [TestCase("sepolia", null, "353024")]
+    [TestCase("hoodi", null, "143616")]
+    [TestCase("hoodi", 143617ul, "143617")]
+    [TestCase("hoodi", Presets.FarFutureEpoch, null)]
+    public async Task Serves_the_gas_limit_schedule_at_the_gloas_epoch_of_the_network(string network, ulong? gloasEpoch, string? epoch)
     {
-        JsonElement served = await ServedSpecAsync(network == "hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia);
+        BeaconChainSpec spec = network == "hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
+        JsonElement served = await ServedSpecAsync(gloasEpoch is { } overridden ? spec with { GloasForkEpoch = overridden } : spec);
         JsonElement schedule = served.GetProperty("GAS_LIMIT_SCHEDULE");
-        Assert.That(schedule.GetArrayLength(), Is.EqualTo(1));
+        Assert.That(schedule.GetArrayLength(), Is.EqualTo(epoch is null ? 0 : 1));
+        if (epoch is null)
+        {
+            return;
+        }
+
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(schedule[0].GetProperty("EPOCH").GetString(), Is.EqualTo(epoch));
         Assert.That(schedule[0].GetProperty("GAS_LIMIT").GetString(), Is.EqualTo("200000000"));

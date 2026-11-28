@@ -80,20 +80,22 @@ public class GloasForkScheduleTests
 
     // Expected digests reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
     // genesis_validators_root)[:4], XOR-masked per EIP-7892 with sha256(le64(blob_epoch) ++
-    // le64(max_blobs_per_block))[:4] using Sepolia's own confirmed genesis validators root and its
-    // published BPO2 blob params (275712, 21), which are still the params in effect at the Gloas
+    // le64(max_blobs_per_block))[:4] using the network's own confirmed genesis validators root and its
+    // published BPO2 blob params (Sepolia 275712, Hoodi 54016; 21 blobs each), which are still the params in effect at the Gloas
     // boundary since BPO and hard-fork rotation are orthogonal (see ForkDigest's own remarks).
-    [Test]
-    public void Sepolia_fork_digest_rotates_at_the_gloas_boundary_and_matches_an_independent_computation()
+    [TestCase("Sepolia", 353024ul, "0x74d01459", "0x669e6c11")]
+    [TestCase("Hoodi", 143616ul, "0xc6ecb76c", "0x5ad30129")]
+    public void Fork_digest_rotates_at_the_gloas_boundary_and_matches_an_independent_computation(string network, ulong gloasEpoch, string expectedFuluDigest, string expectedGloasDigest)
     {
-        byte[] fuluDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353023);
-        byte[] gloasDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353024);
+        BeaconChainSpec spec = network == "Hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
+        byte[] fuluDigest = ForkDigest.Compute(spec, gloasEpoch - 1);
+        byte[] gloasDigest = ForkDigest.Compute(spec, gloasEpoch);
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString("0x74d01459")));
+        Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString(expectedFuluDigest)));
         Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
             "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
-        Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0x669e6c11")));
+        Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString(expectedGloasDigest)));
     }
 
     // ForkAtEpoch reads scalar epochs; VersionForEpoch reads Forks. They must agree or signatures and advertised digests diverge.

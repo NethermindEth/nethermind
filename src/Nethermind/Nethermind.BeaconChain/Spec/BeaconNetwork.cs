@@ -44,6 +44,7 @@ internal sealed partial record BeaconNetwork
         GloasForkVersion = Bytes.FromHexString("0x07000000"), // specs/gloas/fork.md GLOAS_FORK_VERSION; not yet published for mainnet
     };
 
+    /// <remarks><c>GLOAS_FORK_VERSION</c> 0x80000910 and <c>GLOAS_FORK_EPOCH</c> 143616 are from eth-clients/hoodi PR #35.</remarks>
     public static BeaconNetwork Hoodi { get; } = new()
     {
         ChainId = BlockchainIds.Hoodi,
