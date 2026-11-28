@@ -12,7 +12,6 @@ static partial class Gcp
     [GeneratedRegex(@"\s")]
     private static partial Regex WhitespaceRegex();
 
-    // The spawner's IAM condition only allows gh-* instances and disks; see README.md.
     internal static string InstanceName(string label, string attempt) => $"gh-{new string(label.ToLowerInvariant().Replace('_', '-').Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-').Take(40).ToArray())}-{Convert.ToHexStringLower(SHA1.HashData(Encoding.UTF8.GetBytes(label)))[..8]}-a{attempt}";
     internal static string Region(string zone) => zone.Contains('-') ? zone[..zone.LastIndexOf('-')] : zone;
     internal static string[] Zones(string zones) => zones.Split(',').Select(zone => WhitespaceRegex().Replace(zone, "")).Where(zone => zone.Length > 0).ToArray();
