@@ -24,6 +24,7 @@ public static class FrameTxClaimVerifier
     public const string WitnessCountMismatch = "frame transaction must carry exactly one witness per claim";
     public const string InvalidWitnessLength = "frame transaction claim witness has the wrong length";
     public const string P256NotSupported = "frame transaction P256 claims require the secp256r1 precompile";
+    public const string LeanSphincsUnavailable = "frame transaction leanSPHINCS claims require a leanSPHINCS verifier, which is unavailable";
 
     /// <summary>Whether <paramref name="error"/> rejects a transaction's witnesses rather than its body, which its hash
     /// does not commit to, so a copy carrying other witnesses still has to be judged.</summary>
@@ -120,6 +121,7 @@ public static class FrameTxClaimVerifier
         error = null;
         bool ok = verifier == Eip8141Constants.Secp256k1VerifierAddress ? VerifySecp256k1(in key, in msg, witness, ecdsa)
             : verifier == Eip8141Constants.P256VerifierAddress ? VerifyP256(in key, in msg, witness, p256Precompile, spec, out error)
+            : leanSphincs is UnavailableLeanSphincsVerifier ? Fail(LeanSphincsUnavailable, out error)
             : leanSphincs.Verify(in key, in msg, witness);
         return ok || Fail(error ?? InvalidClaim, out error);
     }

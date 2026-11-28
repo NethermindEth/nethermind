@@ -237,7 +237,13 @@ public class FrameTxClaimVerifierTests
         tx.FrameClaims = [new TxFrameClaim(Eip8141Constants.LeanSphincsVerifierAddress, Fill(32, 0x42), default, 0, 0)];
         tx.ClaimWitnesses = [new byte[Eip8141Constants.LeanSphincsSignatureSize]];
 
-        Assert.That(Verify(tx, out _), Is.False);
+        bool verified = Verify(tx, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verified, Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxClaimVerifier.LeanSphincsUnavailable));
+        }
     }
 
     // The pool leaves to simulation what needs state, or a verifier it does not hold.

@@ -78,6 +78,7 @@ public static class FrameExceptionFragments
         FrameTxClaimVerifier.WitnessCountMismatch,
         FrameTxClaimVerifier.InvalidWitnessLength,
         FrameTxClaimVerifier.P256NotSupported,
+        FrameTxClaimVerifier.LeanSphincsUnavailable,
         // A claim the block's dependency proof cannot satisfy, which the fixtures derived from state tests name as
         // their transaction's invalid claim.
         FrameTxDependencyProof.WitnessLengthMismatch,
