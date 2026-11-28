@@ -68,6 +68,11 @@ internal sealed class SocketRlpxConnection(
     /// <summary>The largest packet encoded into the shared send batch; a larger one gets its own buffer.</summary>
     internal const int SendBatchSize = 64 * 1024;
 
+    /// <summary>
+    /// The bytes of received packets queued for the processing thread and not yet handled at which the frame loop pauses.
+    /// </summary>
+    internal const long DefaultMaxQueuedReceiveBytes = 16 * 1024 * 1024;
+
     private const int ReceiveSegmentSize = 16 * 1024;
 
     // A read goes into the rest of the current segment while at least this much is free, so that small reads fill a
@@ -117,6 +122,11 @@ internal sealed class SocketRlpxConnection(
     private bool _handshakeCompleted;
     private bool _discarding;
 
+    // Received packets queued and not yet handled, shared with the processing thread
+    private long _queuedReceiveBytes;
+    private TaskCompletionSource? _queueCapacity;
+    private volatile bool _awaitingQueueCapacity;
+
     // Processing thread
     private volatile bool _inboundSnappy;
     private PooledPacket? _snappyOutput;
@@ -145,6 +155,13 @@ internal sealed class SocketRlpxConnection(
 
     /// <summary>Runs before each batch of received bytes is decoded; a test holds it to hold the frame loop.</summary>
     internal Func<ValueTask>? BeforeDecoding { get; init; }
+
+    /// <summary>Gets or sets the bytes of received packets not yet handled at which the frame loop pauses.</summary>
+    /// <remarks>
+    /// While paused, the pipe fills and the receive loop stops reading, so TCP slows the peer down: a slow processing
+    /// thread then holds a bounded amount of memory per connection. A packet larger than the bound still passes alone.
+    /// </remarks>
+    internal long MaxQueuedReceiveBytes { get; init; } = DefaultMaxQueuedReceiveBytes;
 
     /// <summary>Starts the handshake and the loops of a connection whose session has been created.</summary>
     public void Start(ISession session)
@@ -209,6 +226,7 @@ internal sealed class SocketRlpxConnection(
         _receiveCancellation.Cancel();
         _sendCancellation.Cancel();
         _socket.Close();
+        Interlocked.Exchange(ref _queueCapacity, null)?.TrySetResult();
         _closed.TrySetResult();
     }
 
@@ -280,6 +298,12 @@ internal sealed class SocketRlpxConnection(
 
     private void OnIdleTimer(object? _)
     {
+        // The connection itself stopped reading, so the peer isn't idle.
+        if (_awaitingQueueCapacity)
+        {
+            Volatile.Write(ref _lastReceive, Environment.TickCount64);
+        }
+
         long idle = Environment.TickCount64 - Volatile.Read(ref _lastReceive);
         long remaining = (long)ReadTimeout.TotalMilliseconds - idle;
         if (remaining > 0)
@@ -475,6 +499,14 @@ internal sealed class SocketRlpxConnection(
 
             ReadOnlySequence<byte> buffer = result.Buffer;
             SequencePosition consumed = _discarding ? buffer.End : DecodeFrames(buffer);
+            if (IsReceiveQueueFull)
+            {
+                // The bytes left are read again once the processing thread catches up, so they aren't marked examined.
+                reader.AdvanceTo(consumed);
+                await WaitForQueueCapacityAsync();
+                continue;
+            }
+
             reader.AdvanceTo(consumed, buffer.End);
             if (result.IsCompleted)
             {
@@ -483,14 +515,47 @@ internal sealed class SocketRlpxConnection(
         }
     }
 
+    private bool IsReceiveQueueFull => Volatile.Read(ref _queuedReceiveBytes) >= MaxQueuedReceiveBytes && !_isClosed;
+
+    private async Task WaitForQueueCapacityAsync()
+    {
+        TaskCompletionSource capacity = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Interlocked.Exchange(ref _queueCapacity, capacity);
+        // Checked again after publishing, as the processing thread or a close may have released the bytes meanwhile.
+        if (!IsReceiveQueueFull)
+        {
+            Interlocked.Exchange(ref _queueCapacity, null);
+            return;
+        }
+
+        _awaitingQueueCapacity = true;
+        try
+        {
+            await capacity.Task;
+        }
+        finally
+        {
+            _awaitingQueueCapacity = false;
+        }
+    }
+
+    private void ReleaseQueuedBytes(int length)
+    {
+        // Both sides publish before they read, so either the frame loop sees the bytes released or this sees it waiting.
+        if (Interlocked.Add(ref _queuedReceiveBytes, -length) < MaxQueuedReceiveBytes && Volatile.Read(ref _queueCapacity) is not null)
+        {
+            Interlocked.Exchange(ref _queueCapacity, null)?.TrySetResult();
+        }
+    }
+
     /// <summary>Decodes every whole block available, as <see cref="ZeroFrameDecoder"/> does.</summary>
-    /// <returns>Where the bytes not yet consumed start.</returns>
+    /// <returns>Where the bytes not yet consumed start: before the next frame if the processing thread fell behind.</returns>
     private SequencePosition DecodeFrames(ReadOnlySequence<byte> buffer)
     {
         SequenceReader<byte> input = new(buffer);
         Span<byte> block = stackalloc byte[Frame.HeaderSize + Frame.MacSize];
         Span<byte> plaintext = stackalloc byte[Frame.HeaderSize];
-        while (input.Remaining >= Frame.BlockSize)
+        while (input.Remaining >= Frame.BlockSize && !IsReceiveQueueFull)
         {
             switch (_frameState)
             {
@@ -688,9 +753,12 @@ internal sealed class SocketRlpxConnection(
 
     private void Dispatch(PooledPacket packet)
     {
+        int length = packet.Content.Length;
+        Interlocked.Add(ref _queuedReceiveBytes, length);
         if (!_processingThread.TryEnqueue(new ProcessingItem(this, packet, null)))
         {
             packet.Release();
+            ReleaseQueuedBytes(length);
         }
     }
 
@@ -724,7 +792,15 @@ internal sealed class SocketRlpxConnection(
     {
         if (item.Packet is { } packet)
         {
-            ProcessPacket(packet);
+            int length = packet.Content.Length;
+            try
+            {
+                ProcessPacket(packet);
+            }
+            finally
+            {
+                ReleaseQueuedBytes(length);
+            }
         }
         else if (item.Error is { } error)
         {

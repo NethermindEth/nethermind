@@ -245,6 +245,37 @@ public class SocketRlpxConnectionTests
     }
 
     [Test]
+    public async Task Pauses_reading_frames_while_the_processing_thread_holds_too_many_received_bytes()
+    {
+        TaskCompletionSource handling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TimeSpan readTimeout = TimeSpan.FromMilliseconds(200);
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync(
+            readTimeout: readTimeout,
+            maxQueuedReceiveBytes: 4 * 1024,
+            onReceive: _ => handling.Task.Wait());
+        byte[][] contents = [.. Enumerable.Range(1, 20).Select(static seed => Content(1024, seed))];
+        byte[] frames = [.. contents.SelectMany(content => test.Peer.Encode(0x10, content, EncodingMode.Framed))];
+        long received = test.Socket.Received;
+
+        await test.Peer.SendAsync(frames);
+        Assert.That(() => test.Socket.Received, Is.EqualTo(received + frames.Length).After(5000, 10), "the packets are in the pipe");
+        await Task.Delay(readTimeout * 3);
+        int heldPackets = test.Pool.OutstandingExceptSendBatch.Length;
+        bool closedWhilePaused = test.Connection.Closed.IsCompleted;
+        handling.SetResult();
+        await test.WaitForEventsAsync(contents.Length);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldPackets, Is.EqualTo(4), "the packets up to 4 KiB, one of them being handled");
+            Assert.That(closedWhilePaused, Is.False, "a pause isn't a read timeout");
+            Assert.That(test.Packets, Is.EqualTo(contents.Select(static content => ((byte)0x10, content)).ToArray()));
+        }
+
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
     public async Task Handles_an_error_raised_by_a_packet_before_the_next_packet()
     {
         TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -660,6 +691,7 @@ public class SocketRlpxConnectionTests
             int maxReceiveLength,
             TimeSpan sendLatency,
             TimeSpan? readTimeout,
+            long? maxQueuedReceiveBytes,
             Func<ValueTask>? beforeDecoding,
             Action<ZeroPacket>? onReceive)
         {
@@ -684,6 +716,7 @@ public class SocketRlpxConnectionTests
                 ReceivePool)
             {
                 ReadTimeout = readTimeout ?? SocketRlpxConnection.DefaultReadTimeout,
+                MaxQueuedReceiveBytes = maxQueuedReceiveBytes ?? SocketRlpxConnection.DefaultMaxQueuedReceiveBytes,
                 BeforeDecoding = beforeDecoding
             };
 
@@ -734,7 +767,7 @@ public class SocketRlpxConnectionTests
             TimeSpan? readTimeout = null,
             Func<ValueTask>? beforeDecoding = null,
             Action<ZeroPacket>? onReceive = null)
-            => new(role, privileged, maxReceiveLength, sendLatency, readTimeout, beforeDecoding, onReceive);
+            => new(role, privileged, maxReceiveLength, sendLatency, readTimeout, maxQueuedReceiveBytes: null, beforeDecoding, onReceive);
 
         /// <summary>Starts the connection and completes the handshake as the peer.</summary>
         public static async Task<ConnectionUnderTest> StartAsync(
@@ -742,10 +775,11 @@ public class SocketRlpxConnectionTests
             int maxReceiveLength = int.MaxValue,
             TimeSpan sendLatency = default,
             TimeSpan? readTimeout = null,
+            long? maxQueuedReceiveBytes = null,
             Func<ValueTask>? beforeDecoding = null,
             Action<ZeroPacket>? onReceive = null)
         {
-            ConnectionUnderTest test = Create(HandshakeRole.Recipient, privileged, maxReceiveLength, sendLatency, readTimeout, beforeDecoding, onReceive);
+            ConnectionUnderTest test = new(HandshakeRole.Recipient, privileged, maxReceiveLength, sendLatency, readTimeout, maxQueuedReceiveBytes, beforeDecoding, onReceive);
             test.Start();
             await test.Peer.SendAsync(FakeHandshakeService.Message);
             await test.Peer.ReceiveHandshakeAsync(test.Cancellation);
