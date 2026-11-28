@@ -237,10 +237,10 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
-    [ConfigItem(Description = "The max total size, in bytes, of HTTP JSON-RPC responses to unauthenticated URLs that are written but not yet sent. One response alone can use all of it. While a remote address has other unsent responses, it can hold at most 1/16 of it. IPv6 addresses are grouped by their /64 prefix, and a connection without a known address counts alone. A response that would go above either limit is not sent and its connection is closed; responses already in progress are not affected. Streamed results are not counted when `BufferResponses` is off, and bytes that a streamed result flushes are released when the streamed result ends. A batch that reaches `MaxBatchResponseBodySize` first, when that value is not above the share of one address, ends with the batch limit errors instead. Behind a reverse proxy all callers share the proxy's address, so rely on the proxy's limits or raise this value. `0` or negative to disable this limit.", DefaultValue = "536870912")]
+    [ConfigItem(Description = "The max total size, in bytes, of HTTP JSON-RPC responses to unauthenticated URLs that are written but not yet sent. One response alone can use all of it. While a remote address has other unsent responses, it can hold at most 1/16 of it. IPv6 addresses are grouped by their /64 prefix, and a connection without a known address counts alone. A response that would go above either limit is not sent and its connection is closed; responses already in progress are not affected. Streamed results are not counted when `BufferResponses` is off, and bytes that a streamed result flushes are released when the streamed result ends. A batch that reaches `MaxBatchResponseBodySize` first, when that value is not above the share of one address, ends with the batch limit errors instead. For a connection from a loopback address or from `TrustedProxyNetworks`, the address is taken from the `X-Forwarded-For` header when it has one. `0` or negative to disable this limit.", DefaultValue = "536870912")]
     long MaxUnsentResponsesSize { get; set; }
 
-    [ConfigItem(Description = "The max number of HTTP JSON-RPC responses to unauthenticated URLs that one remote address, or one IPv6 /64 prefix, can have with more than 1 MiB written but not yet sent. Smaller responses, and responses still being written below that size, are not counted. A further response above 1 MiB is not sent and its connection is closed. Behind a reverse proxy all callers share the proxy's address, so rely on the proxy's limits or raise this value. `0` or negative to disable. Ignored when `MaxUnsentResponsesSize` is disabled.", DefaultValue = "8")]
+    [ConfigItem(Description = "The max number of HTTP JSON-RPC responses to unauthenticated URLs that one remote address, or one IPv6 /64 prefix, can have with more than 1 MiB written but not yet sent. Smaller responses, and responses still being written below that size, are not counted. A further response above 1 MiB is not sent and its connection is closed. For a connection from a loopback address or from `TrustedProxyNetworks`, the address is taken from the `X-Forwarded-For` header when it has one. `0` or negative to disable. Ignored when `MaxUnsentResponsesSize` is disabled.", DefaultValue = "8")]
     int MaxUnsentResponsesPerAddress { get; set; }
 
     [ConfigItem(Description = "The min rate, in bytes per second, at which a caller of an unauthenticated HTTP JSON-RPC URL must read a response, after a grace period of 10 seconds. The server closes the connection of a caller that reads more slowly. `0` disables the rate, also the server default one.", DefaultValue = "65536")]
@@ -325,4 +325,14 @@ public interface IJsonRpcConfig : IConfig
             """,
         DefaultValue = "[]")]
     string[] AdditionalTrustedNetworks { get; set; }
+
+    [ConfigItem(
+        Description = """
+            IPv4 CIDR networks of reverse proxies whose `X-Forwarded-For` header the HTTP JSON-RPC unsent response limits per address use. Loopback addresses are always trusted.
+            The header is used only from trusted proxies. The limits per address apply to the right-most address in it that is not itself a trusted proxy, so the proxy must append the address of its caller to the header. This applies to loopback proxies too. A proxy that passes its caller's header through without appending to it, or a TCP tunnel, gives no reliable client address.
+            Without the header, or if it has no such address, the proxy address is used.
+            Invalid entries are logged and ignored.
+            """,
+        DefaultValue = "[]")]
+    string[] TrustedProxyNetworks { get; set; }
 }

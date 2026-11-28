@@ -66,7 +66,7 @@ public class Startup : IStartup
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
     private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(10);
-    private readonly UnsentResponseCounter _unsentResponses = new();
+    private UnsentResponseCounter _unsentResponses = null!;
 
     public Startup() { }
 
@@ -88,6 +88,7 @@ public class Startup : IStartup
         _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _logger = logger;
         _rpcAuthentication = rpcAuthentication;
+        _unsentResponses = CreateUnsentResponseCounter(jsonRpcConfig, logger);
     }
 
     IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
@@ -203,8 +204,9 @@ public class Startup : IStartup
         _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
+        _unsentResponses = CreateUnsentResponseCounter(jsonRpcConfig, logger);
 
-        TrustedCidr[] additionalTrustedNetworks = ParseTrustedNetworks(jsonRpcConfig.AdditionalTrustedNetworks, logger);
+        TrustedCidr[] additionalTrustedNetworks = ParseTrustedNetworks(jsonRpcConfig.AdditionalTrustedNetworks, nameof(IJsonRpcConfig.AdditionalTrustedNetworks), logger);
 
         // Trusted non-browser JSON-RPC HTTP POSTs dispatch directly, skipping routing,
         // CORS, compression, and WebSocket middleware. Authentication is still enforced
@@ -389,7 +391,7 @@ public class Startup : IStartup
         return false;
     }
 
-    internal static TrustedCidr[] ParseTrustedNetworks(string[]? cidrs, ILogger logger)
+    internal static TrustedCidr[] ParseTrustedNetworks(string[]? cidrs, string configName, ILogger logger)
     {
         if (cidrs is null || cidrs.Length == 0) return [];
 
@@ -403,7 +405,7 @@ public class Startup : IStartup
             }
             else if (logger.IsWarn)
             {
-                logger.Warn($"Ignoring invalid CIDR in {nameof(IJsonRpcConfig.AdditionalTrustedNetworks)}: '{cidr}'");
+                logger.Warn($"Ignoring invalid CIDR in {configName}: '{cidr}'");
             }
         }
 
@@ -423,13 +425,11 @@ public class Startup : IStartup
 
         public bool Contains(IPAddress address)
         {
-            IPAddress ipv4 = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
-            if (ipv4.AddressFamily != AddressFamily.InterNetwork) return false;
+            Span<byte> bytes = stackalloc byte[16];
+            if (!address.TryWriteBytes(bytes, out int written)) return false;
 
-            Span<byte> bytes = stackalloc byte[4];
-            if (!ipv4.TryWriteBytes(bytes, out _)) return false;
-            uint ip = BinaryPrimitives.ReadUInt32BigEndian(bytes);
-            return (ip & _mask) == _network;
+            int offset = written == 4 ? 0 : address.IsIPv4MappedToIPv6 ? 12 : -1;
+            return offset >= 0 && (BinaryPrimitives.ReadUInt32BigEndian(bytes[offset..]) & _mask) == _network;
         }
 
         public static bool TryParse(string cidr, out TrustedCidr network)
@@ -467,6 +467,9 @@ public class Startup : IStartup
             dataRate.MinDataRate = _minResponseDataRate;
         }
     }
+
+    private static UnsentResponseCounter CreateUnsentResponseCounter(IJsonRpcConfig jsonRpcConfig, ILogger logger) =>
+        new(ParseTrustedNetworks(jsonRpcConfig.TrustedProxyNetworks, nameof(IJsonRpcConfig.TrustedProxyNetworks), logger));
 
     private static MinDataRate? CreateMinResponseDataRate(IJsonRpcConfig jsonRpcConfig) =>
         jsonRpcConfig.MinResponseDataRate > 0 ? new MinDataRate(jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod) : null;
