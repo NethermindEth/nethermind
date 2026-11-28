@@ -184,17 +184,17 @@ public class AggregatedDependencyProofTests
 
     /// <summary>Signatures fold in the fewest equal leaves within the native bound, and recursive inputs merge
     /// <see cref="DependencyProofAggregator.FanIn"/> at a time in calls of their own.</summary>
-    [TestCase(1, 0, new[] { 1 })]
-    [TestCase(16, 0, new[] { 16 })]
-    [TestCase(256, 0, new[] { 256 })]
-    [TestCase(257, 0, new[] { 129, 128 })]
-    [TestCase(500, 0, new[] { 250, 250 })]
-    [TestCase(500, 3, new[] { 250, 250 })]
-    [TestCase(17, 9, new[] { 17 })]
-    [TestCase(20, 2, new[] { 20 })]
-    [TestCase(20, 3, new[] { 20 })]
-    [TestCase(20, 5, new[] { 20 })]
-    public void Prove_FoldsSignaturesInTheFewestEqualLeaves(int signatures, int recursive, int[] leaves)
+    [TestCase(1, 0, new[] { 1 }, 1)]
+    [TestCase(16, 0, new[] { 16 }, 1)]
+    [TestCase(256, 0, new[] { 256 }, 1)]
+    [TestCase(257, 0, new[] { 129, 128 }, 3)]
+    [TestCase(500, 0, new[] { 250, 250 }, 3)]
+    [TestCase(500, 3, new[] { 250, 250 }, 3)]
+    [TestCase(17, 9, new[] { 17 }, 4)]
+    [TestCase(20, 2, new[] { 20 }, 1)]
+    [TestCase(20, 3, new[] { 20 }, 2)]
+    [TestCase(20, 5, new[] { 20 }, 2)]
+    public void Prove_FoldsSignaturesInTheFewestEqualLeaves(int signatures, int recursive, int[] leaves, int calls)
     {
         FakeLeanProofVerifier verifier = new();
         List<AggregatedDependency> deps = [];
@@ -222,6 +222,7 @@ public class AggregatedDependencyProofTests
         {
             Assert.That(verifier.VerifyDependencyProof(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
             Assert.That(verifier.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.Deps.Count), Is.EqualTo(leaves));
+            Assert.That(verifier.ProvingInputs, Has.Count.EqualTo(calls), "native calls, up to two recursive inputs folding into a leaf's own");
             Assert.That(verifier.ProvingInputs.Select(static i => i.RecursiveProofs.Count), Has.All.LessThanOrEqualTo(DependencyProofAggregator.FanIn));
             Assert.That(verifier.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.RecursiveProofs.Count),
                 Has.All.LessThanOrEqualTo(2), "a leaf never shares a call with a wide merge");
