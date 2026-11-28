@@ -12,7 +12,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -61,7 +60,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IBlockAccessListStore? _blockAccessListStore;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
-    private readonly ulong _focilProfile2MaxVerifyGas;
     private readonly IProfile2EligibilityReplayer? _profile2Replayer;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
@@ -93,7 +91,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        IBlocksConfig blocksConfig,
         ILogManager logManager,
         IProfile2EligibilityReplayer? profile2Replayer = null,
         TimeProvider? timeProvider = null,
@@ -113,7 +110,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _blockAccessListStore = blockAccessListStore;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _focilProfile2MaxVerifyGas = blocksConfig.FocilProfile2MaxVerifyGas;
         _profile2Replayer = profile2Replayer;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
@@ -539,7 +535,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IProfile2EligibilityReplayer? replayer, (ulong Execution, ulong State)[]? gasUsedBefore) =>
         spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
             ? EvaluateWithUnknownGasDimensions(block, inclusionLists, claims, state, spec, replayer, gasUsedBefore)
-            : InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore);
+            : InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, claims, replayer, gasUsedBefore);
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
@@ -552,14 +548,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            bool? atMaximum = InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore);
+            bool? atMaximum = InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, claims, replayer, gasUsedBefore);
             if (atMaximum is not true) return atMaximum;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore) is not true) return null;
+            if (InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, claims, replayer, gasUsedBefore) is not true) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, _focilProfile2MaxVerifyGas, claims, replayer, gasUsedBefore) is true ? true : null;
+            return InclusionListValidator.Evaluate(block, inclusionLists, state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, claims, replayer, gasUsedBefore) is true ? true : null;
         }
         finally
         {

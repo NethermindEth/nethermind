@@ -7,7 +7,6 @@ using System.Linq;
 using System.IO;
 using System.Threading;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
@@ -38,7 +37,6 @@ namespace Nethermind.Consensus.Processing;
 public sealed class Profile2EligibilityReplayer(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IEthereumEcdsa ecdsa,
-    IBlocksConfig blocksConfig,
     ILogManager logManager) : IProfile2EligibilityReplayer, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<Profile2EligibilityReplayer>();
@@ -132,7 +130,7 @@ public sealed class Profile2EligibilityReplayer(
 
         Address payer = FrameTxValidation.GetPrefixPaymaster(transaction) ?? sender;
         FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, state, spec,
-            maxVerifyGas: blocksConfig.FocilProfile2MaxVerifyGas is 0 ? ulong.MaxValue : blocksConfig.FocilProfile2MaxVerifyGas,
+            maxVerifyGas: Eip8369Constants.MaxVerifyGasPerTx,
             payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount, createInDeployFrame: true,
             maxCodeBodies: Eip8369Constants.MaxReplayCodeBodies, maxCodeBytes: Eip8369Constants.MaxReplayCodeBytes);
         try

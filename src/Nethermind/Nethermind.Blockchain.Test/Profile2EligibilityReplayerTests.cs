@@ -94,6 +94,15 @@ public class Profile2EligibilityReplayerTests
     }
 
     [Test]
+    public async Task The_replay_is_bounded_by_the_forks_verify_gas_cap_whatever_the_local_cap()
+    {
+        using BasicTestBlockchain chain = await CreateChain(ApproveWhileSlotIsZero(0), localMaxVerifyGas: 1);
+        IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
+
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), FrameTx(), 0), Is.True);
+    }
+
+    [Test]
     public async Task Max_fee_below_the_required_max_fee_at_the_blocks_base_fee_is_ineligible()
     {
         using BasicTestBlockchain chain = await CreateChain(0);
@@ -202,7 +211,7 @@ public class Profile2EligibilityReplayerTests
     {
         using BasicTestBlockchain chain = await CreateChain(slot: 0);
         CountingEnvFactory envFactory = new(chain.Container.Resolve<IReadOnlyTxProcessingEnvFactory>());
-        using Profile2EligibilityReplayer replayer = new(envFactory, chain.Container.Resolve<IEthereumEcdsa>(), new BlocksConfig(), LimboLogs.Instance);
+        using Profile2EligibilityReplayer replayer = new(envFactory, chain.Container.Resolve<IEthereumEcdsa>(), LimboLogs.Instance);
         Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList(
             [Changes(storage: [new ReadOnlySlotChanges(0, [new StorageChange(2, 1), new StorageChange(3, 0)])])], 1));
 
@@ -243,9 +252,10 @@ public class Profile2EligibilityReplayerTests
 
     private static Task<BasicTestBlockchain> CreateChain(byte slot) => CreateChain(ApproveWhileSlotIsZero(slot));
 
-    private static Task<BasicTestBlockchain> CreateChain(byte[] senderCode, Action<IWorldState>? genesis = null) => BasicTestBlockchain.Create(builder =>
+    private static Task<BasicTestBlockchain> CreateChain(byte[] senderCode, Action<IWorldState>? genesis = null, ulong? localMaxVerifyGas = null) => BasicTestBlockchain.Create(builder =>
     {
         builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Spec));
+        if (localMaxVerifyGas is { } cap) builder.AddSingleton<IBlocksConfig>(new BlocksConfig { FocilProfile2MaxVerifyGas = cap });
         builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
             new FunctionalGenesisPostProcessor(_ =>
             {

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -87,6 +88,19 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Claims change the verdict, so the same block and lists under other claims are another check.</summary>
+    [Test]
+    public async Task NewPayloadV6_classifies_candidates_by_the_forks_verify_gas_cap_whatever_the_local_cap()
+    {
+        using MergeTestBlockchain chain = await CreateProfile2Blockchain(
+            configure: builder => builder.AddSingleton<IBlocksConfig>(new BlocksConfig { FocilProfile2MaxVerifyGas = 1 }));
+        (GetPayloadV7Result built, byte[] frameTx, byte[] enabler, _) = await BuildProfile2Payload(chain);
+
+        ResultWrapper<PayloadStatusV2> newPayload = await chain.EngineRpcModule.engine_newPayloadV6(
+            built.ExecutionPayload, [], Keccak.Zero, built.ExecutionRequests, AtPositions([frameTx, enabler]), []);
+
+        Assert.That(await InclusionVerdict(chain.EngineRpcModule, newPayload.Data), Is.False, newPayload.Result.Error);
+    }
+
     [Test]
     public async Task NewPayloadV6_does_not_reuse_a_verdict_checked_under_other_claims()
     {
