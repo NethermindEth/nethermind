@@ -318,12 +318,16 @@ public sealed class ProofWrapperRelay : IDisposable
         Dictionary<IProofWrapperPeer, (NodeBudget Budget, List<ValueHash256> Hashes)> batches = [];
         lock (_lock)
         {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
             foreach ((ValueHash256 hash, Fetch fetch) in _fetches)
             {
-                if (fetch.Fetcher is not null) continue;
+                if (fetch.Fetcher is not null || (fetch.DeferredAt != 0 && now - fetch.DeferredAt < _verificationWindow)) continue;
                 foreach (IProofWrapperPeer announcer in fetch.Announcers)
                 {
-                    if (!_peers.TryGetValue(announcer, out PeerState? state) || state.Budget.Failures >= MaxFailuresPerPeer) continue;
+                    // A node whose verification budget is spent would have its wrappers fetched only to be dropped, unless
+                    // their dependencies are proven here already.
+                    if (!_peers.TryGetValue(announcer, out PeerState? state) || state.Budget.Failures >= MaxFailuresPerPeer
+                        || (!CanVerify(state.Budget) && !IsProven(state, hash))) continue;
                     List<ValueHash256> batch;
                     if (batches.TryGetValue(announcer, out (NodeBudget Budget, List<ValueHash256> Hashes) started))
                     {
@@ -332,9 +336,7 @@ public sealed class ProofWrapperRelay : IDisposable
                     }
                     else
                     {
-                        // A node whose verification budget is spent would have its wrappers fetched only to be dropped.
-                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, MaxRequests)
-                            || (!CanVerify(state.Budget) && !IsProven(state, hash))) continue;
+                        if (state.Budget.Requests >= MaxRequestsPerPeer || !WithinGlobalCap(state.Budget, _requests, MaxRequests)) continue;
                         state.Budget.Requests++;
                         _requests++;
                         batch = [];
@@ -357,6 +359,7 @@ public sealed class ProofWrapperRelay : IDisposable
     private async Task FetchFrom(IProofWrapperPeer peer, NodeBudget budget, List<ValueHash256> hashes)
     {
         List<ValueHash256> assigned = [.. hashes];
+        HashSet<ValueHash256> deferred = [];
         bool failed = false;
         try
         {
@@ -366,8 +369,8 @@ public sealed class ProofWrapperRelay : IDisposable
             if (hashes.Count == 0) return;
 
             List<ValueHash256> retryFull = [];
-            await Request(peer, state, hashes, compact: true, manifests, retryFull);
-            if (retryFull.Count != 0) await Request(peer, state, retryFull, compact: false, manifests, null);
+            await Request(peer, state, hashes, compact: true, manifests, retryFull, deferred);
+            if (retryFull.Count != 0) await Request(peer, state, retryFull, compact: false, manifests, null, deferred);
         }
         catch (ProtocolViolation violation)
         {
@@ -384,14 +387,16 @@ public sealed class ProofWrapperRelay : IDisposable
         }
         finally
         {
-            Finish(peer, budget, assigned, failed);
+            Finish(peer, budget, assigned, failed, deferred);
         }
     }
 
     /// <summary>Ends a request: each of its hashes still waiting on <paramref name="peer"/> goes to its next announcer, or
     /// is forgotten when none is left, so a later announcement fetches it again.</summary>
     /// <param name="failed">Whether the request went unanswered, which counts against the peer as an invalid proof does.</param>
-    private void Finish(IProofWrapperPeer peer, NodeBudget budget, List<ValueHash256> hashes, bool failed)
+    /// <param name="deferred">Hashes refused only because the global verification budget is spent: they keep their
+    /// announcers and wait for the window to roll.</param>
+    private void Finish(IProofWrapperPeer peer, NodeBudget budget, List<ValueHash256> hashes, bool failed, HashSet<ValueHash256> deferred)
     {
         lock (_lock)
         {
@@ -403,6 +408,12 @@ public sealed class ProofWrapperRelay : IDisposable
             {
                 if (!_fetches.TryGetValue(hash, out Fetch? fetch) || fetch.Fetcher != peer) continue;
                 fetch.Fetcher = null;
+                if (deferred.Contains(hash))
+                {
+                    fetch.DeferredAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                    continue;
+                }
+
                 fetch.Announcers.Remove(peer);
                 if (fetch.Announcers.Count == 0) RemoveFetch(hash);
             }
@@ -542,7 +553,7 @@ public sealed class ProofWrapperRelay : IDisposable
 
     /// <returns>The hashes the peer did not supply and that are still wanted.</returns>
     private async Task<IReadOnlyList<ValueHash256>> Request(IProofWrapperPeer peer, PeerState state, List<ValueHash256> hashes, bool compact,
-        Dictionary<ValueHash256, ValueHash256[]>? manifests, List<ValueHash256>? retryFull)
+        Dictionary<ValueHash256, ValueHash256[]>? manifests, List<ValueHash256>? retryFull, HashSet<ValueHash256> deferred)
     {
         List<ValueHash256> missing = [];
         for (int offset = 0; offset < hashes.Count; offset += Eth76Protocol.MaxRequestedWrappers)
@@ -566,7 +577,7 @@ public sealed class ProofWrapperRelay : IDisposable
                     int index = pending.IndexOf(wrapper.Hash);
                     for (int i = last + 1; i < index; i++) missing.Add(pending[i]);
                     last = index;
-                    Receive(peer, state, wrapper, compact, manifests, retryFull);
+                    Receive(peer, state, wrapper, compact, manifests, retryFull, deferred);
                 }
 
                 pending = pending.GetRange(last + 1, pending.Count - last - 1);
@@ -577,7 +588,7 @@ public sealed class ProofWrapperRelay : IDisposable
     }
 
     private void Receive(IProofWrapperPeer peer, PeerState state, ServedWrapper served, bool compact,
-        Dictionary<ValueHash256, ValueHash256[]>? manifests, List<ValueHash256>? retryFull)
+        Dictionary<ValueHash256, ValueHash256[]>? manifests, List<ValueHash256>? retryFull, HashSet<ValueHash256> deferred)
     {
         // An announcement the bounded record forgot cannot be checked, so the wrapper is left to another announcer.
         if (!state.Announced.TryGet(served.Hash, out WrapperAnnouncement announcement)) return;
@@ -613,9 +624,21 @@ public sealed class ProofWrapperRelay : IDisposable
         bool verified = _proofCache.IsVerified(wrapper.DepsHash, Eip8288Constants.AggregatedVk, wrapper.Proof);
         if (!verified)
         {
-            bool allowed;
-            lock (_lock) allowed = TryTakeVerification(state.Budget);
-            if (!allowed) return;
+            lock (_lock)
+            {
+                // Out of its own budget, the peer was fetched from only for a proven statement: another proof is its fault.
+                if (!CanVerify(state.Budget))
+                {
+                    CountFailure(peer, state.Budget);
+                    return;
+                }
+
+                if (!TryTakeVerification(state.Budget))
+                {
+                    deferred.Add(served.Hash);
+                    return;
+                }
+            }
         }
 
         if (!verified && !ProofWrapperCodec.VerifyProof(wrapper, _proofCache))
@@ -703,8 +726,11 @@ public sealed class ProofWrapperRelay : IDisposable
         AcceptTxResult? result = _sparseBlobPoolPeerRegistry.RecordTransaction(peer, transaction);
         // Pending only when this wrapper started its sampling, which passed the pool's checks; one already sampled is known.
         if (result is not null) return result.Value;
-        return recordedAlready ? AcceptTxResult.AlreadyKnown
-            : _sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash) ? AcceptTxResult.IncompleteBlobData : AcceptTxResult.Invalid;
+        // A copy the registry declined, for its quotas or the sender's state, is no fault of the wrapper: neither pending nor
+        // rejected.
+        return recordedAlready || !_sparseBlobPoolPeerRegistry.HasRecordedTransaction(txHash)
+            ? AcceptTxResult.AlreadyKnown
+            : AcceptTxResult.IncompleteBlobData;
     }
 
     private bool Hold(ProofWrapper wrapper)
@@ -1119,6 +1145,10 @@ public sealed class ProofWrapperRelay : IDisposable
         /// <summary>The peer whose announcement opened the fetch, which it counts against.</summary>
         public NodeBudget Opener { get; } = opener;
         public IProofWrapperPeer? Fetcher { get; set; }
+
+        /// <summary>When the spent global verification budget deferred the fetch, in timestamp ticks; it is scheduled again
+        /// a verification window later.</summary>
+        public long DeferredAt { get; set; }
     }
 
     /// <summary>What one connection has exchanged: bounded records, so old entries may be forgotten.</summary>

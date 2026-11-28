@@ -572,6 +572,74 @@ public class ProofWrapperRelayTests
         Assert.That(other.Announced.Select(a => a.Hash), Does.Not.Contain(second.Hash.ValueHash256));
     }
 
+    /// <summary>A node out of budget fetched from for a proven statement that serves another proof is charged a failure.</summary>
+    [Test]
+    public async Task Verification_ProvenStatementWithAnotherProof_CountsAgainstThePeer()
+    {
+        using Context context = new();
+        FakePeer peer = await SpentBudgetPeer(context);
+        for (int i = 0; i < 9; i++)
+        {
+            Transaction tx = Tx((ulong)(200 + i), Keccak.Compute([(byte)(100 + i)]));
+            List<AggregatedDependency> deps = Eip8288Dependencies.Canonicalize(ProofWrapperCodec.AggregatedDependencies(tx));
+            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+            context.ProofCache.Remember(deps, depsHash, context.Verifier.Prove(depsHash));
+            ProofWrapper other = ProofWrapperCodec.Create([ProofWrapperCodec.Normalize(tx)!], [tx], deps, [7, 7, 7]);
+            peer.Served = other;
+            await context.Relay.OnAnnouncement(peer, [Announcement(other)]);
+        }
+
+        Assert.That(peer.Requests, Is.EqualTo(30 + 8), "dropped after its eighth failure");
+    }
+
+    /// <summary>A wrapper refused only because the global verification budget is spent waits for the window to roll.</summary>
+    [Test]
+    public async Task Verification_GlobalBudgetSpent_DefersTheFetch()
+    {
+        using Context context = new();
+        for (int p = 0; p < 8; p++)
+        {
+            FakePeer flooder = context.Peer();
+            for (int i = 0; i < 30; i++)
+            {
+                ProofWrapper wrapper = context.Wrapper(Tx((ulong)(p * 100 + i), Keccak.Compute([(byte)p, (byte)i])));
+                flooder.Served = wrapper;
+                await context.Relay.OnAnnouncement(flooder, [Announcement(wrapper)]);
+            }
+        }
+
+        Transaction tx = Tx(5000, TestItem.KeccakB);
+        ProofWrapper waiting = context.Wrapper(tx);
+        FakePeer late = context.Peer(waiting);
+        await context.Relay.OnAnnouncement(late, [Announcement(waiting)]);
+        Assert.That(context.Relay.FetchCount, Is.EqualTo(1), "the fetch is kept");
+
+        context.Relay.VerificationWindow = TimeSpan.FromMilliseconds(1);
+        await Task.Delay(10);
+        context.Relay.Tick();
+
+        Assert.That(() => context.TxPool.ReceivedCalls().Any(c => c.GetArguments()[0] is Transaction submitted && submitted.Hash == tx.Hash),
+            Is.True.After(5000, 10));
+    }
+
+    /// <summary>A blob-carrying copy the sparse blobpool declines is neither pending nor rejected: the wrapper is kept.</summary>
+    [Test]
+    public async Task Fetch_BlobCopyTheRegistryDeclines_KeepsTheWrapper()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        using Context context = new(registry: registry);
+        ProofWrapper wrapper = context.Wrapper(FrameTxTestFrames.LeanSphincsBlobTx(0));
+        FakePeer other = context.Peer();
+
+        await context.Relay.OnAnnouncement(context.Peer(wrapper), [Announcement(wrapper)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Relay.TryGetHeld(wrapper.Hash.ValueHash256, out _), Is.True);
+            Assert.That(other.Announced, Is.Empty);
+        }
+    }
+
     private static async Task<FakePeer> SpentBudgetPeer(Context context)
     {
         FakePeer peer = context.Peer();
