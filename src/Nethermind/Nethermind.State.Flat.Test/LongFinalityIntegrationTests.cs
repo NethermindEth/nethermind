@@ -648,11 +648,10 @@ public class LongFinalityIntegrationTests
         {
             Assert.That(config.EnableLongFinality, Is.True);
             Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
-            // EIP-8252: the default long-finality backstop is the REORG_RETENTION_WINDOW, and the
-            // force-persist backstop never advances the persisted base past head - W (the window-floor guard
-            // in PersistenceManager.DetermineSnapshotAction), so a default node keeps the inclusive window
-            // [head - W, head] reconstructable through a finality stall. Under healthy finality state still
-            // folds toward the finalized boundary, which EIP-8252 permits.
+            // EIP-8252: the default long-finality backstop borrows the REORG_RETENTION_WINDOW number. It
+            // caps how deep the retained span may grow while finality is stalled — the inactivity-leak bound
+            // on non-finality — rather than being an always-on retention target. Under healthy finality state
+            // still folds toward the finalized boundary as usual, which EIP-8252 permits.
             Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(262144));
             Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(FlatDbConfig.ReorgRetentionWindow));
             Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(8192UL * 32),

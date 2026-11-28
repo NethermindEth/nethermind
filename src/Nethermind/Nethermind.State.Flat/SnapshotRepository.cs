@@ -256,28 +256,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return sortedSnapshots.GetViewBetween(min, max).Count > 1;
     }
 
-    public bool HasReconstructableStateInBlockRange(ulong fromBlockInclusive, ulong toBlockInclusive)
-    {
-        // Any state whose post-state a persist would prune if it advanced the base past it. Checks BOTH
-        // tiers because RemoveStatesUntil(newBase) drops in-memory states (To <= newBase) AND persisted-
-        // snapshot-tier states (To < newBase, via RemovePersistedStatesUntil). During a deep finality stall
-        // the near-base per-block states have been converted off the in-memory tier into the persisted tier,
-        // so the persisted tier is where an in-window state about to be stranded usually lives. An
-        // empty/inverted range matches nothing.
-        if (toBlockInclusive < fromBlockInclusive) return false;
-
-        StateId min = new(fromBlockInclusive, ValueKeccak.Zero);
-        StateId max = new(toBlockInclusive, ValueKeccak.MaxValue);
-
-        // In-memory per-block base states: FlatDbManager.RunCompactJob registers every committed block's To.
-        using (_sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots))
-            if (sortedSnapshots.GetViewBetween(min, max).Count > 0) return true;
-
-        // Persisted-snapshot-tier states (older stall states converted off the in-memory tier).
-        using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(fromBlockInclusive, toBlockInclusive);
-        return persisted.Count > 0;
-    }
-
     public StateId? GetLastSnapshotId()
     {
         StateId? max;

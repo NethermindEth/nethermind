@@ -113,9 +113,7 @@ public class PersistenceManager(
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head. The chosen candidate is deferred
-    ///   when advancing the base to it would prune a still-reconstructable per-block state inside the
-    ///   EIP-8252 retention window <c>[head - backstop, head]</c> (the window-floor guard below).</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -175,53 +173,20 @@ public class PersistenceManager(
         // Seed from the committed head so the forced persist follows the canonical chain rather than an
         // arbitrary/longest fork (which RemoveSiblingAndDescendents would then orphan); fall back to the
         // longest chain, then the latest state, only when nothing was committed this session.
+        // The strict `>` fires one block past the backstop and FindSnapshotToPersist advances the base by
+        // up to CompactSize, so the retained reconstructable depth dips to ~_backstopReorgDepth - CompactSize
+        // right after a forced persist. That ~CompactSize (default 32) slack is within EIP-8252 tolerance:
+        // the window is the inactivity-leak upper bound on non-finality, not an exact retention target.
         if (!held && snapshotsDepth > _backstopReorgDepth)
         {
             (PersistedSnapshot? persisted, Snapshot? inMemory) =
                 snapshotRepository.FindSnapshotToPersist(ForcedPersistSeed(latestSnapshot), currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
-                // EIP-8252 retention-window floor guard. Advancing the persisted base to the candidate's To
-                // prunes every in-memory state at or below it (AddToPersistence -> RemoveStatesUntil), and a
-                // block below the persisted base is no longer reconstructable without a resync. EIP-8252
-                // requires the inclusive window [head - W, head] (W = _backstopReorgDepth) to stay
-                // reconstructable through a finality stall, so the forced persist must not strand a
-                // still-reconstructable post-state that sits inside it. That happens only when a *wider*
-                // candidate (a compacted chunk or a merged base) skips over a narrower per-block state lying
-                // strictly between the floor and the new base — e.g. the finalized-but-unfinalized-depth
-                // block beneath a canonical CompactSize chunk. At a deep stall that skipped state usually
-                // lives in the persisted-snapshot tier (converted off the in-memory tier), so the range check
-                // consults both tiers. Defer such a candidate: Phase-2 conversion
-                // keeps memory bounded without moving the base, and the floor rises one block per new head,
-                // so the forced persist fires once the floor reaches the candidate boundary. A wider
-                // candidate that skips no existing in-window state (e.g. a single bulk-imported base with no
-                // intermediate per-block states) strands nothing and persists immediately.
-                // The finalized trigger above needs no such guard: it folds only up to a boundary at or below
-                // the finalized block, and finalized state is never a reorg target, so it cannot strand an
-                // in-window fork — EIP-8252 permits that fold under healthy finality.
-                ulong windowFloor = latestSnapshot.BlockNumber - _backstopReorgDepth; // head - W, inclusive floor
-                ulong newBase = (persisted?.To ?? inMemory!.To).BlockNumber;
-                if (newBase > windowFloor && snapshotRepository.HasReconstructableStateInBlockRange(windowFloor, newBase - 1))
-                {
-                    persisted?.Dispose();
-                    inMemory?.Dispose();
-                    if (_logger.IsWarn && _lastWarnedStall != currentPersistedState)
-                    {
-                        _lastWarnedStall = currentPersistedState;
-                        _logger.Warn(
-                            $"In-memory state depth {snapshotsDepth} passed the force-persist backstop {_backstopReorgDepth}, " +
-                            $"but forcing the next chunk (new base {newBase}) would prune a reconstructable state inside the " +
-                            $"EIP-8252 retention window [{windowFloor}, {latestSnapshot.BlockNumber}]; deferring the base advance. " +
-                            "Conversion to the persisted-snapshot tier keeps memory bounded meanwhile.");
-                    }
-                }
-                else
-                {
-                    if (_logger.IsWarn) _logger.Warn(
-                        $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
-                        $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
-                    return (persisted, inMemory, null);
-                }
+                if (_logger.IsWarn) _logger.Warn(
+                    $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
+                    $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
+                return (persisted, inMemory, null);
             }
         }
 
