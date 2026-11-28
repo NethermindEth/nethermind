@@ -41,7 +41,12 @@ internal sealed class McpTokenTally
 /// <summary>Lets <see cref="McpTxTokens.LookUp"/> read token metadata on a separate module, so it can stop waiting for a slow read.</summary>
 /// <param name="Rent">Rents an eth module and the lease that returns it; a <see langword="null"/> module means none is available. The token is cancelled when the caller abandons the work, so a rental that still waits gives up.</param>
 /// <param name="Track">Tracks work abandoned while still running, so the calling tool keeps its concurrency slot until it finishes.</param>
-internal sealed record McpDetachedEth(Func<CancellationToken, Task<(IEthRpcModule? Module, IDisposable? Lease)>> Rent, Action<Task> Track);
+internal sealed record McpDetachedEth(Func<CancellationToken, Task<(IEthRpcModule? Module, IDisposable? Lease)>> Rent, Action<Task> Track)
+{
+    /// <summary>The external request current when this was created, which the detached reads run for.</summary>
+    public long Request { get; } = ExternalRequest.Current;
+}
+
 
 /// <summary>An ABI array value cut to its first entries for display; <see cref="Total"/> is its full length.</summary>
 internal sealed class McpTruncatedList(int capacity, int total) : List<string>(capacity)
@@ -378,6 +383,7 @@ internal static class McpTxTokens
             {
                 (IEthRpcModule? module, IDisposable? lease) = await detached.Rent(abandonToken);
                 using (lease)
+                using (ExternalRequest.Enter(detached.Request))
                 {
                     if (module is not null) Run(module);
                 }
