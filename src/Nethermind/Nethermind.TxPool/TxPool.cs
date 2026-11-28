@@ -133,6 +133,7 @@ namespace Nethermind.TxPool
 
         internal PeerValidationShares? PeerValidationShares => _peerValidationShares;
         private long _forkStateVersion;
+        private ParentNonces? _productionParentNonces;
         private int _consecutiveRevalidationAbandonments;
         private int _consecutiveMarkerPublicationDeferrals;
 
@@ -544,9 +545,10 @@ namespace Nethermind.TxPool
         /// the payload parent's state: the snapshot can predate the parent's block and include an already spent entry
         /// before a ready one, and the producer ends the sender's chain at the first rejected candidate.</remarks>
         private IDictionary<AddressAsKey, Transaction[]> SelectReadySenders(
-            IDictionary<AddressAsKey, Transaction[]> bySender, in UInt256 baseFee, IReadOnlyStateProvider? parentState = null)
+            IDictionary<AddressAsKey, Transaction[]> bySender, in UInt256 baseFee, ParentNonces? parent = null)
         {
-            IAccountStateProvider accounts = parentState ?? _accounts;
+            IAccountStateProvider accounts = parent ?? _accounts;
+            IReadOnlyStateProvider? parentState = parent?.State;
             IReadOnlyStateProvider state = parentState ?? _headInfo.ReadOnlyStateProvider;
             Dictionary<AddressAsKey, Transaction[]> ready = [with(bySender.Count)];
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
@@ -3105,7 +3107,7 @@ namespace Nethermind.TxPool
                 // can return membership that predates the parent.
                 if (_headInfo.GetProductionParentState(targetBlock) is { } state)
                 {
-                    transactions = SelectReadySenders(transactions, baseFee, state);
+                    transactions = SelectReadySenders(transactions, baseFee, GetParentNonces(targetBlock.ParentHash!, state));
                 }
                 else if (!preUpdate)
                 {
@@ -3123,6 +3125,20 @@ namespace Nethermind.TxPool
             if (filterToReadyTx) blobTransactions = SelectReadySenders(blobTransactions, baseFee);
 
             return new(transactions, blobTransactions, IsRevalidatedFor(targetBlock, forkStateVersion));
+        }
+
+        /// <summary>Gets the payload parent's nonces, shared by every production read for that parent.</summary>
+        /// <remarks>The pool's account cache cannot stand in for them, even when the pool's head is the parent: it
+        /// fills from whichever block is head at read time, and a lock-free reader can store a nonce read before a
+        /// head update after that update has evicted it.</remarks>
+        private ParentNonces GetParentNonces(Hash256 parentHash, IReadOnlyStateProvider parentState)
+        {
+            ParentNonces? cached = Volatile.Read(ref _productionParentNonces);
+            if (cached is not null && cached.ParentHash == parentHash) return cached;
+
+            ParentNonces nonces = new(parentHash, parentState);
+            Volatile.Write(ref _productionParentNonces, nonces);
+            return nonces;
         }
 
         /// <summary>
@@ -3269,6 +3285,22 @@ namespace Nethermind.TxPool
         }
 
         private sealed record HeadSpecObservation(IReleaseSpec Spec, long Generation);
+
+        /// <summary>Nonces read from the state of one block, which never changes, so they stay valid for as long as
+        /// they are kept.</summary>
+        private sealed class ParentNonces(Hash256 parentHash, IReadOnlyStateProvider state) : IAccountStateProvider
+        {
+            private readonly ConcurrentDictionary<AddressAsKey, ulong> _nonces = new();
+
+            public Hash256 ParentHash { get; } = parentHash;
+
+            public IReadOnlyStateProvider State { get; } = state;
+
+            public bool TryGetAccount(Address address, out AccountStruct account) => State.TryGetAccount(address, out account);
+
+            public ulong GetNonce(Address address) =>
+                _nonces.GetOrAdd(address, static (key, state) => state.GetNonce(key.Value), State);
+        }
 
         internal sealed class AccountCache : IAccountStateProvider
         {

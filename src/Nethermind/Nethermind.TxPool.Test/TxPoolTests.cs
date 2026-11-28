@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -5129,6 +5130,41 @@ namespace Nethermind.TxPool.Test
                 differentParent = _txPool.GetPendingForProduction(otherTarget, true, UInt256.Zero).Transactions[sender];
                 try { _txPool.GetPendingForProduction(target, false, UInt256.Zero); }
                 catch (InvalidOperationException e) { unfilteredRead = e; }
+            }
+        }
+
+        [Test]
+        public void Production_reads_reuse_parent_nonces_until_the_parent_changes()
+        {
+            Block parent = _blockTree.Head!;
+            Block nextParent = Build.A.Block.WithParent(parent).WithGasLimit(FixtureHeadGasLimit).TestObject;
+            ConcurrentDictionary<BlockHeader, int> nonceReads = [];
+            IStateReader state = Substitute.For<IStateReader>();
+            state.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
+            {
+                if (call.Arg<Address>() == TestItem.AddressA) nonceReads.AddOrUpdate(call.Arg<BlockHeader>(), 1, static (_, reads) => reads + 1);
+                call[2] = new AccountStruct(0, UInt256.MaxValue);
+                return true;
+            });
+            _txPool = CreatePool(chainHeadInfoProvider: new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, state, blockProcessingTracker: _blockProcessing));
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            nonceReads.Clear();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReadsForProductionOn(parent), Is.EqualTo(1));
+                Assert.That(ReadsForProductionOn(parent), Is.EqualTo(1), "same parent reuses its nonces");
+                SetCanonicalHead(nextParent);
+                Assert.That(ReadsForProductionOn(nextParent), Is.EqualTo(1), "a new parent reads its own state");
+            }
+
+            int ReadsForProductionOn(Block block)
+            {
+                BlockHeader target = Build.A.BlockHeader.WithParent(block.Header).TestObject;
+                Assert.That(_txPool.GetPendingForProduction(target, true, UInt256.Zero).Transactions.ContainsKey(TestItem.AddressA), Is.True);
+                return nonceReads.GetValueOrDefault(block.Header);
             }
         }
 
