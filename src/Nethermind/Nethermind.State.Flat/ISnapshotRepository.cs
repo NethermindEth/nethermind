@@ -44,6 +44,13 @@ public interface ISnapshotRepository
     /// or the persisted base bucket.</summary>
     bool HasState(in StateId stateId);
 
+    /// <summary>Whether any reconstructable state — in the in-memory tier or the persisted-snapshot tier —
+    /// is registered whose block number falls in the inclusive range
+    /// <c>[fromBlockInclusive, toBlockInclusive]</c>. Used by the force-persist backstop to tell whether
+    /// advancing the persisted base would strand a still-reconstructable state inside the EIP-8252 retention
+    /// window; both tiers are checked because a persist prunes states below the new base from each.</summary>
+    bool HasReconstructableStateInBlockRange(ulong fromBlockInclusive, ulong toBlockInclusive);
+
     /// <summary>Index a caller-built <paramref name="snapshot"/> into the bucket selected by
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value), acquiring the bucket's own lease. The
     /// caller retains its construction lease and is responsible for the catalog entry — a freshly
