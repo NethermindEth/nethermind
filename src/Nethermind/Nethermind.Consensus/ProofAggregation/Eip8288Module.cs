@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -22,5 +23,6 @@ public sealed class Eip8288Module : Module
         .Bind<ILeanProofVerifier, DependencyProofCache>()
         .AddSingleton<ILeanSphincsVerifier, ISpecProvider, NativeLeanProofVerifier>(static (specProvider, native) =>
             specProvider.GetFinalSpec().IsEip8288Enabled ? native : UnavailableLeanSphincsVerifier.Instance)
-        .AddDecorator<IBlockProcessor, AggregatingBlockProcessor>();
+        .AddDecorator<IBlockProcessor, AggregatingBlockProcessor>()
+        .AddDecorator<IBlockImprovementContextFactory, AggregatingBlockImprovementContextFactory>();
 }

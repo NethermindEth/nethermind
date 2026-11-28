@@ -143,6 +143,9 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
         }
     }
 
+    /// <summary>Raised when a scheduled statement has been proven and remembered.</summary>
+    public event Action? ScheduledProofCompleted;
+
     /// <summary>Whether a scheduled statement is still being proven.</summary>
     public bool IsScheduled => Volatile.Read(ref _scheduled) is { IsCompleted: false };
 
@@ -174,6 +177,7 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
             {
                 byte[] proof = DependencyProofAggregator.Prove(statement.Input, this, statement.DepsHash);
                 Remember(statement.Deps, statement.DepsHash, proof);
+                ScheduledProofCompleted?.Invoke();
             }
         }
         catch (LeanProverBusyException)

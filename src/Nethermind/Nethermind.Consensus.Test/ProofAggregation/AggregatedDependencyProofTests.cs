@@ -7,18 +7,38 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
+using Nethermind.Core.Threading;
+using Nethermind.Core.Timers;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Init.Modules;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -116,6 +136,60 @@ public class AggregatedDependencyProofTests
         }
     }
 
+    /// <summary>The node's block processor verifies an aggregated proof through the node's verifier, on either access
+    /// list execution path.</summary>
+    [Test]
+    public async Task BlockProcessor_ProcessesAnAggregatedBlock([Values] bool parallelExecution)
+    {
+        Address claimant = TestItem.AddressD;
+        FakeLeanProofVerifier verifier = new();
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec) { AllowTestChainOverride = false })
+            .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = parallelExecution)
+            .AddSingleton(new DependencyProofCache(verifier, LimboLogs.Instance))
+            .WithGenesisPostProcessor((_, state, specProvider) =>
+            {
+                state.CreateAccount(claimant, 100.Ether);
+                state.InsertCode(claimant, Prepare.EvmCode
+                    .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, specProvider.GenesisSpec);
+            }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block template = await chain.AddBlock();
+        IReleaseSpec spec = chain.SpecProvider.GetSpec(template.Header);
+
+        Transaction tx = FrameTxWith(claimant, LeanSphincsClaim(TestItem.KeccakA, TestItem.KeccakB), LeanSphincsClaim(TestItem.KeccakC, TestItem.KeccakA));
+        tx.GasPrice = tx.DecodedMaxFeePerGas = template.BaseFeePerGas + 1;
+        tx.GasLimit = 1_000_000;
+        tx.Hash = tx.CalculateHash();
+        Block produced = new(template.Header.Clone(), new BlockBody([tx], [], template.Withdrawals));
+        Commit(produced, AggregatedDependencyProof.Encode(Stark(produced), []));
+
+        // The producer's run settles the header and access list the received block commits to.
+        FrameTxDependencyProof.AssignWitnesses(produced, spec, verifier);
+        Block processed;
+        using (chain.MainWorldState.BeginScope(parent))
+        {
+            (processed, _) = chain.BlockProcessor.ProcessOne(produced, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec, CancellationToken.None);
+        }
+
+        Block received = ReceivedCopy(processed);
+        received.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(BlockAccessListDecoder.EncodeToBytes(processed.GeneratedBlockAccessList!));
+        IBlockAccessListManager balManager = ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>();
+        TxReceipt[] receipts;
+        using (chain.MainWorldState.BeginScope(parent))
+        {
+            (_, receipts) = chain.BlockProcessor.ProcessOne(received, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, CancellationToken.None);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balManager.ParallelExecutionEnabled, Is.EqualTo(parallelExecution), "precondition: the block runs on the path the configuration selects");
+            Assert.That(received.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated));
+            Assert.That(received.Transactions[0].ClaimWitnesses, Has.All.SameAs(FrameTxClaimVerifier.AggregatedWitness));
+            Assert.That(receipts.Single().StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+        }
+    }
+
     [Test]
     public void Production_None_KeepsTheRawWitnesses()
     {
@@ -161,6 +235,37 @@ public class AggregatedDependencyProofTests
         {
             Assert.That(first.DependencyProof, Is.EqualTo(raw));
             Assert.That(second.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated));
+        }
+    }
+
+    /// <summary>A payload built once over a quiet pool ships raw witnesses, and is rebuilt with the aggregated proof
+    /// once the proof its build scheduled is ready.</summary>
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Production_BuilderOnly_QuietPool_GetPayloadCarriesTheProofOnceReady()
+    {
+        using ManualResetEventSlim provingGate = new();
+        FakeLeanProofVerifier verifier = new() { ProvingGate = provingGate };
+        DependencyProofCache cache = new(verifier, LimboLogs.Instance);
+        AggregatingProducer producer = new(verifier, cache);
+        TimeSpan slot = TimeSpan.FromSeconds(12);
+        CapturingImprovementContextFactory factory = new(new AggregatingBlockImprovementContextFactory(
+            new BlockImprovementContextFactory(producer, slot), cache,
+            new BlocksConfig { DependencyProofAggregation = DependencyProofAggregation.BuilderOnly }, new TestSpecProvider(Spec)));
+        using PayloadPreparationService service = new(producer, Substitute.For<ITxPool>(), factory, Substitute.For<ITimerFactory>(), LimboLogs.Instance, slot);
+
+        string payloadId = service.StartPreparingPayload(Build.A.BlockHeader.TestObject, new PayloadAttributes { Timestamp = 100 });
+        Assert.That(() => factory.Last?.ImprovementTask.IsCompleted == true && cache.IsScheduled, Is.True.After(5000, 10));
+        byte[] first = factory.Last!.Best.CurrentBestBlock!.DependencyProof!;
+        provingGate.Set();
+        Assert.That(() => factory.Last.Best.CurrentBestBlock!.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated).After(5000, 10));
+        IBlockProductionContext? payload = await service.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first[0], Is.EqualTo(Eip8141Constants.DependencyProofVersionRaw), "precondition: the first build ships raw witnesses");
+            Assert.That(payload!.CurrentBestBlock!.DependencyProof![0], Is.EqualTo(Eip8288Constants.DependencyProofVersionAggregated));
+            Assert.That(producer.Builds, Is.EqualTo(2), "one build, and one rebuild once the proof is ready");
         }
     }
 
@@ -305,9 +410,39 @@ public class AggregatedDependencyProofTests
             transactions[i].ClaimWitnesses = null;
         }
 
-        Block received = Build.A.Block.WithTransactions(transactions).TestObject;
+        Block received = new(produced.Header.Clone(), new BlockBody(transactions, [], produced.Withdrawals));
         Commit(received, produced.DependencyProof!);
         return received;
+    }
+
+    /// <summary>Builds every payload as <see cref="Produce"/> does, used enough gas to improve on the empty block.</summary>
+    private sealed class AggregatingProducer(FakeLeanProofVerifier verifier, DependencyProofCache cache) : IBlockProducer
+    {
+        private int _builds;
+
+        public int Builds => Volatile.Read(ref _builds);
+
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null,
+            IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken cancellationToken = default)
+        {
+            if (flags.HasFlag(IBlockProducer.Flags.PrepareEmptyBlock)) return Task.FromResult<Block?>(Build.A.Block.TestObject);
+
+            Interlocked.Increment(ref _builds);
+            (Block produced, _) = Produce(DependencyProofAggregation.BuilderOnly, verifier, cancellationToken.CanBeCanceled, cache);
+            produced.Header.GasUsed = 21_000;
+            return Task.FromResult<Block?>(produced);
+        }
+    }
+
+    private sealed class CapturingImprovementContextFactory(IBlockImprovementContextFactory inner) : IBlockImprovementContextFactory
+    {
+        private IBlockImprovementContext? _last;
+
+        public IBlockImprovementContext? Last => Volatile.Read(ref _last);
+
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
+            _last = inner.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
     }
 
     private static byte[] Filled(int length, byte fill)
