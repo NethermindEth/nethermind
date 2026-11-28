@@ -34,14 +34,17 @@ public class XdcStateSyncSnapshotManager(
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(pivotHeader);
 
-        XdcBlockHeader epochSwitchHeader = pivotHeader;
+        if (FindEpochSwitchAtOrBelow(pivotHeader) is not XdcBlockHeader epochSwitchHeader)
+            return null;
 
-        while (!_epochSwitchManager.IsEpochSwitchAtBlock(epochSwitchHeader))
+        // The first checkpoint after the pivot rewards the epoch before the pivot's, so it needs that epoch's snapshot too.
+        if (epochSwitchHeader.Number > 0)
         {
-            if (_blockTree.FindHeader(epochSwitchHeader.ParentHash) is not XdcBlockHeader parentHeader)
+            if (_blockTree.FindHeader(epochSwitchHeader.ParentHash) is not XdcBlockHeader parentHeader
+                || FindEpochSwitchAtOrBelow(parentHeader) is not XdcBlockHeader previousEpochSwitchHeader)
                 return null;
 
-            epochSwitchHeader = parentHeader;
+            epochSwitchHeader = previousEpochSwitchHeader;
         }
 
         ulong gapBlockNum = Math.Max(
@@ -79,6 +82,19 @@ public class XdcStateSyncSnapshotManager(
         }
 
         return gapBlockHeaders;
+    }
+
+    private XdcBlockHeader? FindEpochSwitchAtOrBelow(XdcBlockHeader header)
+    {
+        while (header.Number > 0 && !_epochSwitchManager.IsEpochSwitchAtBlock(header))
+        {
+            if (_blockTree.FindHeader(header.ParentHash) is not XdcBlockHeader parentHeader)
+                return null;
+
+            header = parentHeader;
+        }
+
+        return header;
     }
 
 
